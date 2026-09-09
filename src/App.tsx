@@ -65,7 +65,7 @@ const ERPAppContent: React.FC = () => {
   }, []);
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 selection:bg-blue-600 selection:text-white">
+    <div className={`min-h-screen flex flex-col ${isKaustubhAdmin ? 'bg-[#f8fafc] text-slate-900' : 'bg-slate-950 text-slate-100'} selection:bg-slate-900 selection:text-white`}>
       {/* Header */}
       <Header
         onOpenSearch={() => setIsSearchOpen(true)}
@@ -81,7 +81,7 @@ const ERPAppContent: React.FC = () => {
         {!isKaustubhAdmin && <Sidebar onOpenTutorial={() => setIsTutorialOpen(true)} />}
 
         {/* Main View Port */}
-        <main className={`flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-slate-950 ${isKaustubhAdmin ? 'w-full' : ''}`}>
+        <main className={`flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 ${isKaustubhAdmin ? 'bg-[#f8fafc] w-full' : 'bg-slate-950'}`}>
           <div className={`${isKaustubhAdmin ? 'max-w-[1600px]' : 'max-w-7xl'} mx-auto space-y-6`}>
             {/* Kaustubh Admin Exclusive View: ONLY Project Material Entry */}
             {isKaustubhAdmin ? (

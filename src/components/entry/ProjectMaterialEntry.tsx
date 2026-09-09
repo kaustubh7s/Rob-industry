@@ -587,42 +587,41 @@ export const ProjectMaterialEntry: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 select-text">
+    <div className="space-y-5 select-text text-slate-900">
       {/* ========================================================================= */}
-      {/* 1. TOP BANNER: RSB BRANDING & QUICK ADMIN STATUS */}
+      {/* 1. TOP BANNER: ENTERPRISE SPECIFICATION HEADER */}
       {/* ========================================================================= */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-blue-950 border border-slate-800/80 rounded-2xl p-5 shadow-xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
-        
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2.5">
-              <div className="px-2.5 py-0.5 rounded-md bg-blue-600/30 border border-blue-500/40 text-blue-300 text-[11px] font-bold tracking-wider uppercase font-mono flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs relative">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-800 border border-slate-200 text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse" />
                 RSB Private Limited • Plant Operations
-              </div>
-              <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 text-[11px] font-medium border border-slate-700">
-                Admin: <strong className="text-white">Kaustubh</strong>
+              </span>
+              <span className="px-2.5 py-0.5 rounded-md bg-slate-50 text-slate-800 text-xs font-semibold border border-slate-200">
+                Admin: <strong className="text-slate-900">Kaustubh</strong>
+              </span>
+              <span className="px-2 py-0.5 rounded-md bg-slate-50 text-slate-600 border border-slate-200 text-[11px] font-mono">
+                BOM Matrix v2.4
               </span>
             </div>
-            <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
-              PROJECT MATERIAL ENTRY
-              <span className="text-xs font-normal font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
-                v2.4 Live
-              </span>
+
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+              Project Material Entry
             </h1>
-            <p className="text-xs text-slate-400 max-w-2xl">
-              High-speed manufacturing requirement entry matrix. Configured for fast factory fabrication part lists, automatic machine allocation, and instant Excel synchronization.
+            <p className="text-xs text-slate-500 max-w-2xl font-normal">
+              High-speed manufacturing requirement entry matrix. Configured for fast fabrication part lists, automatic machine allocation, and instant Excel synchronization.
             </p>
           </div>
 
           {/* Action Hub */}
-          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
             {/* Live Auto Save Indicator */}
-            <div className="px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700 text-slate-300 text-xs flex items-center gap-2">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="text-[11px]">
-                Auto-saved <span className="font-mono text-slate-400">{lastAutoSavedTime}</span>
+            <div className="px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-1.5 font-medium">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>
+                Saved <strong className="font-mono text-emerald-900">{lastAutoSavedTime}</strong>
               </span>
             </div>
 
@@ -630,20 +629,20 @@ export const ProjectMaterialEntry: React.FC = () => {
             <button
               type="button"
               onClick={handleLoadRSBPreset}
-              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 hover:border-slate-600 text-slate-200 hover:text-white text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold transition-all shadow-2xs flex items-center gap-1.5"
               title="Load standard RSB Equipments 14-part fabrication requirement sheet"
             >
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>Load 14 RSB Parts Preset</span>
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>14 RSB Parts Preset</span>
             </button>
 
             {/* Excel Import Button */}
             <button
               type="button"
               onClick={() => setIsImportModalOpen(true)}
-              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 hover:border-slate-600 text-slate-200 hover:text-white text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold transition-all shadow-2xs flex items-center gap-1.5"
             >
-              <Upload className="w-3.5 h-3.5 text-emerald-400" />
+              <Upload className="w-3.5 h-3.5 text-emerald-600" />
               <span>Import Excel</span>
             </button>
 
@@ -651,9 +650,9 @@ export const ProjectMaterialEntry: React.FC = () => {
             <button
               type="button"
               onClick={handleExportExcel}
-              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 hover:border-slate-600 text-slate-200 hover:text-white text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold transition-all shadow-2xs flex items-center gap-1.5"
             >
-              <Download className="w-3.5 h-3.5 text-cyan-400" />
+              <Download className="w-3.5 h-3.5 text-slate-600" />
               <span>Export Excel</span>
             </button>
 
@@ -661,129 +660,126 @@ export const ProjectMaterialEntry: React.FC = () => {
             <button
               type="button"
               onClick={handleSaveProject}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-black transition-all shadow-lg shadow-blue-900/30 flex items-center gap-2 active:scale-95"
+              className="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-black text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 active:scale-95"
             >
-              <Save className="w-4 h-4" />
+              <Save className="w-3.5 h-3.5 text-emerald-400" />
               <span>SAVE PROJECT</span>
-              <kbd className="hidden sm:inline-block px-1 py-0.5 rounded bg-blue-800/80 text-[10px] font-mono text-blue-200 border border-blue-400/30">
-                ⌘S
-              </kbd>
             </button>
           </div>
         </div>
 
         {/* Dynamic Save Toast Notification */}
         {saveToast && (
-          <div className="mt-3.5 px-3.5 py-2 rounded-xl bg-emerald-950/80 border border-emerald-500/50 text-emerald-200 text-xs font-medium flex items-center gap-2 animate-fadeIn">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <div className="mt-3 px-3.5 py-2 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-semibold flex items-center gap-2 animate-fadeIn">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>{saveToast}</span>
           </div>
         )}
       </div>
 
       {/* ========================================================================= */}
-      {/* 2. CLIENT DEMO MODE - KPI SUMMARY CARDS */}
+      {/* 2. STATISTIC SUMMARY CARDS: CRISP WHITE WITH SUBTLE METRIC LABELS */}
       {/* ========================================================================= */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
         {/* Total Materials */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 shadow-sm relative overflow-hidden group hover:border-blue-500/40 transition-all">
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Materials</span>
-            <div className="w-8 h-8 rounded-lg bg-blue-600/20 text-blue-400 flex items-center justify-center">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Total Materials</span>
+            <div className="w-7 h-7 rounded-md bg-slate-100 text-slate-700 flex items-center justify-center font-bold">
               <Boxes className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-white font-mono">{stats.totalMaterials}</span>
-            <span className="text-xs text-slate-400">Line Items</span>
+          <div className="mt-2 flex items-baseline gap-1.5">
+            <span className="text-2xl font-bold text-slate-900 font-mono">{stats.totalMaterials}</span>
+            <span className="text-xs text-slate-500 font-medium">Items</span>
           </div>
-          <div className="mt-1 flex items-center gap-1.5 text-[10px] text-blue-400">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+          <div className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-600 font-medium">
+            <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
             <span>Active Sheet Matrix</span>
           </div>
         </div>
 
         {/* Total Quantity */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 shadow-sm relative overflow-hidden group hover:border-emerald-500/40 transition-all">
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Quantity</span>
-            <div className="w-8 h-8 rounded-lg bg-emerald-600/20 text-emerald-400 flex items-center justify-center">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Total Quantity</span>
+            <div className="w-7 h-7 rounded-md bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
               <Package className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-emerald-400 font-mono">{stats.totalQty}</span>
-            <span className="text-xs text-slate-400">Total Units</span>
+          <div className="mt-2 flex items-baseline gap-1.5">
+            <span className="text-2xl font-bold text-slate-900 font-mono">{stats.totalQty}</span>
+            <span className="text-xs text-slate-500 font-medium">Units</span>
           </div>
-          <div className="mt-1 flex items-center gap-1.5 text-[10px] text-emerald-400">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            <span>Fabrication & Raw Parts</span>
+          <div className="mt-1 flex items-center gap-1.5 text-[11px] text-emerald-700 font-medium">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            <span>Fabrication & Raw Stock</span>
           </div>
         </div>
 
         {/* Projects */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 shadow-sm relative overflow-hidden group hover:border-purple-500/40 transition-all">
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Projects</span>
-            <div className="w-8 h-8 rounded-lg bg-purple-600/20 text-purple-400 flex items-center justify-center">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Project</span>
+            <div className="w-7 h-7 rounded-md bg-slate-100 text-slate-700 flex items-center justify-center font-bold">
               <Layers className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-purple-300 font-mono">{stats.uniqueProjects}</span>
-            <span className="text-xs text-slate-400">Machine Projects</span>
+          <div className="mt-2 flex items-baseline gap-1.5">
+            <span className="text-2xl font-bold text-slate-900 font-mono">{stats.uniqueProjects}</span>
+            <span className="text-xs text-slate-500 font-medium">Active</span>
           </div>
-          <div className="mt-1 flex items-center gap-1.5 text-[10px] text-purple-400">
-            <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
-            <span>Target: {activeProjectName}</span>
+          <div className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-600 font-medium truncate">
+            <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
+            <span className="truncate">{activeProjectName}</span>
           </div>
         </div>
 
         {/* Vendors */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 shadow-sm relative overflow-hidden group hover:border-amber-500/40 transition-all">
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Vendors</span>
-            <div className="w-8 h-8 rounded-lg bg-amber-600/20 text-amber-400 flex items-center justify-center">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Vendors</span>
+            <div className="w-7 h-7 rounded-md bg-slate-100 text-slate-700 flex items-center justify-center font-bold">
               <Building2 className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-amber-300 font-mono">{stats.uniqueVendors}</span>
-            <span className="text-xs text-slate-400">Suppliers</span>
+          <div className="mt-2 flex items-baseline gap-1.5">
+            <span className="text-2xl font-bold text-slate-900 font-mono">{stats.uniqueVendors}</span>
+            <span className="text-xs text-slate-500 font-medium">Suppliers</span>
           </div>
-          <div className="mt-1 flex items-center gap-1.5 text-[10px] text-amber-400">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-            <span>Primary: {vendor}</span>
+          <div className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-600 font-medium truncate">
+            <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
+            <span className="truncate">Primary: {vendor}</span>
           </div>
         </div>
       </div>
 
       {/* ========================================================================= */}
-      {/* 3. TOP SECTION: PROJECT DETAILS CARDS */}
+      {/* 3. TOP SECTION: PROJECT DETAILS (CLEAN ENTERPRISE INPUTS) */}
       {/* ========================================================================= */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-3.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-2.5 border-b border-slate-100">
           <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-            <h2 className="text-sm font-black text-white uppercase tracking-wider">
+            <div className="w-2 h-2 rounded-full bg-slate-900" />
+            <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
               Project Specification & Header Details
             </h2>
           </div>
-          <span className="text-xs text-slate-400">
-            Auto-fills automatically into newly created requirement rows
+          <span className="text-[11px] text-slate-500 font-normal">
+            Auto-fills into newly created requirement rows
           </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
           {/* Project Name */}
-          <div className="space-y-1.5">
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-300">
+          <div className="space-y-1">
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600">
               Project Name
             </label>
             <select
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-white focus:outline-none focus:border-blue-500 transition-colors"
+              className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900 transition-colors shadow-2xs"
             >
               {PRESET_PROJECTS.map((p) => (
                 <option key={p} value={p}>
@@ -798,20 +794,20 @@ export const ProjectMaterialEntry: React.FC = () => {
                 value={customProject}
                 onChange={(e) => setCustomProject(e.target.value)}
                 placeholder="Type Project Name..."
-                className="w-full mt-1.5 bg-slate-950 border border-blue-500/60 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none"
+                className="w-full mt-1.5 bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-900 shadow-2xs font-semibold"
               />
             )}
           </div>
 
           {/* Machine Type */}
-          <div className="space-y-1.5">
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-300">
+          <div className="space-y-1">
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600">
               Machine Type
             </label>
             <select
               value={machineType}
               onChange={(e) => setMachineType(e.target.value as MachineCategory)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-cyan-300 focus:outline-none focus:border-cyan-500 transition-colors"
+              className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900 transition-colors shadow-2xs"
             >
               {MACHINE_TYPES.map((mt) => (
                 <option key={mt} value={mt}>
@@ -822,14 +818,14 @@ export const ProjectMaterialEntry: React.FC = () => {
           </div>
 
           {/* Vendor Name */}
-          <div className="space-y-1.5">
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-300">
+          <div className="space-y-1">
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600">
               Vendor / Supplier
             </label>
             <select
               value={vendor}
               onChange={(e) => setVendor(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-amber-300 focus:outline-none focus:border-amber-500 transition-colors"
+              className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900 transition-colors shadow-2xs"
             >
               {COMMON_VENDORS.map((v) => (
                 <option key={v} value={v}>
@@ -840,14 +836,14 @@ export const ProjectMaterialEntry: React.FC = () => {
           </div>
 
           {/* Order Source */}
-          <div className="space-y-1.5">
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-300">
+          <div className="space-y-1">
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600">
               Order Source
             </label>
             <select
               value={orderSource}
               onChange={(e) => setOrderSource(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-purple-300 focus:outline-none focus:border-purple-500 transition-colors"
+              className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900 transition-colors shadow-2xs"
             >
               {ORDER_SOURCES.map((src) => (
                 <option key={src} value={src}>
@@ -858,8 +854,8 @@ export const ProjectMaterialEntry: React.FC = () => {
           </div>
 
           {/* PO Number */}
-          <div className="space-y-1.5">
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-300">
+          <div className="space-y-1">
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600">
               PO Number
             </label>
             <input
@@ -867,20 +863,20 @@ export const ProjectMaterialEntry: React.FC = () => {
               value={poNumber}
               onChange={(e) => setPoNumber(e.target.value)}
               placeholder="e.g. PO-2026-36"
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono font-bold text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+              className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-mono font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900 transition-colors shadow-2xs"
             />
           </div>
 
           {/* Date */}
-          <div className="space-y-1.5">
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-300">
+          <div className="space-y-1">
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600">
               Date
             </label>
             <input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono font-medium text-white focus:outline-none focus:border-blue-500 transition-colors"
+              className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-mono font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900 transition-colors shadow-2xs"
             />
           </div>
         </div>
@@ -889,25 +885,25 @@ export const ProjectMaterialEntry: React.FC = () => {
       {/* ========================================================================= */}
       {/* 4. QUICK MATERIAL ENTRY SECTION (SMART FAST FORM) */}
       {/* ========================================================================= */}
-      <div className="bg-slate-900/90 border border-blue-500/30 rounded-2xl p-5 shadow-lg space-y-3 relative">
-        <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center justify-between gap-2 pb-2 border-b border-slate-800">
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-2.5 border-b border-slate-100">
           <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-            <h2 className="text-sm font-black text-white uppercase tracking-wider">
+            <div className="w-2 h-2 rounded-full bg-emerald-500" />
+            <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
               Quick Material Entry Form (फास्ट डेटा एंट्री)
             </h2>
           </div>
-          <span className="text-[11px] text-slate-400">
-            Inherits Vendor: <strong className="text-amber-300">{vendor}</strong> | Machine:{' '}
-            <strong className="text-cyan-300">{machineType}</strong>
+          <span className="text-[11px] text-slate-500">
+            Target Vendor: <strong className="text-slate-800">{vendor}</strong> • Machine:{' '}
+            <strong className="text-slate-800">{machineType}</strong>
           </span>
         </div>
 
         <form onSubmit={handleAddQuickMaterial} className="space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
-            {/* Component / Description with quick suggestions */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 items-end">
+            {/* Component / Description */}
             <div className="lg:col-span-4 space-y-1">
-              <label className="block text-[11px] font-bold text-slate-300">
+              <label className="block text-[11px] font-semibold text-slate-700">
                 Description / Component Name
               </label>
               <div className="relative">
@@ -917,10 +913,10 @@ export const ProjectMaterialEntry: React.FC = () => {
                   value={quickDescription}
                   onChange={(e) => setQuickDescription(e.target.value)}
                   placeholder="e.g. Mono Conveyor Inlet Patti, Sealing Clamp..."
-                  list="rsb-parts-list"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+                  list="rsb-parts-list-pro"
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900 transition-colors shadow-2xs"
                 />
-                <datalist id="rsb-parts-list">
+                <datalist id="rsb-parts-list-pro">
                   {RSB_SAMPLE_COMPONENTS.map((item, idx) => (
                     <option key={idx} value={item.description}>
                       {item.sizeSpecs} - {item.materialType}
@@ -932,13 +928,13 @@ export const ProjectMaterialEntry: React.FC = () => {
 
             {/* Material Type */}
             <div className="lg:col-span-2 space-y-1">
-              <label className="block text-[11px] font-bold text-slate-300">
+              <label className="block text-[11px] font-semibold text-slate-700">
                 Material Type
               </label>
               <select
                 value={quickMaterialType}
                 onChange={(e) => setQuickMaterialType(e.target.value as MaterialType)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-blue-300 focus:outline-none focus:border-blue-500 transition-colors"
+                className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900 transition-colors shadow-2xs"
               >
                 {MATERIAL_TYPES.map((mt) => (
                   <option key={mt} value={mt}>
@@ -950,7 +946,7 @@ export const ProjectMaterialEntry: React.FC = () => {
 
             {/* Size Specification */}
             <div className="lg:col-span-3 space-y-1">
-              <label className="block text-[11px] font-bold text-slate-300">
+              <label className="block text-[11px] font-semibold text-slate-700">
                 Size Specification
               </label>
               <input
@@ -958,13 +954,13 @@ export const ProjectMaterialEntry: React.FC = () => {
                 value={quickSizeSpecs}
                 onChange={(e) => setQuickSizeSpecs(e.target.value)}
                 placeholder="e.g. 80 x 6 x 485 or OD 106 x ID 75 x 110"
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono font-bold text-emerald-300 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-mono font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900 transition-colors shadow-2xs"
               />
             </div>
 
             {/* Quantity */}
             <div className="lg:col-span-1 space-y-1">
-              <label className="block text-[11px] font-bold text-slate-300">
+              <label className="block text-[11px] font-semibold text-slate-700 text-center">
                 Qty
               </label>
               <input
@@ -973,19 +969,19 @@ export const ProjectMaterialEntry: React.FC = () => {
                 step="any"
                 value={quickQuantity}
                 onChange={(e) => setQuickQuantity(parseFloat(e.target.value) || 1)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono font-black text-amber-300 text-center focus:outline-none focus:border-amber-500 transition-colors"
+                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-1.5 py-1.5 text-xs font-mono font-bold text-slate-900 text-center focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900 transition-colors shadow-2xs"
               />
             </div>
 
             {/* Unit */}
             <div className="lg:col-span-1 space-y-1">
-              <label className="block text-[11px] font-bold text-slate-300">
+              <label className="block text-[11px] font-semibold text-slate-700 text-center">
                 Unit
               </label>
               <select
                 value={quickUnit}
                 onChange={(e) => setQuickUnit(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2 py-2 text-xs font-semibold text-slate-200 focus:outline-none focus:border-blue-500 transition-colors text-center"
+                className="w-full bg-white border border-slate-300 rounded-lg px-1 py-1.5 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900 transition-colors text-center shadow-2xs"
               >
                 <option value="Nos">Nos</option>
                 <option value="Kg">Kg</option>
@@ -995,22 +991,22 @@ export const ProjectMaterialEntry: React.FC = () => {
               </select>
             </div>
 
-            {/* Add Material Primary Action Button */}
+            {/* Add Material Button */}
             <div className="lg:col-span-1">
               <button
                 type="submit"
-                className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black transition-all shadow-md active:scale-95 flex items-center justify-center gap-1 shrink-0 h-[38px]"
+                className="w-full py-1.5 px-2.5 rounded-lg bg-slate-900 hover:bg-black text-white text-xs font-bold transition-all shadow-xs active:scale-95 flex items-center justify-center gap-1 shrink-0 h-[34px]"
                 title="Add material to table (Press Enter)"
               >
-                <Plus className="w-4 h-4" />
-                <span className="hidden xl:inline">Add</span>
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add</span>
               </button>
             </div>
           </div>
 
-          {/* Quick Click Preset Chips */}
-          <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[10px]">
-            <span className="text-slate-400 font-bold uppercase">Quick Part Presets:</span>
+          {/* Quick Preset Part Buttons */}
+          <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-xs">
+            <span className="text-slate-400 font-semibold uppercase text-[10px]">Quick Presets:</span>
             {RSB_SAMPLE_COMPONENTS.slice(0, 7).map((item, idx) => (
               <button
                 key={idx}
@@ -1022,7 +1018,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                   setQuickQuantity(item.qty);
                   setQuickUnit(item.unit);
                 }}
-                className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 transition-colors"
+                className="px-2.5 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 text-[11px] font-medium transition-colors"
               >
                 {item.description}
               </button>
@@ -1032,21 +1028,21 @@ export const ProjectMaterialEntry: React.FC = () => {
       </div>
 
       {/* ========================================================================= */}
-      {/* 5. MATERIAL REQUIREMENT TABLE CONTROLS & SPREADSHEET */}
+      {/* 5. SPREADSHEET MATRIX TABLE (HIGH LEVEL PRO ERP DESIGN) */}
       {/* ========================================================================= */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-3.5">
         {/* Table Toolbar */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 pb-2.5 border-b border-slate-100">
           <div className="flex flex-wrap items-center gap-2">
             {/* Search Input */}
             <div className="relative min-w-[220px]">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search description, size, vendor, machine..."
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                placeholder="Search parts, sizes, vendors..."
+                className="w-full bg-white border border-slate-300 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900 shadow-2xs"
               />
             </div>
 
@@ -1054,7 +1050,7 @@ export const ProjectMaterialEntry: React.FC = () => {
             <select
               value={filterMachine}
               onChange={(e) => setFilterMachine(e.target.value)}
-              className="bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+              className="bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:border-slate-900 shadow-2xs"
             >
               <option value="ALL">All Machines</option>
               {MACHINE_TYPES.map((m) => (
@@ -1068,7 +1064,7 @@ export const ProjectMaterialEntry: React.FC = () => {
             <select
               value={filterMaterialType}
               onChange={(e) => setFilterMaterialType(e.target.value)}
-              className="bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+              className="bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:border-slate-900 shadow-2xs"
             >
               <option value="ALL">All Materials</option>
               {MATERIAL_TYPES.map((m) => (
@@ -1082,7 +1078,7 @@ export const ProjectMaterialEntry: React.FC = () => {
             <select
               value={filterVendor}
               onChange={(e) => setFilterVendor(e.target.value)}
-              className="bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+              className="bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:border-slate-900 shadow-2xs"
             >
               <option value="ALL">All Vendors</option>
               {COMMON_VENDORS.map((v) => (
@@ -1094,46 +1090,44 @@ export const ProjectMaterialEntry: React.FC = () => {
           </div>
 
           {/* Table Operations Buttons */}
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Direct Paste from Excel Button */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {/* Bulk Paste */}
             <button
               type="button"
               onClick={() => setIsPasteModalOpen(true)}
-              className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 hover:text-white text-xs font-medium transition-colors flex items-center gap-1.5"
-              title="Bulk paste data from Excel"
+              className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-2xs"
             >
-              <Clipboard className="w-3.5 h-3.5 text-blue-400" />
-              <span>Bulk Paste Excel</span>
+              <Clipboard className="w-3.5 h-3.5 text-slate-500" />
+              <span>Bulk Paste</span>
             </button>
 
             {/* Copy Previous Row */}
             <button
               type="button"
               onClick={handleCopyPreviousRow}
-              className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 hover:text-white text-xs font-medium transition-colors flex items-center gap-1.5"
-              title="Copy the last row in table"
+              className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-2xs"
             >
-              <Copy className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Copy Prev Row</span>
+              <Copy className="w-3.5 h-3.5 text-slate-500" />
+              <span>Copy Prev</span>
             </button>
 
             {/* Add Blank Row */}
             <button
               type="button"
               onClick={handleAddEmptyRow}
-              className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 hover:text-white text-xs font-medium transition-colors flex items-center gap-1.5"
+              className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-2xs"
             >
-              <Plus className="w-3.5 h-3.5 text-emerald-400" />
-              <span>+ Add Row</span>
+              <Plus className="w-3.5 h-3.5 text-emerald-600" />
+              <span>+ Row</span>
             </button>
 
-            {/* Selected Bulk Actions */}
+            {/* Selected Actions */}
             {selectedRowIds.length > 0 && (
               <>
                 <button
                   type="button"
                   onClick={handleBulkDuplicate}
-                  className="px-2.5 py-1.5 rounded-lg bg-blue-900/40 hover:bg-blue-900/60 border border-blue-500/50 text-blue-200 text-xs font-bold transition-colors flex items-center gap-1.5"
+                  className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 text-xs font-bold transition-colors flex items-center gap-1"
                 >
                   <Copy className="w-3.5 h-3.5" />
                   <span>Duplicate ({selectedRowIds.length})</span>
@@ -1141,7 +1135,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleBulkDelete}
-                  className="px-2.5 py-1.5 rounded-lg bg-rose-900/40 hover:bg-rose-900/60 border border-rose-500/50 text-rose-200 text-xs font-bold transition-colors flex items-center gap-1.5"
+                  className="px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-bold transition-colors flex items-center gap-1"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   <span>Delete ({selectedRowIds.length})</span>
@@ -1153,71 +1147,73 @@ export const ProjectMaterialEntry: React.FC = () => {
             <button
               type="button"
               onClick={handleClearSheet}
-              className="px-2 py-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-950/30 text-xs transition-colors"
+              className="px-2 py-1.5 rounded-lg text-slate-400 hover:text-rose-600 text-xs transition-colors font-medium"
               title="Clear all rows"
             >
-              Clear All
+              Clear
             </button>
           </div>
         </div>
 
-        {/* ======================================================================= */}
-        {/* SPREADSHEET-LIKE DATA ENTRY TABLE */}
-        {/* ======================================================================= */}
-        <div className="overflow-x-auto border border-slate-800 rounded-xl max-h-[580px] custom-scrollbar shadow-inner bg-slate-950">
+        {/* Spreadsheet Table */}
+        <div className="overflow-x-auto border border-slate-200 rounded-lg max-h-[580px] custom-scrollbar bg-white shadow-2xs">
           <table className="w-full text-left text-xs border-collapse">
-            {/* Sticky Header */}
-            <thead className="bg-slate-900 text-slate-300 sticky top-0 z-20 border-b border-slate-800 shadow-sm uppercase tracking-wider font-mono text-[11px]">
+            {/* Header: Solid Jet Black / High Contrast */}
+            <thead className="bg-[#0f172a] text-white sticky top-0 z-20 border-b border-slate-200 uppercase tracking-wider font-mono text-[11px]">
               <tr>
                 <th className="p-2.5 w-10 text-center">
                   <input
                     type="checkbox"
                     checked={paginatedRows.length > 0 && selectedRowIds.length === paginatedRows.length}
                     onChange={(e) => handleToggleSelectAll(e.target.checked)}
-                    className="rounded bg-slate-900 border-slate-700 text-blue-600 focus:ring-0"
+                    className="rounded border-slate-400 text-slate-900 focus:ring-0"
                   />
                 </th>
-                <th className="p-2.5 w-12 text-center">Sr</th>
-                <th className="p-2.5 min-w-[200px]">Description / Component</th>
-                <th className="p-2.5 min-w-[120px]">Material Type</th>
+                <th className="p-2.5 w-12 text-center text-slate-400">Sr</th>
+                <th className="p-2.5 min-w-[220px]">Description / Component</th>
+                <th className="p-2.5 min-w-[130px]">Material Type</th>
                 <th className="p-2.5 min-w-[160px]">Size Specification</th>
-                <th className="p-2.5 min-w-[100px] text-center">Quantity</th>
-                <th className="p-2.5 min-w-[70px] text-center">Unit</th>
-                <th className="p-2.5 min-w-[140px]">Vendor</th>
-                <th className="p-2.5 min-w-[100px]">Machine Type</th>
+                <th className="p-2.5 min-w-[90px] text-center">Quantity</th>
+                <th className="p-2.5 min-w-[65px] text-center">Unit</th>
+                <th className="p-2.5 min-w-[130px]">Vendor</th>
+                <th className="p-2.5 min-w-[95px]">Machine Type</th>
                 <th className="p-2.5 min-w-[140px]">Project</th>
                 <th className="p-2.5 min-w-[120px]">Order Source</th>
-                <th className="p-2.5 w-24 text-center">Actions</th>
+                <th className="p-2.5 w-20 text-center">Actions</th>
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-slate-850">
+            <tbody className="divide-y divide-slate-100 text-slate-900 bg-white">
               {paginatedRows.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="text-center py-12 text-slate-400">
-                    <Boxes className="w-10 h-10 mx-auto text-slate-600 mb-2" />
-                    <p className="font-bold text-white text-sm">No Material Entries Found</p>
-                    <p className="text-xs text-slate-500 mt-1">
-                      Use the quick entry form above, click "+ Add Row", or load the 14 RSB Parts Preset.
+                  <td colSpan={12} className="text-center py-10 text-slate-400">
+                    <Boxes className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+                    <p className="font-bold text-slate-800 text-sm">No Material Entries Found</p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Use the quick entry form above, click "+ Row", or load preset items.
                     </p>
                     <button
                       type="button"
                       onClick={handleLoadRSBPreset}
-                      className="mt-3 px-3 py-1.5 rounded-lg bg-blue-600/30 text-blue-300 border border-blue-500/40 text-xs font-bold hover:bg-blue-600/50"
+                      className="mt-3 px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-bold hover:bg-black transition-colors"
                     >
                       Load 14 RSB Parts Preset
                     </button>
                   </td>
                 </tr>
               ) : (
-                paginatedRows.map((row) => {
+                paginatedRows.map((row, idx) => {
                   const isSelected = selectedRowIds.includes(row.id);
 
                   return (
                     <tr
                       key={row.id}
-                      className={`hover:bg-slate-900/80 transition-colors group ${
-                        isSelected ? 'bg-blue-950/30' : ''
+                      className={`transition-colors group ${
+                        isSelected
+                          ? 'bg-blue-50/70'
+                          : idx % 2 === 1
+                          ? 'bg-slate-50/40 hover:bg-slate-50'
+                          : 'bg-white hover:bg-slate-50'
                       }`}
                     >
                       {/* Checkbox */}
@@ -1226,12 +1222,12 @@ export const ProjectMaterialEntry: React.FC = () => {
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => handleToggleSelectRow(row.id)}
-                          className="rounded bg-slate-900 border-slate-700 text-blue-600 focus:ring-0"
+                          className="rounded border-slate-300 text-slate-900 focus:ring-0"
                         />
                       </td>
 
                       {/* Sr No */}
-                      <td className="p-2 text-center font-mono font-bold text-slate-400">
+                      <td className="p-2 text-center font-mono font-medium text-slate-400 text-[11px]">
                         {row.srNo}
                       </td>
 
@@ -1242,18 +1238,18 @@ export const ProjectMaterialEntry: React.FC = () => {
                           value={row.description}
                           onChange={(e) => handleCellChange(row.id, 'description', e.target.value)}
                           placeholder="Part Name..."
-                          className="w-full bg-transparent hover:bg-slate-900 focus:bg-slate-950 border border-transparent hover:border-slate-800 focus:border-blue-500 rounded px-2 py-1 text-xs text-white font-medium focus:outline-none transition-colors"
+                          className="w-full bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-300 focus:border-slate-900 rounded px-2 py-1 text-xs text-slate-900 font-semibold focus:outline-none transition-colors"
                         />
                       </td>
 
-                      {/* Material Type */}
+                      {/* Material Type (Subtle Enterprise Badge) */}
                       <td className="p-1">
                         <select
                           value={row.materialType}
                           onChange={(e) =>
                             handleCellChange(row.id, 'materialType', e.target.value as MaterialType)
                           }
-                          className="w-full bg-transparent hover:bg-slate-900 focus:bg-slate-950 border border-transparent hover:border-slate-800 focus:border-blue-500 rounded px-2 py-1 text-xs text-blue-300 font-bold focus:outline-none transition-colors"
+                          className="w-full bg-slate-100 text-slate-800 border border-slate-200 rounded px-1.5 py-1 text-xs font-semibold focus:outline-none focus:border-slate-900 transition-colors"
                         >
                           {MATERIAL_TYPES.map((mt) => (
                             <option key={mt} value={mt}>
@@ -1270,7 +1266,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                           value={row.sizeSpecs}
                           onChange={(e) => handleCellChange(row.id, 'sizeSpecs', e.target.value)}
                           placeholder="e.g. 80 x 6 x 485"
-                          className="w-full bg-transparent hover:bg-slate-900 focus:bg-slate-950 border border-transparent hover:border-slate-800 focus:border-emerald-500 rounded px-2 py-1 text-xs font-mono font-bold text-emerald-300 focus:outline-none transition-colors"
+                          className="w-full bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-300 focus:border-slate-900 rounded px-2 py-1 text-xs font-mono font-semibold text-slate-900 focus:outline-none transition-colors"
                         />
                       </td>
 
@@ -1284,7 +1280,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                           onChange={(e) =>
                             handleCellChange(row.id, 'quantity', parseFloat(e.target.value) || 0)
                           }
-                          className="w-full bg-transparent hover:bg-slate-900 focus:bg-slate-950 border border-transparent hover:border-slate-800 focus:border-amber-500 rounded px-2 py-1 text-xs font-mono font-bold text-amber-300 text-center focus:outline-none transition-colors"
+                          className="w-full bg-slate-50 border border-slate-200 rounded px-1 py-1 text-xs font-mono font-bold text-slate-900 text-center focus:outline-none focus:border-slate-900 transition-colors"
                         />
                       </td>
 
@@ -1293,7 +1289,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                         <select
                           value={row.unit}
                           onChange={(e) => handleCellChange(row.id, 'unit', e.target.value)}
-                          className="w-full bg-transparent hover:bg-slate-900 focus:bg-slate-950 border border-transparent hover:border-slate-800 focus:border-blue-500 rounded px-1 py-1 text-xs text-slate-300 text-center focus:outline-none transition-colors"
+                          className="w-full bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-300 focus:border-slate-900 rounded px-1 py-1 text-xs text-slate-700 font-medium text-center focus:outline-none transition-colors"
                         >
                           <option value="Nos">Nos</option>
                           <option value="Kg">Kg</option>
@@ -1309,7 +1305,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                           type="text"
                           value={row.vendor}
                           onChange={(e) => handleCellChange(row.id, 'vendor', e.target.value)}
-                          className="w-full bg-transparent hover:bg-slate-900 focus:bg-slate-950 border border-transparent hover:border-slate-800 focus:border-amber-500 rounded px-2 py-1 text-xs text-amber-200/90 focus:outline-none transition-colors"
+                          className="w-full bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-300 focus:border-slate-900 rounded px-2 py-1 text-xs text-slate-800 font-medium focus:outline-none transition-colors"
                         />
                       </td>
 
@@ -1320,7 +1316,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                           onChange={(e) =>
                             handleCellChange(row.id, 'machineType', e.target.value as MachineCategory)
                           }
-                          className="w-full bg-transparent hover:bg-slate-900 focus:bg-slate-950 border border-transparent hover:border-slate-800 focus:border-cyan-500 rounded px-2 py-1 text-xs text-cyan-300 font-semibold focus:outline-none transition-colors"
+                          className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded px-1.5 py-1 text-xs font-medium focus:outline-none focus:border-slate-900 transition-colors"
                         >
                           {MACHINE_TYPES.map((m) => (
                             <option key={m} value={m}>
@@ -1336,7 +1332,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                           type="text"
                           value={row.projectName}
                           onChange={(e) => handleCellChange(row.id, 'projectName', e.target.value)}
-                          className="w-full bg-transparent hover:bg-slate-900 focus:bg-slate-950 border border-transparent hover:border-slate-800 focus:border-purple-500 rounded px-2 py-1 text-xs text-purple-300 focus:outline-none transition-colors"
+                          className="w-full bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-300 focus:border-slate-900 rounded px-2 py-1 text-xs text-slate-800 font-medium focus:outline-none transition-colors"
                         />
                       </td>
 
@@ -1345,7 +1341,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                         <select
                           value={row.orderSource}
                           onChange={(e) => handleCellChange(row.id, 'orderSource', e.target.value)}
-                          className="w-full bg-transparent hover:bg-slate-900 focus:bg-slate-950 border border-transparent hover:border-slate-800 focus:border-purple-500 rounded px-2 py-1 text-xs text-slate-300 focus:outline-none transition-colors"
+                          className="w-full bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-300 focus:border-slate-900 rounded px-1.5 py-1 text-xs text-slate-700 focus:outline-none transition-colors"
                         >
                           {ORDER_SOURCES.map((s) => (
                             <option key={s} value={s}>
@@ -1361,7 +1357,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => handleDuplicateRow(row.id)}
-                            className="p-1 rounded text-slate-400 hover:text-blue-300 hover:bg-blue-950/50"
+                            className="p-1 rounded text-slate-400 hover:text-slate-800 hover:bg-slate-100"
                             title="Duplicate row"
                           >
                             <Copy className="w-3.5 h-3.5" />
@@ -1369,7 +1365,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => handleDeleteRow(row.id)}
-                            className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-rose-950/50"
+                            className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50"
                             title="Delete row"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1384,13 +1380,13 @@ export const ProjectMaterialEntry: React.FC = () => {
           </table>
         </div>
 
-        {/* Table Footer: Pagination & Fast Add Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 text-xs text-slate-400">
+        {/* Table Footer: Pagination */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1.5 text-xs text-slate-500">
           <div className="flex items-center gap-3">
             <span>
-              Showing <strong className="text-white">{filteredRows.length}</strong> material item(s)
+              Showing <strong className="text-slate-900 font-bold">{filteredRows.length}</strong> material item(s)
             </span>
-            <div className="flex items-center gap-1.5 border-l border-slate-800 pl-3">
+            <div className="flex items-center gap-1.5 border-l border-slate-200 pl-3">
               <span>Per page:</span>
               <select
                 value={pageSize}
@@ -1398,7 +1394,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                   setPageSize(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value));
                   setCurrentPage(1);
                 }}
-                className="bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-xs text-white"
+                className="bg-white border border-slate-300 rounded px-1.5 py-0.5 text-xs text-slate-800"
               >
                 <option value={10}>10</option>
                 <option value={25}>25</option>
@@ -1411,23 +1407,23 @@ export const ProjectMaterialEntry: React.FC = () => {
 
           {/* Pagination Controls */}
           {pageSize !== 'ALL' && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 disabled={currentPage === 1}
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                className="px-2 py-1 rounded bg-slate-800 border border-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-700 text-white"
+                className="px-2 py-1 rounded bg-white border border-slate-300 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-100 text-slate-800 shadow-2xs"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
               </button>
-              <span className="font-mono text-slate-300">
+              <span className="font-mono text-slate-700 font-semibold text-xs">
                 Page {currentPage} of {totalPages}
               </span>
               <button
                 type="button"
                 disabled={currentPage >= totalPages}
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                className="px-2 py-1 rounded bg-slate-800 border border-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-700 text-white"
+                className="px-2 py-1 rounded bg-white border border-slate-300 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-100 text-slate-800 shadow-2xs"
               >
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
@@ -1439,35 +1435,35 @@ export const ProjectMaterialEntry: React.FC = () => {
       {/* ========================================================================= */}
       {/* 6. BOTTOM PROMINENT SAVE ACTION BAR */}
       {/* ========================================================================= */}
-      <div className="bg-gradient-to-r from-slate-900 to-slate-850 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-600/20 text-blue-400 flex items-center justify-center font-bold">
-            <Save className="w-5 h-5" />
+          <div className="w-9 h-9 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold">
+            <Save className="w-4 h-4 text-emerald-400" />
           </div>
           <div>
-            <h3 className="text-sm font-black text-white">Save Project Material Requirement</h3>
-            <p className="text-xs text-slate-400">
+            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Save Project Material Requirement</h3>
+            <p className="text-xs text-slate-500 font-normal">
               Commits all {rows.length} requirement entries to RSB Private Limited ERP database.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 w-full sm:w-auto">
+        <div className="flex items-center gap-2.5 w-full sm:w-auto">
           <button
             type="button"
             onClick={handleExportExcel}
-            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-200 text-xs font-bold transition-all flex items-center justify-center gap-2"
+            className="w-full sm:w-auto px-3.5 py-2 rounded-lg bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-semibold transition-all flex items-center justify-center gap-1.5 shadow-2xs"
           >
-            <Download className="w-4 h-4 text-cyan-400" />
+            <Download className="w-3.5 h-3.5 text-slate-600" />
             <span>Export to Excel (.xlsx)</span>
           </button>
 
           <button
             type="button"
             onClick={handleSaveProject}
-            className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-black transition-all shadow-xl shadow-blue-950 flex items-center justify-center gap-2 active:scale-95"
+            className="w-full sm:w-auto px-5 py-2 rounded-lg bg-slate-900 hover:bg-black text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 active:scale-95"
           >
-            <Save className="w-4 h-4" />
+            <Save className="w-3.5 h-3.5 text-emerald-400" />
             <span>SAVE PROJECT (पूरा प्रोजेक्ट सेव करें)</span>
           </button>
         </div>
@@ -1484,22 +1480,22 @@ export const ProjectMaterialEntry: React.FC = () => {
         maxWidth="lg"
       >
         <div className="space-y-4">
-          <div className="border-2 border-dashed border-slate-700 hover:border-blue-500/60 rounded-2xl p-6 text-center transition-colors bg-slate-950/60">
-            <FileSpreadsheet className="w-12 h-12 text-emerald-400 mx-auto mb-2 animate-bounce" />
-            <p className="text-sm font-bold text-white">Choose an Excel (.xlsx / .csv) file to import</p>
-            <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+          <div className="border-2 border-dashed border-slate-300 hover:border-slate-500 rounded-xl p-6 text-center transition-colors bg-slate-50">
+            <FileSpreadsheet className="w-10 h-10 text-emerald-600 mx-auto mb-2" />
+            <p className="text-xs font-bold text-slate-900">Choose an Excel (.xlsx / .csv) file to import</p>
+            <p className="text-[11px] text-slate-500 mt-1 max-w-sm mx-auto">
               Columns recognized: Description, Material Type, Size Specification, Quantity, Unit, Vendor, Machine Type.
             </p>
-            <label className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold cursor-pointer transition-colors">
-              <Upload className="w-4 h-4" />
+            <label className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-900 hover:bg-black text-white text-xs font-bold cursor-pointer transition-colors shadow-xs">
+              <Upload className="w-3.5 h-3.5 text-emerald-400" />
               <span>Select File</span>
               <input type="file" accept=".xlsx,.xls,.csv" onChange={handleFileUpload} className="hidden" />
             </label>
           </div>
 
-          <div className="p-3 bg-slate-900 rounded-xl border border-slate-800 text-xs space-y-1.5">
-            <span className="font-bold text-slate-300 block">Sample Format:</span>
-            <div className="font-mono text-[11px] text-slate-400 bg-slate-950 p-2 rounded border border-slate-850 overflow-x-auto">
+          <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs space-y-1.5">
+            <span className="font-bold text-slate-700 block text-[11px] uppercase tracking-wider">Sample Format:</span>
+            <div className="font-mono text-[11px] text-slate-700 bg-white p-2.5 rounded border border-slate-200 overflow-x-auto shadow-2xs">
               Description | Material Type | Size Specification | Quantity | Unit
               <br />
               Mono Conveyor Inlet Patti | SS Flat | 80 x 6 x 485 | 2 | Nos
@@ -1522,7 +1518,7 @@ export const ProjectMaterialEntry: React.FC = () => {
       >
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-300">
+            <label className="block text-xs font-bold text-slate-700">
               Paste Tab-Separated Data from Excel:
             </label>
             <textarea
@@ -1530,26 +1526,26 @@ export const ProjectMaterialEntry: React.FC = () => {
               value={pasteContent}
               onChange={(e) => setPasteContent(e.target.value)}
               placeholder="Paste cells copied directly from Excel (e.g. Description [TAB] Material Type [TAB] Size Spec [TAB] Qty [TAB] Unit)"
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs font-mono text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"
+              className="w-full bg-white border border-slate-300 rounded-lg p-3 text-xs font-mono text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900 shadow-2xs"
             />
           </div>
 
           <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-400">
+            <span className="text-xs text-slate-500">
               Will automatically map into active table rows.
             </span>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setIsPasteModalOpen(false)}
-                className="px-3 py-1.5 rounded-lg text-slate-400 hover:text-white text-xs"
+                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleParseClipboard}
-                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md"
+                className="px-4 py-2 rounded-lg bg-slate-900 hover:bg-black text-white text-xs font-bold shadow-xs transition-colors"
               >
                 Append Rows to Table
               </button>
