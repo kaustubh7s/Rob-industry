@@ -1,0 +1,1853 @@
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import {
+  User,
+  UserRole,
+  MaterialItem,
+  VendorItem,
+  CustomerItem,
+  MachineItem,
+  ProjectItem,
+  ManufacturingOrderItem,
+  InwardEntry,
+  InwardStatus,
+  OutwardEntry,
+  OutwardStatus,
+  JobCard,
+  QCInspection,
+  PurchaseOrder,
+  SalesOrder,
+  ProjectCosting,
+  AuditLog,
+  Notification,
+  ProductionStatus,
+  BOMRecord,
+  BOMItem,
+  RFQRecord,
+  VendorQuotation,
+  VendorDocument,
+  MRPRecord,
+  ProjectMaterialRequirementItem,
+  ActiveProcessingMaterial,
+  DispatchReadyItem,
+} from '../types/erp';
+import {
+  INITIAL_USERS,
+  INITIAL_MATERIALS,
+  INITIAL_VENDORS,
+  INITIAL_CUSTOMERS,
+  INITIAL_MACHINES,
+  INITIAL_PROJECTS,
+  INITIAL_ORDERS,
+  INITIAL_INWARD,
+  INITIAL_OUTWARD,
+  INITIAL_JOB_CARDS,
+  INITIAL_QC,
+  INITIAL_PURCHASE_ORDERS,
+  INITIAL_SALES_ORDERS,
+  INITIAL_COSTING,
+  INITIAL_AUDIT_LOGS,
+  INITIAL_NOTIFICATIONS,
+  INITIAL_BOMS,
+  INITIAL_RFQS,
+  INITIAL_VENDOR_DOCUMENTS,
+  INITIAL_PROJECT_REQUIREMENTS,
+} from '../data/seedData';
+
+interface ERPContextType {
+  // Authentication & Role
+  currentUser: User;
+  setCurrentUserRole: (role: UserRole) => void;
+  users: User[];
+  activeVendorId: string;
+  setActiveVendorId: (vendorId: string) => void;
+
+  // Active Tab
+  activeTab: string;
+  setActiveTab: (tab: string) => void;
+
+  // Core Datasets
+  materials: MaterialItem[];
+  vendors: VendorItem[];
+  customers: CustomerItem[];
+  machines: MachineItem[];
+  projects: ProjectItem[];
+  orders: ManufacturingOrderItem[];
+  inwardEntries: InwardEntry[];
+  outwardEntries: OutwardEntry[];
+  jobCards: JobCard[];
+  qcInspections: QCInspection[];
+  purchaseOrders: PurchaseOrder[];
+  salesOrders: SalesOrder[];
+  costingRecords: ProjectCosting[];
+  auditLogs: AuditLog[];
+  notifications: Notification[];
+
+  // Synced Live Factory & QC Streams
+  activeProcessingMaterials: ActiveProcessingMaterial[];
+  dispatchReadyItems: DispatchReadyItem[];
+  availableStockMaterials: MaterialItem[];
+
+  // Advanced Modules: BOM, RFQ, Vendor Documents
+  boms: BOMRecord[];
+  rfqs: RFQRecord[];
+  vendorDocuments: VendorDocument[];
+
+  // =======================================================================
+  // HEART OF ERP: PROJECT MATERIAL REQUIREMENT TABLE STATE & HANDLERS
+  // =======================================================================
+  projectRequirements: ProjectMaterialRequirementItem[];
+  addProjectRequirement: (req: Omit<ProjectMaterialRequirementItem, 'id' | 'srNo'>) => void;
+  updateProjectRequirement: (id: string, updates: Partial<ProjectMaterialRequirementItem>) => void;
+  deleteProjectRequirement: (id: string) => void;
+  bulkImportProjectRequirements: (items: any[]) => void;
+  populateRequirementsFromBOM: (projectId: string, bomId: string) => void;
+  createJobCardFromRequirement: (reqId: string) => JobCard | undefined;
+  convertShortagesToPO: (reqIds: string[]) => void;
+  issueStockForRequirement: (reqId: string) => void;
+  scrapRequirementMaterial: (reqId: string, scrapQty: number, reason: string) => void;
+
+  // Handlers for Materials & Stock
+  addMaterial: (material: Omit<MaterialItem, 'id'>) => void;
+  updateMaterial: (id: string, updates: Partial<MaterialItem>) => void;
+  deleteMaterial: (id: string) => void;
+  adjustStock: (materialId: string, deltaQty: number, reason: string) => void;
+
+  // Handlers for Orders
+  addOrder: (order: Omit<ManufacturingOrderItem, 'id'>) => void;
+  updateOrderStatus: (id: string, status: ProductionStatus) => void;
+  updateOrder: (id: string, updates: Partial<ManufacturingOrderItem>) => void;
+  deleteOrder: (id: string) => void;
+
+  // Handlers for Inward (Auto-Increases Stock)
+  addInwardEntry: (entry: Omit<InwardEntry, 'id'>) => void;
+  updateInwardStatus: (id: string, status: InwardStatus) => void;
+  deleteInwardEntry: (id: string) => void;
+
+  // Handlers for Outward (Auto-Decreases Stock)
+  addOutwardEntry: (entry: Omit<OutwardEntry, 'id'>) => void;
+  updateOutwardStatus: (id: string, status: OutwardStatus) => void;
+  deleteOutwardEntry: (id: string) => void;
+
+  // Handlers for Job Cards
+  addJobCard: (card: Omit<JobCard, 'id'>) => void;
+  updateJobCard: (id: string, updates: Partial<JobCard>) => void;
+  updateJobCardStep: (jobCardId: string, stepNumber: number, completed: boolean) => void;
+  toggleJobOperation: (jobCardId: string, stepNumber: number) => void;
+  createJobCardFromOrder: (order: ManufacturingOrderItem) => JobCard;
+  deleteJobCard: (id: string) => void;
+
+  // Handlers for QC
+  addQCInspection: (qc: Omit<QCInspection, 'id'>) => void;
+  updateQCInspection: (id: string, updates: Partial<QCInspection>) => void;
+  deleteQCInspection: (id: string) => void;
+
+  // Handlers for Projects
+  addProject: (project: Omit<ProjectItem, 'id'>) => void;
+  updateProject: (id: string, updates: Partial<ProjectItem>) => void;
+  deleteProject: (id: string) => void;
+
+  // Handlers for Vendors & Customers
+  addVendor: (vendor: Omit<VendorItem, 'id'>) => void;
+  updateVendor: (id: string, updates: Partial<VendorItem>) => void;
+  deleteVendor: (id: string) => void;
+  addCustomer: (customer: Omit<CustomerItem, 'id'>) => void;
+  updateCustomer: (id: string, updates: Partial<CustomerItem>) => void;
+  deleteCustomer: (id: string) => void;
+
+  // Handlers for Machines
+  addMachine: (machine: Omit<MachineItem, 'id'>) => void;
+  updateMachine: (id: string, updates: Partial<MachineItem>) => void;
+  deleteMachine: (id: string) => void;
+
+  // Commercials: Purchase & Sales
+  addPurchaseOrder: (po: Omit<PurchaseOrder, 'id'>) => void;
+  updatePOStatus: (id: string, status: PurchaseOrder['status']) => void;
+  addSalesOrder: (so: Omit<SalesOrder, 'id'>) => void;
+  updateSOStatus: (id: string, status: SalesOrder['status']) => void;
+
+  // Costing
+  saveCostingRecord: (costing: Omit<ProjectCosting, 'id'>) => void;
+
+  // BOM Operations
+  addBOM: (bom: Omit<BOMRecord, 'id'>) => void;
+  updateBOM: (id: string, updates: Partial<BOMRecord>) => void;
+  approveBOM: (id: string) => void;
+  copyBOM: (sourceBomId: string, newBomNumber: string, newAssemblyName: string) => void;
+  deleteBOM: (id: string) => void;
+
+  // RFQ & Vendor Portal Operations
+  addRFQ: (rfq: Omit<RFQRecord, 'id' | 'quotations'>) => void;
+  submitVendorQuotation: (rfqId: string, quotation: Omit<VendorQuotation, 'id' | 'submittedDate' | 'status'>) => void;
+  approveVendorQuotation: (rfqId: string, quotationId: string) => void;
+  rejectVendorQuotation: (rfqId: string, quotationId: string) => void;
+  uploadVendorDocument: (doc: Omit<VendorDocument, 'id' | 'uploadDate'>) => void;
+
+  // MRP Operations
+  mrpRecords: MRPRecord[];
+  generateAutoPurchaseRequests: (shortages: MRPRecord[]) => void;
+
+  // Bulk Excel Import handlers
+  bulkImportMaterials: (items: any[]) => void;
+  bulkImportOrders: (items: any[]) => void;
+  bulkImportInward: (items: any[]) => void;
+  bulkImportVendors: (items: any[]) => void;
+  bulkImportCustomers: (items: any[]) => void;
+
+  // System Utilities
+  logAction?: (action: string, module: string, details: string) => void;
+  markNotificationRead: (id: string) => void;
+  resetToDemoData: () => void;
+  exportDatabaseBackup: () => void;
+  importDatabaseBackup: (jsonContent: string) => boolean;
+}
+
+const ERPContext = createContext<ERPContextType | undefined>(undefined);
+
+const LOCAL_STORAGE_KEY = 'RSB_ERP_STATE_V3';
+
+export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [currentUser, setCurrentUser] = useState<User>(INITIAL_USERS[0]);
+  const [users] = useState<User[]>(INITIAL_USERS);
+  const [activeVendorId, setActiveVendorId] = useState<string>('vnd-1');
+  const [activeTab, setActiveTab] = useState<string>('requirements'); // Default to heart of ERP
+
+  const [materials, setMaterials] = useState<MaterialItem[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_materials');
+    return saved ? JSON.parse(saved) : INITIAL_MATERIALS;
+  });
+
+  const [projectRequirements, setProjectRequirements] = useState<ProjectMaterialRequirementItem[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_requirements');
+    return saved ? JSON.parse(saved) : INITIAL_PROJECT_REQUIREMENTS;
+  });
+
+  const [vendors, setVendors] = useState<VendorItem[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_vendors');
+    return saved ? JSON.parse(saved) : INITIAL_VENDORS;
+  });
+
+  const [customers, setCustomers] = useState<CustomerItem[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_customers');
+    return saved ? JSON.parse(saved) : INITIAL_CUSTOMERS;
+  });
+
+  const [machines, setMachines] = useState<MachineItem[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_machines');
+    return saved ? JSON.parse(saved) : INITIAL_MACHINES;
+  });
+
+  const [projects, setProjects] = useState<ProjectItem[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_projects');
+    return saved ? JSON.parse(saved) : INITIAL_PROJECTS;
+  });
+
+  const [orders, setOrders] = useState<ManufacturingOrderItem[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_orders');
+    return saved ? JSON.parse(saved) : INITIAL_ORDERS;
+  });
+
+  const [inwardEntries, setInwardEntries] = useState<InwardEntry[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_inward');
+    return saved ? JSON.parse(saved) : INITIAL_INWARD;
+  });
+
+  const [outwardEntries, setOutwardEntries] = useState<OutwardEntry[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_outward');
+    return saved ? JSON.parse(saved) : INITIAL_OUTWARD;
+  });
+
+  const [jobCards, setJobCards] = useState<JobCard[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_jobCards');
+    return saved ? JSON.parse(saved) : INITIAL_JOB_CARDS;
+  });
+
+  const [qcInspections, setQcInspections] = useState<QCInspection[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_qc');
+    return saved ? JSON.parse(saved) : INITIAL_QC;
+  });
+
+  // =========================================================================
+  // REAL-TIME SYNCHRONIZED FACTORY & QUALITY GETTERS
+  // =========================================================================
+  const activeProcessingMaterials = useMemo<ActiveProcessingMaterial[]>(() => {
+    const list: ActiveProcessingMaterial[] = [];
+
+    // 1. Live Job Cards actively in production / machining / assembly / QC
+    jobCards.forEach((jc) => {
+      const isQC = qcInspections.some((q) => q.jobCardNo === jc.jobCardNo && q.status === 'Passed');
+      const currentOp = jc.operations?.find((op) => !op.completed);
+      const stageName = currentOp ? currentOp.name : (jc.status || 'Machining');
+
+      const nominal = jc.sizeSpecs?.includes('OD')
+        ? jc.sizeSpecs
+        : `L ${jc.sizeSpecs || '100mm'}`;
+
+      list.push({
+        id: `proc-jc-${jc.id}`,
+        sourceType: 'job_card',
+        sourceId: jc.id,
+        displayBadge: `Shopfloor [${jc.assignedMachine || 'Station'}]`,
+        materialName: jc.material,
+        grade: jc.material.includes('316') ? 'SS 316L' : 'SS 304',
+        sizeSpecs: jc.sizeSpecs,
+        lotHeatNo: `HT-${jc.jobCardNo.replace(/[^0-9]/g, '') || '882'}-2026`,
+        quantity: jc.quantity,
+        unit: jc.unit || 'Nos',
+        projectName: jc.project,
+        customerName: jc.customer || 'Cadila Healthcare Ltd (Zydus)',
+        jobCardNo: jc.jobCardNo,
+        assignedMachine: jc.assignedMachine,
+        assignedOperator: jc.assignedOperator,
+        currentStage: stageName,
+        status: jc.status,
+        nominalDimensions: nominal,
+        tolerance: '± 0.05 mm',
+        surfaceFinish: '0.4 - 0.8 µm Ra (Mirror/Satin)',
+        isQCPassed: isQC,
+      });
+    });
+
+    // 2. Inward Batches recently received or pending incoming inspection
+    inwardEntries
+      .filter((inw) => inw.qualityStatus === 'QC Pending' || inw.qualityStatus === 'Received')
+      .forEach((inw) => {
+        list.push({
+          id: `proc-inw-${inw.id}`,
+          sourceType: 'inward_batch',
+          sourceId: inw.id,
+          displayBadge: `Inward Buffer [Challan: ${inw.challanNumber}]`,
+          materialName: `${inw.materialType} (${inw.sizeSpecs})`,
+          grade: inw.materialType.includes('316') ? 'SS 316L' : 'SS 304',
+          sizeSpecs: inw.sizeSpecs,
+          lotHeatNo: `HEAT-INW-${inw.inwardNumber}`,
+          quantity: inw.quantity,
+          unit: inw.unit,
+          projectName: inw.poNumber ? `Order Ref: ${inw.poNumber}` : 'Raw Material Inward Stock',
+          customerName: `Vendor: ${inw.vendor}`,
+          jobCardNo: `INW-${inw.inwardNumber}`,
+          currentStage: 'Incoming Raw Material Inspection',
+          status: inw.qualityStatus,
+          nominalDimensions: inw.sizeSpecs,
+          tolerance: 'ASTM A240 / A276 Spec',
+          surfaceFinish: 'Mill Finish / Standard',
+          isQCPassed: false,
+        });
+      });
+
+    return list;
+  }, [jobCards, inwardEntries, qcInspections]);
+
+  const dispatchReadyItems = useMemo<DispatchReadyItem[]>(() => {
+    const list: DispatchReadyItem[] = [];
+
+    jobCards.forEach((jc) => {
+      const passedQC = qcInspections.find((q) => q.jobCardNo === jc.jobCardNo && q.status === 'Passed');
+      if (passedQC || jc.status === 'Ready For Dispatch' || jc.status === 'Completed') {
+        list.push({
+          id: `dispatch-${jc.id}`,
+          jobCardNo: jc.jobCardNo,
+          orderNumber: jc.linkedOrderId || `ORD-${jc.jobCardNo.slice(-4)}`,
+          projectName: jc.project,
+          customerName: jc.customer || 'Cadila Healthcare Ltd (Zydus)',
+          material: `${jc.material} (${jc.sizeSpecs})`,
+          sizeSpecs: jc.sizeSpecs,
+          quantity: jc.quantity,
+          unit: jc.unit || 'Nos',
+          qcInspectionNo: passedQC?.inspectionNo || 'QC-2026-001',
+          qcStatus: 'Passed',
+          heatNo: `HT-MTC-${jc.jobCardNo.replace(/[^0-9]/g, '') || '101'}`,
+          poNumber: 'PO-2026-CAD-081',
+          invoiceNumber: `RSB-INV-2026-${Math.floor(100 + Math.random() * 900)}`,
+        });
+      }
+    });
+
+    return list;
+  }, [jobCards, qcInspections]);
+
+  const availableStockMaterials = useMemo<MaterialItem[]>(() => {
+    return materials.filter((m) => m.currentStock > 0);
+  }, [materials]);
+
+
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_po');
+    return saved ? JSON.parse(saved) : INITIAL_PURCHASE_ORDERS;
+  });
+
+  const [salesOrders, setSalesOrders] = useState<SalesOrder[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_so');
+    return saved ? JSON.parse(saved) : INITIAL_SALES_ORDERS;
+  });
+
+  const [costingRecords, setCostingRecords] = useState<ProjectCosting[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_costing');
+    return saved ? JSON.parse(saved) : INITIAL_COSTING;
+  });
+
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_audit');
+    return saved ? JSON.parse(saved) : INITIAL_AUDIT_LOGS;
+  });
+
+  const [notifications, setNotifications] = useState<Notification[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_notif');
+    return saved ? JSON.parse(saved) : INITIAL_NOTIFICATIONS;
+  });
+
+  const [boms, setBoms] = useState<BOMRecord[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_boms');
+    return saved ? JSON.parse(saved) : INITIAL_BOMS;
+  });
+
+  const [rfqs, setRfqs] = useState<RFQRecord[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_rfqs');
+    return saved ? JSON.parse(saved) : INITIAL_RFQS;
+  });
+
+  const [vendorDocuments, setVendorDocuments] = useState<VendorDocument[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_vdocs');
+    return saved ? JSON.parse(saved) : INITIAL_VENDOR_DOCUMENTS;
+  });
+
+  // Sync to localStorage
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY + '_materials', JSON.stringify(materials));
+  }, [materials]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(projectRequirements));
+  }, [projectRequirements]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(vendors));
+  }, [vendors]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY + '_customers', JSON.stringify(customers));
+  }, [customers]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY + '_machines', JSON.stringify(machines));
+  }, [machines]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(projects));
+  }, [projects]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY + '_orders', JSON.stringify(orders));
+  }, [orders]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY + '_inward', JSON.stringify(inwardEntries));
+  }, [inwardEntries]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY + '_outward', JSON.stringify(outwardEntries));
+  }, [outwardEntries]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY + '_jobCards', JSON.stringify(jobCards));
+  }, [jobCards]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY + '_qc', JSON.stringify(qcInspections));
+  }, [qcInspections]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY + '_po', JSON.stringify(purchaseOrders));
+  }, [purchaseOrders]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY + '_so', JSON.stringify(salesOrders));
+  }, [salesOrders]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY + '_costing', JSON.stringify(costingRecords));
+  }, [costingRecords]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY + '_audit', JSON.stringify(auditLogs));
+  }, [auditLogs]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY + '_notif', JSON.stringify(notifications));
+  }, [notifications]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY + '_boms', JSON.stringify(boms));
+  }, [boms]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY + '_rfqs', JSON.stringify(rfqs));
+  }, [rfqs]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY + '_vdocs', JSON.stringify(vendorDocuments));
+  }, [vendorDocuments]);
+
+  // Audit Logger Helper
+  const logAudit = (action: string, module: string, details: string) => {
+    const newLog: AuditLog = {
+      id: 'log-' + Date.now(),
+      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      userName: currentUser.name,
+      userRole: currentUser.role,
+      action,
+      module,
+      details,
+    };
+    setAuditLogs((prev) => [newLog, ...prev]);
+  };
+
+  const addNotification = (title: string, message: string, type: 'info' | 'warning' | 'success' | 'danger', linkTab?: string) => {
+    const newNotif: Notification = {
+      id: 'notif-' + Date.now(),
+      timestamp: 'Just now',
+      title,
+      message,
+      type,
+      read: false,
+      linkTab,
+    };
+    setNotifications((prev) => [newNotif, ...prev]);
+  };
+
+  const setCurrentUserRole = (role: UserRole) => {
+    const matched = users.find((u) => u.role === role);
+    if (matched) {
+      setCurrentUser(matched);
+      if (matched.vendorId) {
+        setActiveVendorId(matched.vendorId);
+      }
+      logAudit('Role Switched', 'Authentication', `Switched active role to ${role}`);
+    }
+  };
+
+  // Stock Delta Adjuster
+  const adjustStock = (materialId: string, deltaQty: number, reason: string) => {
+    setMaterials((prev) =>
+      prev.map((m) => {
+        if (m.id === materialId) {
+          const newStock = Math.max(0, m.currentStock + deltaQty);
+          return { ...m, currentStock: newStock };
+        }
+        return m;
+      })
+    );
+    logAudit('Stock Adjustment', 'Inventory', `Adjusted stock by ${deltaQty > 0 ? '+' : ''}${deltaQty} for Material ID ${materialId}. Reason: ${reason}`);
+  };
+
+  // =========================================================================
+  // PROJECT MATERIAL REQUIREMENT TABLE HANDLERS (CORE HUB)
+  // =========================================================================
+  const addProjectRequirement = (req: Omit<ProjectMaterialRequirementItem, 'id' | 'srNo'>) => {
+    const matchedMat = materials.find(
+      (m) =>
+        m.type === req.materialType &&
+        m.sizeSpecs.toLowerCase().replace(/\s+/g, '') === req.sizeSpecs.toLowerCase().replace(/\s+/g, '')
+    );
+
+    const availableStock = matchedMat ? matchedMat.currentStock - (matchedMat.reservedStock || 0) : 0;
+    const shortageQty = Math.max(0, req.quantity - availableStock);
+    const stockStatus = shortageQty === 0 ? 'Available' : availableStock > 0 ? 'Partial Available' : 'Shortage';
+
+    const newReq: ProjectMaterialRequirementItem = {
+      ...req,
+      id: 'pmr-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+      srNo: projectRequirements.length + 1,
+      availableStock,
+      shortageQty,
+      stockStatus,
+      totalCost: (req.materialCost || 0) + (req.laborCost || 0) + (req.machineCost || 0) + (req.outsourcingCost || 0),
+    };
+
+    setProjectRequirements((prev) => [...prev, newReq]);
+
+    // Reserve stock if available
+    if (matchedMat && availableStock > 0) {
+      const reserveDelta = Math.min(availableStock, req.quantity);
+      setMaterials((prev) =>
+        prev.map((m) => (m.id === matchedMat.id ? { ...m, reservedStock: (m.reservedStock || 0) + reserveDelta } : m))
+      );
+    }
+
+    logAudit('Requirement Added', 'Project Material Requirement', `Added ${newReq.description} (${newReq.sizeSpecs}) for project ${newReq.projectName}`);
+    addNotification('Material Requirement Added', `Added ${newReq.description} to ${newReq.projectName}`, 'info', 'requirements');
+  };
+
+  const updateProjectRequirement = (id: string, updates: Partial<ProjectMaterialRequirementItem>) => {
+    setProjectRequirements((prev) =>
+      prev.map((r) => {
+        if (r.id === id) {
+          const merged = { ...r, ...updates };
+          merged.totalCost = (merged.materialCost || 0) + (merged.laborCost || 0) + (merged.machineCost || 0) + (merged.outsourcingCost || 0);
+          return merged;
+        }
+        return r;
+      })
+    );
+    logAudit('Requirement Updated', 'Project Material Requirement', `Updated Requirement ID ${id}`);
+  };
+
+  const deleteProjectRequirement = (id: string) => {
+    setProjectRequirements((prev) => prev.filter((r) => r.id !== id));
+    logAudit('Requirement Deleted', 'Project Material Requirement', `Deleted Requirement ID ${id}`);
+  };
+
+  const bulkImportProjectRequirements = (items: any[]) => {
+    const mapped: ProjectMaterialRequirementItem[] = items.map((it, idx) => {
+      const spec = it.sizeSpecs || it['Size Specification'] || it['Size Specs'] || '80 x 6 x 485';
+      const desc = it.description || it['Description'] || it['Part Description'] || 'SS Machine Component';
+      const matType = it.materialType || it['Material Type'] || 'SS Flat';
+      const qty = Number(it.quantity || it['Qty'] || it['Quantity'] || 1);
+      const prj = it.projectName || it['Project'] || it['Project Name'] || 'FOHA';
+      const poNum = it.poNumber || it['PO No'] || it['PO Number'] || '36';
+      const cust = it.customerName || it['Customer'] || it['Customer Name'] || 'Cadila Healthcare Ltd (Zydus)';
+      const mchType = it.machineType || it['Machine Type'] || 'Mono Conveyor';
+      const unit = it.unit || it['Unit'] || 'Nos';
+      const vendor = it.vendor || it['Vendor'] || 'Manav Metal';
+      const bomRef = it.bomRef || it['BOM Ref'] || 'BOM-MC-01';
+
+      const matchedMat = materials.find(
+        (m) =>
+          m.sizeSpecs.toLowerCase().replace(/\s+/g, '') === spec.toLowerCase().replace(/\s+/g, '')
+      );
+
+      const availableStock = matchedMat ? matchedMat.currentStock : 20;
+      const shortageQty = Math.max(0, qty - availableStock);
+      const stockStatus = shortageQty === 0 ? 'Available' : availableStock > 0 ? 'Partial Available' : 'Shortage';
+
+      const unitCost = matchedMat ? matchedMat.unitCost : 450;
+      const matCost = qty * unitCost;
+      const laborCost = Math.round(matCost * 0.4);
+      const machineCost = Math.round(matCost * 0.25);
+
+      return {
+        id: 'pmr-' + (projectRequirements.length + idx + 1) + '-' + Date.now(),
+        srNo: projectRequirements.length + idx + 1,
+        description: desc,
+        materialType: matType as any,
+        materialGrade: matchedMat?.grade || 'SS 304',
+        sizeSpecs: spec,
+        quantity: qty,
+        unit,
+        projectName: prj,
+        customerName: cust,
+        poNumber: poNum,
+        poDate: new Date().toISOString().split('T')[0],
+        machineType: mchType as any,
+        orderSource: 'Excel Import',
+        deliveryDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+        vendor,
+        bomRef,
+        lastPurchaseRate: unitCost,
+        lastPurchaseDate: new Date().toISOString().split('T')[0],
+        vendorRating: 4.9,
+        vendorReliability: 98,
+        stockStatus,
+        availableStock,
+        shortageQty,
+        productionStatus: 'Pending',
+        qcStatus: 'Not Started',
+        dispatchStatus: 'Not Ready',
+        materialCost: matCost,
+        laborCost,
+        machineCost,
+        outsourcingCost: 0,
+        totalCost: matCost + laborCost + machineCost,
+        sellingPriceAllocated: Math.round((matCost + laborCost + machineCost) * 1.6),
+      };
+    });
+
+    setProjectRequirements((prev) => [...prev, ...mapped]);
+    logAudit('Excel Customer PO Import', 'Project Material Requirement', `Imported ${mapped.length} material requirements from Customer PO Excel`);
+    addNotification('Customer PO Imported', `Generated ${mapped.length} material requirements with automatic stock matching`, 'success', 'requirements');
+  };
+
+  // Populate from BOM
+  const populateRequirementsFromBOM = (projectId: string, bomId: string) => {
+    const prj = projects.find((p) => p.id === projectId);
+    const bom = boms.find((b) => b.id === bomId);
+    if (!prj || !bom) return;
+
+    const newRows: ProjectMaterialRequirementItem[] = [];
+
+    const traverse = (items: BOMItem[]) => {
+      items.forEach((item) => {
+        if (item.itemType === 'raw_material' || item.itemType === 'hardware' || item.itemType === 'standard_part') {
+          const matchedMat = materials.find(
+            (m) => m.sizeSpecs.toLowerCase().replace(/\s+/g, '') === item.sizeSpecs.toLowerCase().replace(/\s+/g, '')
+          );
+          const availableStock = matchedMat ? matchedMat.currentStock : 10;
+          const shortageQty = Math.max(0, item.quantity - availableStock);
+          const stockStatus = shortageQty === 0 ? 'Available' : availableStock > 0 ? 'Partial Available' : 'Shortage';
+
+          const matCost = item.totalCost;
+          const laborCost = Math.round(matCost * 0.35);
+          const machineCost = Math.round(matCost * 0.2);
+
+          newRows.push({
+            id: 'pmr-' + Date.now() + '-' + Math.floor(Math.random() * 10000),
+            srNo: projectRequirements.length + newRows.length + 1,
+            description: item.name,
+            materialType: (item.materialType || (item.itemType === 'hardware' ? 'Hardware' : 'SS Flat')) as any,
+            materialGrade: matchedMat?.grade || 'SS 304',
+            sizeSpecs: item.sizeSpecs,
+            quantity: item.quantity,
+            unit: item.unit,
+            projectName: prj.name,
+            customerName: prj.customer,
+            poNumber: prj.poNumber,
+            poDate: prj.startDate,
+            machineType: prj.machineType,
+            orderSource: prj.orderSource,
+            deliveryDate: prj.targetCompletionDate,
+            vendor: matchedMat?.vendor || 'Manav Metal',
+            bomRef: bom.bomNumber,
+            lastPurchaseRate: item.unitCost,
+            lastPurchaseDate: new Date().toISOString().split('T')[0],
+            vendorRating: 4.9,
+            vendorReliability: 98,
+            stockStatus,
+            availableStock,
+            shortageQty,
+            productionStatus: 'Pending',
+            qcStatus: 'Not Started',
+            dispatchStatus: 'Not Ready',
+            materialCost: matCost,
+            laborCost,
+            machineCost,
+            outsourcingCost: 0,
+            totalCost: matCost + laborCost + machineCost,
+            sellingPriceAllocated: Math.round((matCost + laborCost + machineCost) * 1.55),
+          });
+        }
+        if (item.children) {
+          traverse(item.children);
+        }
+      });
+    };
+
+    traverse(bom.items);
+    setProjectRequirements((prev) => [...prev, ...newRows]);
+    logAudit('BOM Loaded into Project', 'Project Material Requirement', `Loaded ${newRows.length} items from ${bom.bomNumber} for ${prj.name}`);
+    addNotification('BOM Loaded', `Populated ${newRows.length} material requirements for ${prj.name}`, 'info', 'requirements');
+  };
+
+  // 1-Click Job Card Creation from Requirement Row
+  const createJobCardFromRequirement = (reqId: string): JobCard | undefined => {
+    const req = projectRequirements.find((r) => r.id === reqId);
+    if (!req) return;
+
+    const count = String(jobCards.length + 1).padStart(3, '0');
+    const jobCardNo = `JC-2026-${count}`;
+
+    const newCard: JobCard = {
+      id: 'jc-' + Date.now(),
+      jobCardNo,
+      project: req.projectName,
+      customer: req.customerName,
+      drawingRef: `DWG-RSB-${req.machineType.slice(0, 2).toUpperCase()}-${req.sizeSpecs.replace(/\s+/g, '')}`,
+      material: `${req.materialType} ${req.sizeSpecs}`,
+      sizeSpecs: req.sizeSpecs,
+      quantity: req.quantity,
+      unit: req.unit,
+      machineType: req.machineType,
+      assignedOperator: req.assignedOperator || 'Mahesh Thakor',
+      startDate: new Date().toISOString().split('T')[0],
+      endDate: req.deliveryDate,
+      completionPct: 0,
+      status: 'Pending',
+      linkedRequirementId: req.id,
+      operations: [
+        { step: 1, name: 'Bandsaw Raw Material Cutting', completed: false, operator: 'Mahesh Thakor', timeSpentHours: 0 },
+        { step: 2, name: 'CNC Lathe / Milling Machining', completed: false, operator: 'Mahesh Thakor', timeSpentHours: 0 },
+        { step: 3, name: 'TIG Orbital Welding & Fabrication', completed: false, operator: 'Gopal Rawal', timeSpentHours: 0 },
+        { step: 4, name: 'Deburring & Sanitary Buffing', completed: false, operator: 'Dinesh Solanki', timeSpentHours: 0 },
+        { step: 5, name: 'Final Dimensional QC & Cleaning', completed: false, operator: 'Rajesh Patel', timeSpentHours: 0 },
+      ],
+      notes: `Manufacture ${req.description} as per drawing specifications`,
+      qrPayload: `RSB-${jobCardNo}|${req.projectName}|${req.materialType}|QTY:${req.quantity}`,
+    };
+
+    setJobCards((prev) => [newCard, ...prev]);
+    updateProjectRequirement(req.id, {
+      jobCardNo,
+      productionStatus: 'Cutting',
+      productionStage: 'Cutting',
+      assignedOperator: 'Mahesh Thakor',
+    });
+
+    logAudit('Job Card Created', 'Project Material Requirement', `Generated ${jobCardNo} for ${req.description}`);
+    addNotification('Job Card Generated', `Generated ${jobCardNo} for ${req.description}`, 'success', 'production');
+    return newCard;
+  };
+
+  // Convert Shortages to Purchase Orders
+  const convertShortagesToPO = (reqIds: string[]) => {
+    const targetReqs = projectRequirements.filter((r) => reqIds.includes(r.id) && r.shortageQty > 0);
+    if (targetReqs.length === 0) return;
+
+    const vendorMap: { [vendor: string]: ProjectMaterialRequirementItem[] } = {};
+    targetReqs.forEach((r) => {
+      const v = r.vendor || 'Manav Metal';
+      if (!vendorMap[v]) vendorMap[v] = [];
+      vendorMap[v].push(r);
+    });
+
+    Object.keys(vendorMap).forEach((vendor, idx) => {
+      const items = vendorMap[vendor];
+      const count = String(purchaseOrders.length + idx + 51).padStart(3, '0');
+      const poItems = items.map((i) => ({
+        material: `${i.materialType} ${i.sizeSpecs}`,
+        sizeSpecs: i.sizeSpecs,
+        qty: i.shortageQty,
+        unit: i.unit,
+        rate: i.lastPurchaseRate || 450,
+        amount: i.shortageQty * (i.lastPurchaseRate || 450),
+      }));
+
+      const totalAmount = poItems.reduce((acc, it) => acc + it.amount, 0);
+
+      addPurchaseOrder({
+        poNumber: `PO-REQ-${count}`,
+        date: new Date().toISOString().split('T')[0],
+        vendor,
+        items: poItems,
+        totalAmount,
+        paymentTerms: '30 Days Net',
+        expectedDate: new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0],
+        status: 'Sent',
+        notes: `Auto-generated from Project Material Requirement Shortages for ${items[0].projectName}`,
+      });
+
+      // Update requirement statuses
+      items.forEach((item) => {
+        updateProjectRequirement(item.id, {
+          stockStatus: 'Partial Available',
+          notes: `PO-REQ-${count} issued to ${vendor}`,
+        });
+      });
+    });
+
+    logAudit('Purchase Request Converted', 'Project Material Requirement', `Generated POs for ${targetReqs.length} material shortages`);
+    addNotification('POs Generated', `Issued Purchase Orders to suppliers for ${targetReqs.length} components`, 'success', 'purchase');
+  };
+
+  // Issue Stock
+  const issueStockForRequirement = (reqId: string) => {
+    const req = projectRequirements.find((r) => r.id === reqId);
+    if (!req) return;
+
+    const matched = materials.find((m) => m.sizeSpecs.toLowerCase().replace(/\s+/g, '') === req.sizeSpecs.toLowerCase().replace(/\s+/g, ''));
+    if (matched) {
+      adjustStock(matched.id, -req.quantity, `Issued for Project ${req.projectName} (${req.description})`);
+    }
+
+    updateProjectRequirement(req.id, { stockIssued: true, productionStatus: 'Cutting' });
+    logAudit('Stock Issued', 'Inventory', `Issued ${req.quantity} ${req.unit} of ${req.sizeSpecs} for ${req.description}`);
+    addNotification('Stock Issued', `Issued material for ${req.description}`, 'info', 'inventory');
+  };
+
+  // Scrap Generation
+  const scrapRequirementMaterial = (reqId: string, scrapQty: number, reason: string) => {
+    const req = projectRequirements.find((r) => r.id === reqId);
+    if (!req) return;
+
+    updateProjectRequirement(req.id, {
+      scrapQty: (req.scrapQty || 0) + scrapQty,
+      qcStatus: 'Rework',
+      rejectionReason: reason,
+    });
+
+    logAudit('Scrap Logged', 'Quality Control', `Scrap of ${scrapQty} logged for ${req.description}. Reason: ${reason}`);
+    addNotification('Scrap Logged', `Logged scrap for ${req.description}`, 'warning', 'quality');
+  };
+
+  // Material Handlers
+  const addMaterial = (material: Omit<MaterialItem, 'id'>) => {
+    const newMat: MaterialItem = {
+      ...material,
+      id: 'mat-' + (materials.length + 1) + '-' + Date.now().toString().slice(-4),
+    };
+    setMaterials((prev) => [newMat, ...prev]);
+    logAudit('Material Created', 'Materials Master', `Created material ${newMat.name} (${newMat.code})`);
+    addNotification('Material Added', `Added ${newMat.name} to inventory catalog`, 'success', 'materials');
+  };
+
+  const updateMaterial = (id: string, updates: Partial<MaterialItem>) => {
+    setMaterials((prev) => prev.map((m) => (m.id === id ? { ...m, ...updates } : m)));
+    logAudit('Material Updated', 'Materials Master', `Updated material ID ${id}`);
+  };
+
+  const deleteMaterial = (id: string) => {
+    setMaterials((prev) => prev.filter((m) => m.id !== id));
+    logAudit('Material Deleted', 'Materials Master', `Deleted material ID ${id}`);
+  };
+
+  // Order Handlers
+  const addOrder = (order: Omit<ManufacturingOrderItem, 'id'>) => {
+    const newOrder: ManufacturingOrderItem = {
+      ...order,
+      id: 'ord-' + (orders.length + 1001),
+    };
+    setOrders((prev) => [newOrder, ...prev]);
+    logAudit('Order Created', 'Manufacturing Orders', `Created production order ${newOrder.orderNumber} for project ${newOrder.project}`);
+    addNotification('Order Added', `New order ${newOrder.orderNumber} created for PO ${newOrder.poNumber}`, 'info', 'orders');
+  };
+
+  const updateOrderStatus = (id: string, status: ProductionStatus) => {
+    setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)));
+    logAudit('Order Status Updated', 'Manufacturing Orders', `Order ID ${id} status set to ${status}`);
+  };
+
+  const updateOrder = (id: string, updates: Partial<ManufacturingOrderItem>) => {
+    setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, ...updates } : o)));
+    logAudit('Order Updated', 'Manufacturing Orders', `Updated order ID ${id}`);
+  };
+
+  const deleteOrder = (id: string) => {
+    setOrders((prev) => prev.filter((o) => o.id !== id));
+    logAudit('Order Deleted', 'Manufacturing Orders', `Deleted order ID ${id}`);
+  };
+
+  // Inward (Auto-Increases Stock)
+  const addInwardEntry = (entry: Omit<InwardEntry, 'id'>) => {
+    const newInward: InwardEntry = {
+      ...entry,
+      id: 'inw-' + (inwardEntries.length + 1) + '-' + Date.now().toString().slice(-4),
+    };
+    setInwardEntries((prev) => [newInward, ...prev]);
+
+    if (newInward.qualityStatus === 'Approved') {
+      const matchedMaterial = materials.find(
+        (m) =>
+          m.type === newInward.materialType &&
+          m.sizeSpecs.toLowerCase().replace(/\s+/g, '') === newInward.sizeSpecs.toLowerCase().replace(/\s+/g, '')
+      );
+      if (matchedMaterial) {
+        adjustStock(matchedMaterial.id, newInward.quantity, `GRN Inward ${newInward.inwardNumber} Approved`);
+      }
+    }
+
+    logAudit('Inward Logged', 'Inward Management', `Logged Inward ${newInward.inwardNumber} from ${newInward.vendor}`);
+    addNotification('Inward GRN Created', `Received ${newInward.quantity} ${newInward.unit} from ${newInward.vendor}`, 'success', 'inward');
+  };
+
+  const updateInwardStatus = (id: string, status: InwardStatus) => {
+    const inward = inwardEntries.find((i) => i.id === id);
+    if (!inward) return;
+
+    const previousStatus = inward.qualityStatus;
+    setInwardEntries((prev) =>
+      prev.map((i) => (i.id === id ? { ...i, qualityStatus: status } : i))
+    );
+
+    if (status === 'Approved' && previousStatus !== 'Approved') {
+      const matchedMaterial = materials.find(
+        (m) =>
+          m.type === inward.materialType &&
+          m.sizeSpecs.toLowerCase().replace(/\s+/g, '') === inward.sizeSpecs.toLowerCase().replace(/\s+/g, '')
+      );
+      if (matchedMaterial) {
+        adjustStock(matchedMaterial.id, inward.quantity, `Inward ${inward.inwardNumber} Approved`);
+      }
+    }
+
+    logAudit('Inward Status Updated', 'Inward Management', `Inward ${inward.inwardNumber} status changed to ${status}`);
+  };
+
+  const deleteInwardEntry = (id: string) => {
+    setInwardEntries((prev) => prev.filter((i) => i.id !== id));
+    logAudit('Inward Deleted', 'Inward Management', `Deleted Inward ID ${id}`);
+  };
+
+  // Outward (Auto-Decreases Stock)
+  const addOutwardEntry = (entry: Omit<OutwardEntry, 'id'>) => {
+    const newOutward: OutwardEntry = {
+      ...entry,
+      id: 'out-' + (outwardEntries.length + 1) + '-' + Date.now().toString().slice(-4),
+    };
+    setOutwardEntries((prev) => [newOutward, ...prev]);
+
+    if (newOutward.deliveryStatus === 'Dispatched' || newOutward.deliveryStatus === 'Delivered') {
+      const matchedMaterial = materials.find(
+        (m) =>
+          newOutward.material.toLowerCase().includes(m.type.toLowerCase()) ||
+          newOutward.material.toLowerCase().includes(m.sizeSpecs.toLowerCase())
+      );
+      if (matchedMaterial) {
+        adjustStock(matchedMaterial.id, -newOutward.quantity, `Outward Dispatch ${newOutward.outwardNumber}`);
+      }
+    }
+
+    logAudit('Outward Dispatched', 'Outward Management', `Dispatched Outward ${newOutward.outwardNumber} to ${newOutward.customer}`);
+    addNotification('Outward Dispatched', `Challan ${newOutward.outwardNumber} generated for ${newOutward.customer}`, 'info', 'outward');
+  };
+
+  const updateOutwardStatus = (id: string, status: OutwardStatus) => {
+    setOutwardEntries((prev) =>
+      prev.map((o) => (o.id === id ? { ...o, deliveryStatus: status } : o))
+    );
+    logAudit('Outward Status Updated', 'Outward Management', `Outward ID ${id} status set to ${status}`);
+  };
+
+  const deleteOutwardEntry = (id: string) => {
+    setOutwardEntries((prev) => prev.filter((o) => o.id !== id));
+    logAudit('Outward Deleted', 'Outward Management', `Deleted Outward ID ${id}`);
+  };
+
+  // Job Cards Handlers
+  const addJobCard = (card: Omit<JobCard, 'id'>) => {
+    const newCard: JobCard = {
+      ...card,
+      id: 'jc-' + (jobCards.length + 1) + '-' + Date.now().toString().slice(-4),
+    };
+    setJobCards((prev) => [newCard, ...prev]);
+    logAudit('Job Card Created', 'Production', `Job Card ${newCard.jobCardNo} issued for ${newCard.project}`);
+    addNotification('Job Card Issued', `Job Card ${newCard.jobCardNo} ready for operator`, 'info', 'production');
+  };
+
+  const updateJobCard = (id: string, updates: Partial<JobCard>) => {
+    setJobCards((prev) => prev.map((j) => (j.id === id ? { ...j, ...updates } : j)));
+    logAudit('Job Card Updated', 'Production', `Updated Job Card ID ${id}`);
+  };
+
+  const updateJobCardStep = (jobCardId: string, stepNumber: number, completed: boolean) => {
+    setJobCards((prev) =>
+      prev.map((jc) => {
+        if (jc.id === jobCardId) {
+          const updatedOps = jc.operations.map((op) =>
+            op.step === stepNumber
+              ? {
+                  ...op,
+                  completed,
+                  completedAt: completed ? new Date().toISOString().split('T')[0] : undefined,
+                }
+              : op
+          );
+          const completedCount = updatedOps.filter((o) => o.completed).length;
+          const completionPct = Math.round((completedCount / updatedOps.length) * 100);
+          const newStatus: ProductionStatus =
+            completionPct === 100
+              ? 'Completed'
+              : completionPct >= 60
+              ? 'Assembly'
+              : completionPct >= 40
+              ? 'Fabrication'
+              : 'Cutting';
+
+          if (jc.linkedRequirementId) {
+            updateProjectRequirement(jc.linkedRequirementId, {
+              productionStatus: newStatus,
+              qcStatus: completionPct === 100 ? 'Passed' : 'Pending',
+              dispatchStatus: completionPct === 100 ? 'Ready' : 'Not Ready',
+            });
+          }
+
+          return {
+            ...jc,
+            operations: updatedOps,
+            completionPct,
+            status: newStatus,
+          };
+        }
+        return jc;
+      })
+    );
+    logAudit('Job Card Step Updated', 'Production', `Job Card ${jobCardId} step ${stepNumber} marked ${completed ? 'Completed' : 'Incomplete'}`);
+  };
+
+  const toggleJobOperation = (jobCardId: string, stepNumber: number) => {
+    const card = jobCards.find((j) => j.id === jobCardId);
+    if (!card) return;
+    const op = card.operations.find((o) => o.step === stepNumber);
+    updateJobCardStep(jobCardId, stepNumber, !op?.completed);
+  };
+
+  const createJobCardFromOrder = (order: ManufacturingOrderItem): JobCard => {
+    const count = String(jobCards.length + 1).padStart(3, '0');
+    const jobCardNo = `JC-2026-${count}`;
+    const newCard: JobCard = {
+      id: 'jc-' + Date.now(),
+      jobCardNo,
+      project: order.project,
+      customer: order.customer,
+      drawingRef: order.drawingRef,
+      material: `${order.materialType} ${order.sizeSpecs}`,
+      sizeSpecs: order.sizeSpecs,
+      quantity: order.quantity,
+      unit: order.unit,
+      machineType: order.machineType,
+      assignedOperator: 'Mahesh Thakor',
+      startDate: new Date().toISOString().split('T')[0],
+      endDate: order.deliveryDate,
+      completionPct: 0,
+      status: 'Pending',
+      linkedOrderId: order.id,
+      operations: [
+        { step: 1, name: 'Bandsaw Raw Material Cutting', completed: false, operator: 'Mahesh Thakor', timeSpentHours: 0 },
+        { step: 2, name: 'CNC Lathe / VMC Machining', completed: false, operator: 'Mahesh Thakor', timeSpentHours: 0 },
+        { step: 3, name: 'TIG Orbital Welding & Fabrication', completed: false, operator: 'Gopal Rawal', timeSpentHours: 0 },
+        { step: 4, name: 'Deburring, Grinding & Sanitary Polishing', completed: false, operator: 'Dinesh Solanki', timeSpentHours: 0 },
+        { step: 5, name: 'Final Dimensional QC & Cleaning', completed: false, operator: 'Rajesh Patel', timeSpentHours: 0 },
+      ],
+      notes: order.notes || 'Manufacture as per drawing specifications',
+      qrPayload: `RSB-${jobCardNo}|${order.project}|${order.materialType}|QTY:${order.quantity}`,
+    };
+
+    setJobCards((prev) => [newCard, ...prev]);
+    updateOrderStatus(order.id, 'In Production');
+    logAudit('Job Card Generated', 'Production', `Generated ${jobCardNo} from Order ${order.orderNumber}`);
+    addNotification('Job Card Generated', `Generated ${jobCardNo} for Order ${order.orderNumber}`, 'success', 'production');
+    return newCard;
+  };
+
+  const deleteJobCard = (id: string) => {
+    setJobCards((prev) => prev.filter((j) => j.id !== id));
+    logAudit('Job Card Deleted', 'Production', `Deleted Job Card ID ${id}`);
+  };
+
+  // QC Handlers with Real-Time Inter-Module Sync
+  const addQCInspection = (qc: Omit<QCInspection, 'id'>) => {
+    const newQC: QCInspection = {
+      ...qc,
+      id: 'qc-' + (qcInspections.length + 1) + '-' + Date.now().toString().slice(-4),
+    };
+    setQcInspections((prev) => [newQC, ...prev]);
+
+    // 1. Sync Job Card Status
+    if (newQC.jobCardNo) {
+      if (newQC.status === 'Passed') {
+        setJobCards((prev) =>
+          prev.map((jc) =>
+            jc.jobCardNo === newQC.jobCardNo
+              ? { ...jc, status: 'Ready For Dispatch', completionPct: 100 }
+              : jc
+          )
+        );
+      } else if (newQC.status === 'Rework') {
+        setJobCards((prev) =>
+          prev.map((jc) =>
+            jc.jobCardNo === newQC.jobCardNo
+              ? { ...jc, status: 'In Production' }
+              : jc
+          )
+        );
+      }
+    }
+
+    // 2. Sync Inward Quality Status if this was an Inward Lot
+    if (newQC.jobCardNo && newQC.jobCardNo.startsWith('INW-')) {
+      const inwNum = newQC.jobCardNo.replace('INW-', '');
+      setInwardEntries((prev) =>
+        prev.map((inw) =>
+          inw.inwardNumber === inwNum
+            ? { ...inw, qualityStatus: newQC.status === 'Passed' ? 'Approved' : 'Rejected' }
+            : inw
+        )
+      );
+    }
+
+    // 3. Sync Project Requirements
+    if (newQC.linkedRequirementId) {
+      updateProjectRequirement(newQC.linkedRequirementId, {
+        qcStatus: newQC.status,
+        dispatchStatus: newQC.status === 'Passed' ? 'Ready' : 'Not Ready',
+        rejectionReason: newQC.status !== 'Passed' ? newQC.defectNotes : undefined,
+      });
+    } else if (newQC.jobCardNo) {
+      setProjectRequirements((prev) =>
+        prev.map((req) =>
+          req.jobCardNo === newQC.jobCardNo
+            ? {
+                ...req,
+                qcStatus: newQC.status,
+                dispatchStatus: newQC.status === 'Passed' ? 'Ready' : 'Not Ready',
+                rejectionReason: newQC.status !== 'Passed' ? newQC.defectNotes : undefined,
+              }
+            : req
+        )
+      );
+    }
+
+    // 4. Sync Orders
+    if (newQC.status === 'Passed') {
+      setOrders((prev) =>
+        prev.map((ord) =>
+          ord.project === newQC.project || (newQC.jobCardNo && ord.orderNumber.includes(newQC.jobCardNo.slice(-3)))
+            ? { ...ord, status: 'Ready For Dispatch' }
+            : ord
+        )
+      );
+    }
+
+    logAudit('QC Inspection Logged', 'Quality Control', `Inspection ${newQC.inspectionNo} result: ${newQC.status}`);
+    addNotification(
+      'QC Inspection Logged',
+      `${newQC.inspectionNo} (${newQC.material}) - ${newQC.status}`,
+      newQC.status === 'Passed' ? 'success' : 'danger',
+      'quality'
+    );
+  };
+
+  const updateQCInspection = (id: string, updates: Partial<QCInspection>) => {
+    setQcInspections((prev) => prev.map((q) => (q.id === id ? { ...q, ...updates } : q)));
+    logAudit('QC Inspection Updated', 'Quality Control', `Updated QC ID ${id}`);
+  };
+
+  const deleteQCInspection = (id: string) => {
+    setQcInspections((prev) => prev.filter((q) => q.id !== id));
+    logAudit('QC Inspection Deleted', 'Quality Control', `Deleted QC ID ${id}`);
+  };
+
+  // Projects Handlers
+  const addProject = (project: Omit<ProjectItem, 'id'>) => {
+    const newPrj: ProjectItem = {
+      ...project,
+      id: 'prj-' + (projects.length + 1) + '-' + Date.now().toString().slice(-4),
+    };
+    setProjects((prev) => [newPrj, ...prev]);
+
+    if (newPrj.bomId) {
+      populateRequirementsFromBOM(newPrj.id, newPrj.bomId);
+    }
+
+    logAudit('Project Created', 'Projects', `Created project ${newPrj.name} (${newPrj.projectNumber})`);
+    addNotification('Project Created', `Created project ${newPrj.name}`, 'info', 'projects');
+  };
+
+  const updateProject = (id: string, updates: Partial<ProjectItem>) => {
+    setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
+    logAudit('Project Updated', 'Projects', `Updated project ID ${id}`);
+  };
+
+  const deleteProject = (id: string) => {
+    setProjects((prev) => prev.filter((p) => p.id !== id));
+    logAudit('Project Deleted', 'Projects', `Deleted project ID ${id}`);
+  };
+
+  // Stakeholders Handlers
+  const addVendor = (vendor: Omit<VendorItem, 'id'>) => {
+    const newVendor: VendorItem = {
+      ...vendor,
+      id: 'vnd-' + (vendors.length + 1) + '-' + Date.now().toString().slice(-4),
+    };
+    setVendors((prev) => [newVendor, ...prev]);
+    logAudit('Vendor Created', 'Vendor Management', `Added vendor ${newVendor.name}`);
+  };
+
+  const updateVendor = (id: string, updates: Partial<VendorItem>) => {
+    setVendors((prev) => prev.map((v) => (v.id === id ? { ...v, ...updates } : v)));
+    logAudit('Vendor Updated', 'Vendor Management', `Updated vendor ID ${id}`);
+  };
+
+  const deleteVendor = (id: string) => {
+    setVendors((prev) => prev.filter((v) => v.id !== id));
+    logAudit('Vendor Deleted', 'Vendor Management', `Deleted vendor ID ${id}`);
+  };
+
+  const addCustomer = (customer: Omit<CustomerItem, 'id'>) => {
+    const newCust: CustomerItem = {
+      ...customer,
+      id: 'cust-' + (customers.length + 1) + '-' + Date.now().toString().slice(-4),
+    };
+    setCustomers((prev) => [newCust, ...prev]);
+    logAudit('Customer Created', 'Customer Management', `Added customer ${newCust.name}`);
+  };
+
+  const updateCustomer = (id: string, updates: Partial<CustomerItem>) => {
+    setCustomers((prev) => prev.map((c) => (c.id === id ? { ...c, ...updates } : c)));
+    logAudit('Customer Updated', 'Customer Management', `Updated customer ID ${id}`);
+  };
+
+  const deleteCustomer = (id: string) => {
+    setCustomers((prev) => prev.filter((c) => c.id !== id));
+    logAudit('Customer Deleted', 'Customer Management', `Deleted customer ID ${id}`);
+  };
+
+  // Machine Handlers
+  const addMachine = (machine: Omit<MachineItem, 'id'>) => {
+    const newMachine: MachineItem = {
+      ...machine,
+      id: 'mch-' + (machines.length + 1) + '-' + Date.now().toString().slice(-4),
+    };
+    setMachines((prev) => [newMachine, ...prev]);
+    logAudit('Machine Created', 'Machines', `Added machine ${newMachine.name} (${newMachine.code})`);
+  };
+
+  const updateMachine = (id: string, updates: Partial<MachineItem>) => {
+    setMachines((prev) => prev.map((m) => (m.id === id ? { ...m, ...updates } : m)));
+    logAudit('Machine Updated', 'Machines', `Updated machine ID ${id}`);
+  };
+
+  const deleteMachine = (id: string) => {
+    setMachines((prev) => prev.filter((m) => m.id !== id));
+    logAudit('Machine Deleted', 'Machines', `Deleted machine ID ${id}`);
+  };
+
+  // Purchase & Sales Handlers
+  const addPurchaseOrder = (po: Omit<PurchaseOrder, 'id'>) => {
+    const newPO: PurchaseOrder = {
+      ...po,
+      id: 'po-' + (purchaseOrders.length + 1) + '-' + Date.now().toString().slice(-4),
+    };
+    setPurchaseOrders((prev) => [newPO, ...prev]);
+    logAudit('PO Created', 'Purchase', `Generated PO ${newPO.poNumber} for ${newPO.vendor}`);
+    addNotification('PO Issued', `Purchase Order ${newPO.poNumber} issued to ${newPO.vendor}`, 'info', 'purchase');
+  };
+
+  const updatePOStatus = (id: string, status: PurchaseOrder['status']) => {
+    setPurchaseOrders((prev) =>
+      prev.map((po) => (po.id === id ? { ...po, status } : po))
+    );
+    logAudit('PO Status Updated', 'Purchase', `PO ID ${id} set to ${status}`);
+  };
+
+  const addSalesOrder = (so: Omit<SalesOrder, 'id'>) => {
+    const newSO: SalesOrder = {
+      ...so,
+      id: 'so-' + (salesOrders.length + 1) + '-' + Date.now().toString().slice(-4),
+    };
+    setSalesOrders((prev) => [newSO, ...prev]);
+    logAudit('Sales Order Created', 'Sales', `Created Sales Order ${newSO.soNumber} for ${newSO.customer}`);
+  };
+
+  const updateSOStatus = (id: string, status: SalesOrder['status']) => {
+    setSalesOrders((prev) =>
+      prev.map((so) => (so.id === id ? { ...so, status } : so))
+    );
+    logAudit('SO Status Updated', 'Sales', `Sales Order ID ${id} set to ${status}`);
+  };
+
+  // Costing Handlers
+  const saveCostingRecord = (costing: Omit<ProjectCosting, 'id'>) => {
+    const newRecord: ProjectCosting = {
+      ...costing,
+      id: 'cst-' + (costingRecords.length + 1) + '-' + Date.now().toString().slice(-4),
+    };
+    setCostingRecords((prev) => {
+      const existingIdx = prev.findIndex((c) => c.projectId === costing.projectId);
+      if (existingIdx >= 0) {
+        const copy = [...prev];
+        copy[existingIdx] = newRecord;
+        return copy;
+      }
+      return [newRecord, ...prev];
+    });
+    logAudit('Costing Record Saved', 'Costing & P&L', `Cost analysis saved for ${costing.projectName}`);
+  };
+
+  // BOM Handlers
+  const addBOM = (bom: Omit<BOMRecord, 'id'>) => {
+    const newBOM: BOMRecord = {
+      ...bom,
+      id: 'bom-' + (boms.length + 1) + '-' + Date.now().toString().slice(-4),
+    };
+    setBoms((prev) => [newBOM, ...prev]);
+    logAudit('BOM Created', 'BOM Management', `Created ${newBOM.bomNumber} (${newBOM.assemblyName}) ${newBOM.revision}`);
+    addNotification('BOM Created', `BOM ${newBOM.bomNumber} created for ${newBOM.machineType}`, 'info', 'bom');
+  };
+
+  const updateBOM = (id: string, updates: Partial<BOMRecord>) => {
+    setBoms((prev) => prev.map((b) => (b.id === id ? { ...b, ...updates } : b)));
+    logAudit('BOM Updated', 'BOM Management', `Updated BOM ID ${id}`);
+  };
+
+  const approveBOM = (id: string) => {
+    setBoms((prev) =>
+      prev.map((b) =>
+        b.id === id
+          ? {
+              ...b,
+              status: 'Approved',
+              approvedBy: currentUser.name,
+            }
+          : b
+      )
+    );
+    logAudit('BOM Approved', 'BOM Management', `BOM ID ${id} approved by ${currentUser.name}`);
+    addNotification('BOM Approved', `BOM ID ${id} approved and released for production`, 'success', 'bom');
+  };
+
+  const copyBOM = (sourceBomId: string, newBomNumber: string, newAssemblyName: string) => {
+    const src = boms.find((b) => b.id === sourceBomId);
+    if (!src) return;
+
+    const newBOM: BOMRecord = {
+      ...src,
+      id: 'bom-' + Date.now(),
+      bomNumber: newBomNumber,
+      assemblyName: newAssemblyName,
+      revision: 'Rev A',
+      status: 'Draft',
+      createdBy: currentUser.name,
+      approvedBy: undefined,
+      effectiveDate: new Date().toISOString().split('T')[0],
+      history: [
+        {
+          revision: 'Rev A',
+          changedBy: currentUser.name,
+          date: new Date().toISOString().split('T')[0],
+          changeSummary: `Cloned from ${src.bomNumber} (${src.revision})`,
+        },
+      ],
+    };
+
+    setBoms((prev) => [newBOM, ...prev]);
+    logAudit('BOM Copied', 'BOM Management', `Cloned BOM ${src.bomNumber} to ${newBomNumber}`);
+    addNotification('BOM Cloned', `Created ${newBomNumber} from ${src.bomNumber}`, 'info', 'bom');
+  };
+
+  const deleteBOM = (id: string) => {
+    setBoms((prev) => prev.filter((b) => b.id !== id));
+    logAudit('BOM Deleted', 'BOM Management', `Deleted BOM ID ${id}`);
+  };
+
+  // RFQ Handlers
+  const addRFQ = (rfq: Omit<RFQRecord, 'id' | 'quotations'>) => {
+    const newRFQ: RFQRecord = {
+      ...rfq,
+      id: 'rfq-' + (rfqs.length + 1) + '-' + Date.now().toString().slice(-4),
+      quotations: [],
+    };
+    setRfqs((prev) => [newRFQ, ...prev]);
+    logAudit('RFQ Created', 'Vendor Portal', `Published RFQ ${newRFQ.rfqNumber} for ${newRFQ.material}`);
+    addNotification('RFQ Published', `RFQ ${newRFQ.rfqNumber} opened for supplier quotation`, 'info', 'vendor_portal');
+  };
+
+  const submitVendorQuotation = (
+    rfqId: string,
+    quotation: Omit<VendorQuotation, 'id' | 'submittedDate' | 'status'>
+  ) => {
+    const newQuotation: VendorQuotation = {
+      ...quotation,
+      id: 'vq-' + Date.now(),
+      submittedDate: new Date().toISOString().split('T')[0],
+      status: 'Submitted',
+    };
+
+    setRfqs((prev) =>
+      prev.map((r) =>
+        r.id === rfqId ? { ...r, quotations: [newQuotation, ...r.quotations] } : r
+      )
+    );
+
+    logAudit('Vendor Quotation Submitted', 'Vendor Portal', `${quotation.vendorName} submitted quote for RFQ ID ${rfqId}`);
+    addNotification('Quotation Received', `${quotation.vendorName} submitted quotation of ₹${quotation.unitRate}`, 'info', 'vendor_portal');
+  };
+
+  const approveVendorQuotation = (rfqId: string, quotationId: string) => {
+    setRfqs((prev) =>
+      prev.map((r) => {
+        if (r.id === rfqId) {
+          const updatedQuotes = r.quotations.map((q) =>
+            q.id === quotationId
+              ? { ...q, status: 'Approved' as const }
+              : { ...q, status: 'Rejected' as const }
+          );
+          return {
+            ...r,
+            status: 'Awarded',
+            quotations: updatedQuotes,
+          };
+        }
+        return r;
+      })
+    );
+
+    const rfq = rfqs.find((r) => r.id === rfqId);
+    const quote = rfq?.quotations.find((q) => q.id === quotationId);
+
+    if (rfq && quote) {
+      const count = String(purchaseOrders.length + 46).padStart(3, '0');
+      addPurchaseOrder({
+        poNumber: `PO-2026-${count}`,
+        date: new Date().toISOString().split('T')[0],
+        vendor: quote.vendorName,
+        expectedDate: new Date(Date.now() + quote.leadTimeDays * 86400000).toISOString().split('T')[0],
+        paymentTerms: '30 Days Net',
+        status: 'Sent',
+        totalAmount: quote.totalAmount,
+        notes: `Awarded against RFQ ${rfq.rfqNumber}. Spec: ${rfq.specNotes || 'Standard'}`,
+        items: [
+          {
+            material: rfq.material,
+            sizeSpecs: rfq.sizeSpecs,
+            qty: rfq.quantity,
+            unit: rfq.unit,
+            rate: quote.unitRate,
+            amount: quote.totalAmount,
+          },
+        ],
+      });
+    }
+
+    logAudit('Quotation Approved', 'Vendor Portal', `Approved quotation ID ${quotationId} for RFQ ${rfqId}`);
+    addNotification('Quotation Approved', `Awarded RFQ to ${quote?.vendorName} & generated Purchase Order`, 'success', 'purchase');
+  };
+
+  const rejectVendorQuotation = (rfqId: string, quotationId: string) => {
+    setRfqs((prev) =>
+      prev.map((r) => {
+        if (r.id === rfqId) {
+          const updatedQuotes = r.quotations.map((q) =>
+            q.id === quotationId ? { ...q, status: 'Rejected' as const } : q
+          );
+          return { ...r, quotations: updatedQuotes };
+        }
+        return r;
+      })
+    );
+    logAudit('Quotation Rejected', 'Vendor Portal', `Rejected quotation ID ${quotationId}`);
+  };
+
+  const uploadVendorDocument = (doc: Omit<VendorDocument, 'id' | 'uploadDate'>) => {
+    const newDoc: VendorDocument = {
+      ...doc,
+      id: 'vdoc-' + Date.now(),
+      uploadDate: new Date().toISOString().split('T')[0],
+    };
+    setVendorDocuments((prev) => [newDoc, ...prev]);
+    logAudit('Vendor Document Uploaded', 'Vendor Portal', `${doc.vendorName} uploaded ${doc.docType} (${doc.docNumber})`);
+    addNotification('Document Uploaded', `${doc.vendorName} uploaded ${doc.fileName}`, 'info', 'vendor_portal');
+  };
+
+  // MRP Calculation Engine (Derived from live Project Material Requirement Table)
+  const mrpRecords: MRPRecord[] = useMemo(() => {
+    const demandsMap: { [key: string]: { requiredQty: number; projects: string[] } } = {};
+
+    projectRequirements.forEach((req) => {
+      const key = req.sizeSpecs.toLowerCase().replace(/\s+/g, '');
+      if (!demandsMap[key]) {
+        demandsMap[key] = { requiredQty: 0, projects: [] };
+      }
+      demandsMap[key].requiredQty += req.quantity;
+      if (!demandsMap[key].projects.includes(req.projectName)) {
+        demandsMap[key].projects.push(req.projectName);
+      }
+    });
+
+    return materials.map((mat) => {
+      const key = mat.sizeSpecs.toLowerCase().replace(/\s+/g, '');
+      const demand = demandsMap[key] || { requiredQty: mat.reorderLevel, projects: ['Reorder Buffer'] };
+      const requiredQty = demand.requiredQty;
+      const availableStock = mat.currentStock;
+      const reservedStock = mat.reservedStock || 0;
+      const freeStock = Math.max(0, availableStock - reservedStock);
+
+      let incomingPOQty = 0;
+      purchaseOrders
+        .filter((po) => po.status === 'Sent' || po.status === 'Draft' || po.status === 'Partially Received')
+        .forEach((po) => {
+          po.items.forEach((item) => {
+            if (item.sizeSpecs.toLowerCase().replace(/\s+/g, '') === key) {
+              incomingPOQty += item.qty;
+            }
+          });
+        });
+
+      const totalEffectiveStock = freeStock + incomingPOQty;
+      const shortageQty = Math.max(0, requiredQty - totalEffectiveStock);
+
+      let status: MRPRecord['status'] = 'available';
+      if (shortageQty > 0) {
+        status = totalEffectiveStock > 0 ? 'partial' : 'purchase_required';
+      }
+
+      return {
+        materialId: mat.id,
+        materialCode: mat.code,
+        materialName: mat.name,
+        materialType: mat.type,
+        sizeSpecs: mat.sizeSpecs,
+        unit: mat.unit,
+        requiredQty,
+        availableStock,
+        reservedStock,
+        incomingPOQty,
+        shortageQty,
+        status,
+        unitCost: mat.unitCost,
+        preferredVendor: mat.vendor,
+        allocatedProjects: demand.projects,
+      };
+    });
+  }, [materials, projectRequirements, purchaseOrders]);
+
+  const generateAutoPurchaseRequests = (shortages: MRPRecord[]) => {
+    if (shortages.length === 0) return;
+
+    const vendorGroups: { [vendor: string]: MRPRecord[] } = {};
+    shortages.forEach((s) => {
+      const v = s.preferredVendor || 'Manav Metal';
+      if (!vendorGroups[v]) vendorGroups[v] = [];
+      vendorGroups[v].push(s);
+    });
+
+    Object.keys(vendorGroups).forEach((vendor, idx) => {
+      const items = vendorGroups[vendor];
+      const count = String(purchaseOrders.length + idx + 50).padStart(3, '0');
+      const poItems = items.map((it) => ({
+        material: `${it.materialType} ${it.sizeSpecs}`,
+        sizeSpecs: it.sizeSpecs,
+        qty: it.shortageQty > 0 ? it.shortageQty : 10,
+        unit: it.unit,
+        rate: it.unitCost,
+        amount: (it.shortageQty > 0 ? it.shortageQty : 10) * it.unitCost,
+      }));
+      const totalAmount = poItems.reduce((acc, i) => acc + i.amount, 0);
+
+      addPurchaseOrder({
+        poNumber: `PO-MRP-${count}`,
+        date: new Date().toISOString().split('T')[0],
+        vendor,
+        items: poItems,
+        totalAmount,
+        paymentTerms: '30 Days Net',
+        expectedDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+        status: 'Draft',
+        notes: 'Automatically generated by MRP Engine for project material shortages',
+      });
+    });
+
+    logAudit('MRP Auto-PO Generated', 'MRP Planning', `Generated ${Object.keys(vendorGroups).length} Purchase Orders for material shortages`);
+    addNotification('MRP POs Created', `Generated ${Object.keys(vendorGroups).length} draft Purchase Orders from MRP shortages`, 'success', 'purchase');
+  };
+
+  // Bulk Excel Import
+  const bulkImportMaterials = (items: any[]) => {
+    setMaterials((prev) => [...items, ...prev]);
+    logAudit('Excel Materials Import', 'Materials Master', `Imported ${items.length} materials from Excel`);
+  };
+
+  const bulkImportOrders = (items: any[]) => {
+    setOrders((prev) => [...items, ...prev]);
+    logAudit('Excel Orders Import', 'Manufacturing Orders', `Imported ${items.length} orders from Excel`);
+  };
+
+  const bulkImportInward = (items: any[]) => {
+    setInwardEntries((prev) => [...items, ...prev]);
+    logAudit('Excel Inward Import', 'Inward Management', `Imported ${items.length} inward entries from Excel`);
+  };
+
+  const bulkImportVendors = (items: any[]) => {
+    setVendors((prev) => [...items, ...prev]);
+    logAudit('Excel Vendors Import', 'Vendor Management', `Imported ${items.length} vendors from Excel`);
+  };
+
+  const bulkImportCustomers = (items: any[]) => {
+    setCustomers((prev) => [...items, ...prev]);
+    logAudit('Excel Customers Import', 'Customer Management', `Imported ${items.length} customers from Excel`);
+  };
+
+  const markNotificationRead = (id: string) => {
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+  };
+
+  const resetToDemoData = () => {
+    setMaterials(INITIAL_MATERIALS);
+    setProjectRequirements(INITIAL_PROJECT_REQUIREMENTS);
+    setVendors(INITIAL_VENDORS);
+    setCustomers(INITIAL_CUSTOMERS);
+    setMachines(INITIAL_MACHINES);
+    setProjects(INITIAL_PROJECTS);
+    setOrders(INITIAL_ORDERS);
+    setInwardEntries(INITIAL_INWARD);
+    setOutwardEntries(INITIAL_OUTWARD);
+    setJobCards(INITIAL_JOB_CARDS);
+    setQcInspections(INITIAL_QC);
+    setPurchaseOrders(INITIAL_PURCHASE_ORDERS);
+    setSalesOrders(INITIAL_SALES_ORDERS);
+    setCostingRecords(INITIAL_COSTING);
+    setAuditLogs(INITIAL_AUDIT_LOGS);
+    setNotifications(INITIAL_NOTIFICATIONS);
+    setBoms(INITIAL_BOMS);
+    setRfqs(INITIAL_RFQS);
+    setVendorDocuments(INITIAL_VENDOR_DOCUMENTS);
+    localStorage.clear();
+    logAudit('System Reset', 'Super Admin', 'Reset full ERP database to RSB demo factory state');
+    addNotification('System Reset', 'Reset to factory seed data', 'warning');
+  };
+
+  const exportDatabaseBackup = () => {
+    const fullBackup = {
+      version: '3.0.0',
+      exportedAt: new Date().toISOString(),
+      materials,
+      projectRequirements,
+      vendors,
+      customers,
+      machines,
+      projects,
+      orders,
+      inwardEntries,
+      outwardEntries,
+      jobCards,
+      qcInspections,
+      purchaseOrders,
+      salesOrders,
+      costingRecords,
+      auditLogs,
+      boms,
+      rfqs,
+      vendorDocuments,
+    };
+    const jsonStr = JSON.stringify(fullBackup, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `RSB_ERP_FullSnapshot_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    logAudit('Database Backup Exported', 'Super Admin', 'Exported complete database JSON snapshot');
+  };
+
+  const importDatabaseBackup = (jsonContent: string): boolean => {
+    try {
+      const data = JSON.parse(jsonContent);
+      if (data.materials) setMaterials(data.materials);
+      if (data.projectRequirements) setProjectRequirements(data.projectRequirements);
+      if (data.vendors) setVendors(data.vendors);
+      if (data.customers) setCustomers(data.customers);
+      if (data.machines) setMachines(data.machines);
+      if (data.projects) setProjects(data.projects);
+      if (data.orders) setOrders(data.orders);
+      if (data.inwardEntries) setInwardEntries(data.inwardEntries);
+      if (data.outwardEntries) setOutwardEntries(data.outwardEntries);
+      if (data.jobCards) setJobCards(data.jobCards);
+      if (data.qcInspections) setQcInspections(data.qcInspections);
+      if (data.purchaseOrders) setPurchaseOrders(data.purchaseOrders);
+      if (data.salesOrders) setSalesOrders(data.salesOrders);
+      if (data.costingRecords) setCostingRecords(data.costingRecords);
+      if (data.boms) setBoms(data.boms);
+      if (data.rfqs) setRfqs(data.rfqs);
+      if (data.vendorDocuments) setVendorDocuments(data.vendorDocuments);
+      logAudit('Database Backup Restored', 'Super Admin', 'Imported and restored database state from JSON backup');
+      return true;
+    } catch (err) {
+      console.error('Failed to restore backup', err);
+      return false;
+    }
+  };
+
+  return (
+    <ERPContext.Provider
+      value={{
+        currentUser,
+        setCurrentUserRole,
+        users,
+        activeVendorId,
+        setActiveVendorId,
+        activeTab,
+        setActiveTab,
+        materials,
+        projectRequirements,
+        addProjectRequirement,
+        updateProjectRequirement,
+        deleteProjectRequirement,
+        bulkImportProjectRequirements,
+        populateRequirementsFromBOM,
+        createJobCardFromRequirement,
+        convertShortagesToPO,
+        issueStockForRequirement,
+        scrapRequirementMaterial,
+        vendors,
+        customers,
+        machines,
+        projects,
+        orders,
+        inwardEntries,
+        outwardEntries,
+        jobCards,
+        qcInspections,
+        purchaseOrders,
+        salesOrders,
+        costingRecords,
+        auditLogs,
+        notifications,
+        boms,
+        rfqs,
+        vendorDocuments,
+        activeProcessingMaterials,
+        dispatchReadyItems,
+        availableStockMaterials,
+        addMaterial,
+        updateMaterial,
+        deleteMaterial,
+        adjustStock,
+        addOrder,
+        updateOrderStatus,
+        updateOrder,
+        deleteOrder,
+        addInwardEntry,
+        updateInwardStatus,
+        deleteInwardEntry,
+        addOutwardEntry,
+        updateOutwardStatus,
+        deleteOutwardEntry,
+        addJobCard,
+        updateJobCard,
+        updateJobCardStep,
+        toggleJobOperation,
+        createJobCardFromOrder,
+        deleteJobCard,
+        addQCInspection,
+        updateQCInspection,
+        deleteQCInspection,
+        addProject,
+        updateProject,
+        deleteProject,
+        addVendor,
+        updateVendor,
+        deleteVendor,
+        addCustomer,
+        updateCustomer,
+        deleteCustomer,
+        addMachine,
+        updateMachine,
+        deleteMachine,
+        addPurchaseOrder,
+        updatePOStatus,
+        addSalesOrder,
+        updateSOStatus,
+        saveCostingRecord,
+        addBOM,
+        updateBOM,
+        approveBOM,
+        copyBOM,
+        deleteBOM,
+        addRFQ,
+        submitVendorQuotation,
+        approveVendorQuotation,
+        rejectVendorQuotation,
+        uploadVendorDocument,
+        mrpRecords,
+        generateAutoPurchaseRequests,
+        bulkImportMaterials,
+        bulkImportOrders,
+        bulkImportInward,
+        bulkImportVendors,
+        bulkImportCustomers,
+        logAction: logAudit,
+        markNotificationRead,
+        resetToDemoData,
+        exportDatabaseBackup,
+        importDatabaseBackup,
+      }}
+    >
+      {children}
+    </ERPContext.Provider>
+  );
+};
+
+export const useERP = () => {
+  const context = useContext(ERPContext);
+  if (!context) {
+    throw new Error('useERP must be used within an ERPProvider');
+  }
+  return context;
+};
