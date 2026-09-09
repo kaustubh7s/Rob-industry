@@ -65,16 +65,16 @@ export const Header: React.FC<HeaderProps> = ({
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const roleOptions: { role: UserRole; title: string; subtitle: string; lockLevel: string }[] = [
-    { role: 'kaustubh', title: 'Kaustubh (Admin)', subtitle: 'Project Material Entry Portal', lockLevel: 'Password: admin@123' },
-    { role: 'super_admin', title: 'Super Admin', subtitle: 'Full Access & Settings', lockLevel: 'Master: 7276kakakakaka' },
-    { role: 'admin', title: 'Admin / Plant Head', subtitle: 'Operations & Planning', lockLevel: 'Master: 7276kakakakaka' },
-    { role: 'purchase_manager', title: 'Purchase Manager', subtitle: 'Vendors, RFQ & Inward', lockLevel: 'Master: 7276kakakakaka' },
-    { role: 'production_manager', title: 'Production Manager', subtitle: 'Shop Floor & Job Cards', lockLevel: 'Master: 7276kakakakaka' },
-    { role: 'store_manager', title: 'Store Manager', subtitle: 'Stock & Outward', lockLevel: 'Master: 7276kakakakaka' },
-    { role: 'accounts', title: 'Accounts & Finance', subtitle: 'Invoices & P&L', lockLevel: 'Master: 7276kakakakaka' },
-    { role: 'operator', title: 'Machine Operator', subtitle: 'Job Checklists', lockLevel: 'Master: 7276kakakakaka' },
-    { role: 'vendor', title: 'Supplier (Vendor Portal)', subtitle: 'Bid RFQs & Upload Docs', lockLevel: 'Master: 7276kakakakaka' },
+  const roleOptions: { role: UserRole; title: string; subtitle: string }[] = [
+    { role: 'kaustubh', title: 'Kaustubh (Admin)', subtitle: 'Project Material Entry Portal' },
+    { role: 'super_admin', title: 'Super Admin', subtitle: 'Full Access & Settings' },
+    { role: 'admin', title: 'Admin / Plant Head', subtitle: 'Operations & Planning' },
+    { role: 'purchase_manager', title: 'Purchase Manager', subtitle: 'Vendors, RFQ & Inward' },
+    { role: 'production_manager', title: 'Production Manager', subtitle: 'Shop Floor & Job Cards' },
+    { role: 'store_manager', title: 'Store Manager', subtitle: 'Stock & Outward' },
+    { role: 'accounts', title: 'Accounts & Finance', subtitle: 'Invoices & P&L' },
+    { role: 'operator', title: 'Machine Operator', subtitle: 'Job Checklists' },
+    { role: 'vendor', title: 'Supplier (Vendor Portal)', subtitle: 'Bid RFQs & Upload Docs' },
   ];
 
   const isKaustubhRole = currentUser.role === 'kaustubh';
@@ -106,11 +106,7 @@ export const Header: React.FC<HeaderProps> = ({
       setAuthPassword('');
       setAuthError(null);
     } else {
-      setAuthError(
-        pendingRole === 'kaustubh'
-          ? 'Invalid password for Kaustubh. Required: admin@123'
-          : 'Invalid Admin Authorization. Required Master Password: 7276kakakakaka'
-      );
+      setAuthError('Invalid Admin Credentials. Access Denied.');
     }
   };
 
@@ -125,11 +121,7 @@ export const Header: React.FC<HeaderProps> = ({
       setLockPassword('');
       setLockError(null);
     } else {
-      setLockError(
-        currentUser.role === 'kaustubh'
-          ? 'Incorrect password. Enter admin@123 or master password to unlock.'
-          : 'Incorrect password. Enter 7276kakakakaka to unlock.'
-      );
+      setLockError('Incorrect password. Access Denied.');
     }
   };
 
@@ -365,9 +357,7 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="space-y-1">
               <p className="text-white font-bold">Role Access Restricted</p>
               <p className="text-slate-400 text-[11px]">
-                {pendingRole === 'kaustubh'
-                  ? 'Kaustubh Admin Password required: admin@123'
-                  : 'All Admin Modules protected with Master Password: 7276kakakakaka'}
+                Administrative verification required to switch department role.
               </p>
             </div>
           </div>
@@ -456,7 +446,7 @@ export const Header: React.FC<HeaderProps> = ({
                     type="password"
                     value={lockPassword}
                     onChange={(e) => setLockPassword(e.target.value)}
-                    placeholder={currentUser.role === 'kaustubh' ? 'Enter admin@123...' : 'Enter 7276kakakakaka...'}
+                    placeholder="Enter password..."
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 font-mono"
                   />
                 </div>
