@@ -143,6 +143,11 @@ export interface ProjectItem {
   status: ProjectStatus;
   projectValue: number;
   poNumber: string;
+  vendor?: string;
+  createdDate?: string;
+  lastUpdatedDate?: string;
+  materialsCount?: number;
+  totalQuantity?: number;
   bomId?: string;
   notes?: string;
   attachmentsCount?: number;

@@ -1,0 +1,806 @@
+import React, { useState, useMemo } from 'react';
+import {
+  FolderKanban,
+  Plus,
+  Search,
+  LayoutGrid,
+  List,
+  Layers,
+  Building2,
+  Cpu,
+  Calendar,
+  Package,
+  Boxes,
+  ArrowRight,
+  Download,
+  FileSpreadsheet,
+  FileText,
+  Clock,
+  Sparkles,
+  Tag,
+  Filter,
+} from 'lucide-react';
+import { useERP } from '../../context/ERPContext';
+import { ProjectItem, ProjectStatus, MachineCategory } from '../../types/erp';
+import { StatusBadge } from '../common/StatusBadge';
+import { formatINR } from '../../utils/calculations';
+import { exportToExcel, exportToPdfReport } from '../../utils/excelIntegration';
+import { Modal } from '../common/Modal';
+
+import { getMaterialsForProject } from '../../utils/projectMaterialsHelper';
+
+interface ProjectsDirectoryProps {
+  onSelectProject: (project: ProjectItem) => void;
+  onOpenEntrySheetWithProject?: (projectName: string) => void;
+}
+
+const MACHINE_CATEGORIES: MachineCategory[] = [
+  '10 HD',
+  '12 HD',
+  '16 HD',
+  '20 HD',
+  '24 HD',
+  '30 HD',
+  '40 HD',
+  'Mono Conveyor',
+  'Washing Unit',
+  'Distributor',
+  'Sealing Unit',
+  'Cap Transfer',
+  'Pipeline System',
+  'Conveyor Assembly',
+  'Custom Machine',
+  'Custom Fabrication',
+];
+
+const ORDER_SOURCES = [
+  'Customer PO',
+  'Internal Fabrication',
+  'BOM Release',
+  'Spare Requirement',
+  'Drawing Spec',
+  'Annual Contract',
+  'Direct Inquiry',
+  'Urgent Maintenance',
+];
+
+export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
+  onSelectProject,
+  onOpenEntrySheetWithProject,
+}) => {
+  const { projects, addProject, projectRequirements, orders, vendors, customers } = useERP();
+
+  // Search & Filter state
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterMachine, setFilterMachine] = useState('ALL');
+  const [filterVendor, setFilterVendor] = useState('ALL');
+  const [filterDate, setFilterDate] = useState('');
+  const [filterOrderSource, setFilterOrderSource] = useState('ALL');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+
+  // Modal for New Project
+  const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
+  const [newProjectForm, setNewProjectForm] = useState({
+    name: '',
+    customer: 'Cadila Healthcare Ltd (Zydus)',
+    orderSource: 'Customer PO',
+    machineType: '16 HD' as MachineCategory,
+    vendor: 'Manav Metal',
+    poNumber: 'PO-2026-50',
+    startDate: new Date().toISOString().split('T')[0],
+    targetCompletionDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+    priority: 'high' as 'high' | 'medium' | 'low',
+    status: 'Production' as ProjectStatus,
+    projectValue: 1850000,
+    notes: 'Precision manufactured high-speed unit with sanitary contact parts.',
+  });
+
+  // Calculate live dynamic material counts and quantities per project
+  const enrichedProjects = useMemo(() => {
+    return projects.map((p) => {
+      const mats = getMaterialsForProject(p, projectRequirements, orders);
+      const totalMaterials = mats.length;
+      const totalQuantity = mats.reduce((acc, m) => acc + (Number(m.quantity) || 0), 0);
+      const vendor = p.vendor || mats[0]?.vendor || 'Manav Metal';
+      const createdDate = p.createdDate || p.startDate || '2026-08-10';
+      const lastUpdatedDate = p.lastUpdatedDate || 'Today';
+
+      return {
+        ...p,
+        totalMaterials,
+        totalQuantity,
+        vendor,
+        createdDate,
+        lastUpdatedDate,
+      };
+    });
+  }, [projects, projectRequirements, orders]);
+
+  // Apply search and all filters
+  const filteredProjects = useMemo(() => {
+    return enrichedProjects.filter((p) => {
+      const matchesSearch =
+        searchTerm === '' ||
+        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        p.projectNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        p.customer.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        p.poNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (p.vendor && p.vendor.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        p.machineType.toLowerCase().includes(searchTerm.toLowerCase());
+
+      const matchesMachine = filterMachine === 'ALL' || p.machineType === filterMachine;
+      const matchesVendor = filterVendor === 'ALL' || p.vendor === filterVendor;
+      const matchesOrderSource = filterOrderSource === 'ALL' || p.orderSource === filterOrderSource;
+      const matchesDate = !filterDate || p.startDate === filterDate || p.createdDate === filterDate;
+
+      return matchesSearch && matchesMachine && matchesVendor && matchesOrderSource && matchesDate;
+    });
+  }, [enrichedProjects, searchTerm, filterMachine, filterVendor, filterOrderSource, filterDate]);
+
+  // Aggregated Overall Portfolio Metrics
+  const summaryMetrics = useMemo(() => {
+    const totalProjects = filteredProjects.length;
+    const totalMaterialsSum = filteredProjects.reduce((acc, p) => acc + p.totalMaterials, 0);
+    const totalQtySum = filteredProjects.reduce((acc, p) => acc + p.totalQuantity, 0);
+    const totalVendors = new Set(filteredProjects.map((p) => p.vendor)).size;
+
+    return {
+      totalProjects,
+      totalMaterialsSum,
+      totalQtySum,
+      totalVendors,
+    };
+  }, [filteredProjects]);
+
+  // Handle New Project Creation
+  const handleCreateProject = (e: React.FormEvent) => {
+    e.preventDefault();
+    const count = String(projects.length + 10).padStart(3, '0');
+    const projectNumber = `PRJ-2026-${count}`;
+    const newPrj: ProjectItem = {
+      ...newProjectForm,
+      id: `prj-${Date.now()}`,
+      projectNumber,
+      progressPct: newProjectForm.status === 'Completed' ? 100 : newProjectForm.status === 'Production' ? 50 : 15,
+      createdDate: newProjectForm.startDate,
+      lastUpdatedDate: 'Just now',
+      materialsCount: 0,
+      totalQuantity: 0,
+    };
+
+    addProject(newPrj);
+    setIsNewProjectModalOpen(false);
+    onSelectProject(newPrj);
+  };
+
+  // Export Projects Directory Excel
+  const handleExportExcel = () => {
+    const data = filteredProjects.map((p) => ({
+      'Project Number': p.projectNumber,
+      'Project Name': p.name,
+      'Machine Type': p.machineType,
+      'Vendor': p.vendor,
+      'Total Materials': `${p.totalMaterials} Items`,
+      'Total Quantity': p.totalQuantity,
+      'Created Date': p.createdDate,
+      'Last Updated Date': p.lastUpdatedDate,
+      'Order Source': p.orderSource,
+      'PO Number': p.poNumber,
+      'Customer': p.customer,
+      'Status': p.status,
+    }));
+    exportToExcel(data, `RSB_Projects_Directory_${new Date().toISOString().split('T')[0]}`);
+  };
+
+  // Export PDF
+  const handleExportPdf = () => {
+    const headers = [
+      'Project Name',
+      'Machine Type',
+      'Vendor',
+      'Materials',
+      'Total Qty',
+      'Created Date',
+      'Last Updated',
+    ];
+    const rows = filteredProjects.map((p) => [
+      p.name,
+      p.machineType,
+      p.vendor,
+      `${p.totalMaterials} Items`,
+      String(p.totalQuantity),
+      p.createdDate,
+      p.lastUpdatedDate,
+    ]);
+    exportToPdfReport(
+      'RSB Projects Directory & Manufacturing Portfolio',
+      headers,
+      rows,
+      'RSB_Projects_Directory_Report'
+    );
+  };
+
+  return (
+    <div className="space-y-6 select-text">
+      {/* ========================================================================= */}
+      {/* 1. HEADER & ACTIONS BAR */}
+      {/* ========================================================================= */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="px-2.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <FolderKanban className="w-3.5 h-3.5" />
+                Dedicated Projects Section
+              </span>
+              <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-xs font-semibold border border-slate-200">
+                {filteredProjects.length} Projects Registered
+              </span>
+            </div>
+
+            <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+              Projects Portfolio & History
+            </h1>
+            <p className="text-xs text-slate-500 max-w-2xl">
+              Centralized project-centric repository. View, filter, and track all manufacturing entries, component specifications, and vendor allocations per project.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* View Mode Toggle */}
+            <div className="flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200 text-slate-600">
+              <button
+                type="button"
+                onClick={() => setViewMode('cards')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  viewMode === 'cards'
+                    ? 'bg-white text-slate-900 shadow-2xs'
+                    : 'hover:text-slate-900 text-slate-500'
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span>Card View</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('table')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  viewMode === 'table'
+                    ? 'bg-white text-slate-900 shadow-2xs'
+                    : 'hover:text-slate-900 text-slate-500'
+                }`}
+              >
+                <List className="w-3.5 h-3.5" />
+                <span>Table View</span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsNewProjectModalOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>New Project</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              className="px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Export Excel</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleExportPdf}
+              className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <FileText className="w-3.5 h-3.5 text-slate-600" />
+              <span>PDF Report</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 2. EXECUTIVE METRICS BAR */}
+      {/* ========================================================================= */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+          <div className="flex items-center justify-between text-slate-500 mb-1">
+            <span className="text-[11px] font-bold uppercase tracking-wider">Total Projects</span>
+            <FolderKanban className="w-4 h-4 text-blue-600" />
+          </div>
+          <p className="text-2xl font-black text-slate-900 font-mono mt-1">
+            {summaryMetrics.totalProjects}
+          </p>
+          <p className="text-[10px] text-blue-600 font-medium mt-1">Manufacturing Portfolios</p>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+          <div className="flex items-center justify-between text-slate-500 mb-1">
+            <span className="text-[11px] font-bold uppercase tracking-wider">Total Materials</span>
+            <Boxes className="w-4 h-4 text-purple-600" />
+          </div>
+          <p className="text-2xl font-black text-slate-900 font-mono mt-1">
+            {summaryMetrics.totalMaterialsSum}
+          </p>
+          <p className="text-[10px] text-purple-600 font-medium mt-1">Across All Projects</p>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+          <div className="flex items-center justify-between text-slate-500 mb-1">
+            <span className="text-[11px] font-bold uppercase tracking-wider">Total Quantity</span>
+            <Package className="w-4 h-4 text-emerald-600" />
+          </div>
+          <p className="text-2xl font-black text-slate-900 font-mono mt-1">
+            {summaryMetrics.totalQtySum}
+          </p>
+          <p className="text-[10px] text-emerald-600 font-medium mt-1">Units Fabricated / Required</p>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+          <div className="flex items-center justify-between text-slate-500 mb-1">
+            <span className="text-[11px] font-bold uppercase tracking-wider">Active Suppliers</span>
+            <Building2 className="w-4 h-4 text-amber-600" />
+          </div>
+          <p className="text-2xl font-black text-slate-900 font-mono mt-1">
+            {summaryMetrics.totalVendors}
+          </p>
+          <p className="text-[10px] text-amber-600 font-medium mt-1">Allocated Vendors</p>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 3. SEARCH & FILTERS (Search Project, Machine Type, Vendor, Date, Order Source) */}
+      {/* ========================================================================= */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
+        <div className="flex flex-col md:flex-row gap-3">
+          {/* Search Project */}
+          <div className="flex-1 relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search Project Name, ID, Customer, PO Number (e.g. FOHA, Project 1, Manav Metal)..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-900 placeholder-slate-400 focus:outline-hidden focus:border-blue-500 focus:bg-white"
+            />
+          </div>
+
+          <div className="flex gap-2 flex-wrap items-center">
+            {/* Filter by Machine Type */}
+            <select
+              value={filterMachine}
+              onChange={(e) => setFilterMachine(e.target.value)}
+              className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 font-semibold focus:outline-hidden"
+            >
+              <option value="ALL">All Machine Types</option>
+              {MACHINE_CATEGORIES.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+
+            {/* Filter by Vendor */}
+            <select
+              value={filterVendor}
+              onChange={(e) => setFilterVendor(e.target.value)}
+              className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 font-semibold focus:outline-hidden"
+            >
+              <option value="ALL">All Vendors</option>
+              {vendors.map((v) => (
+                <option key={v.id} value={v.name}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+
+            {/* Filter by Order Source */}
+            <select
+              value={filterOrderSource}
+              onChange={(e) => setFilterOrderSource(e.target.value)}
+              className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 font-semibold focus:outline-hidden"
+            >
+              <option value="ALL">All Order Sources</option>
+              {ORDER_SOURCES.map((os) => (
+                <option key={os} value={os}>
+                  {os}
+                </option>
+              ))}
+            </select>
+
+            {/* Filter by Date */}
+            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-xl">
+              <Calendar className="w-3.5 h-3.5 text-slate-500" />
+              <input
+                type="date"
+                value={filterDate}
+                onChange={(e) => setFilterDate(e.target.value)}
+                className="bg-transparent text-xs text-slate-700 font-medium focus:outline-hidden"
+              />
+              {filterDate && (
+                <button
+                  type="button"
+                  onClick={() => setFilterDate('')}
+                  className="text-[10px] text-slate-400 hover:text-red-500 font-bold ml-1 cursor-pointer"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 4. PROFESSIONAL CARD VIEW & TABLE VIEW */}
+      {/* ========================================================================= */}
+      {filteredProjects.length === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center space-y-3">
+          <FolderKanban className="w-12 h-12 text-slate-300 mx-auto" />
+          <h3 className="text-base font-bold text-slate-800">No matching projects found</h3>
+          <p className="text-xs text-slate-500 max-w-md mx-auto">
+            Try adjusting your search criteria or filters, or create a new project using the "New Project" button.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setSearchTerm('');
+              setFilterMachine('ALL');
+              setFilterVendor('ALL');
+              setFilterOrderSource('ALL');
+              setFilterDate('');
+            }}
+            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+          >
+            Clear All Filters
+          </button>
+        </div>
+      ) : viewMode === 'cards' ? (
+        /* PROFESSIONAL CARD VIEW (Matching User's Specified Format) */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {filteredProjects.map((prj) => (
+            <div
+              key={prj.id}
+              className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs hover:shadow-md hover:border-blue-400 transition-all space-y-4 group flex flex-col justify-between"
+            >
+              <div>
+                {/* Header */}
+                <div className="flex items-start justify-between gap-2 pb-3 border-b border-slate-100">
+                  <div>
+                    <span className="font-mono text-[11px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                      {prj.projectNumber}
+                    </span>
+                    <h3 className="text-lg font-black text-slate-900 group-hover:text-blue-600 transition-colors mt-1.5 leading-snug">
+                      {prj.name}
+                    </h3>
+                    <p className="text-xs text-slate-500 truncate" title={prj.customer}>
+                      {prj.customer}
+                    </p>
+                  </div>
+                  <StatusBadge status={prj.status} size="sm" />
+                </div>
+
+                {/* Key Spec Details */}
+                <div className="mt-3.5 space-y-2 text-xs">
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
+                    <span className="text-slate-500 font-medium flex items-center gap-1.5">
+                      <Cpu className="w-3.5 h-3.5 text-purple-600" />
+                      Machine Type:
+                    </span>
+                    <span className="font-bold text-slate-900">{prj.machineType}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
+                    <span className="text-slate-500 font-medium flex items-center gap-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-amber-600" />
+                      Vendor:
+                    </span>
+                    <span className="font-bold text-amber-700 truncate max-w-[180px]">{prj.vendor}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
+                    <span className="text-slate-500 font-medium flex items-center gap-1.5">
+                      <Boxes className="w-3.5 h-3.5 text-blue-600" />
+                      Materials:
+                    </span>
+                    <span className="font-extrabold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                      {prj.totalMaterials} Items
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
+                    <span className="text-slate-500 font-medium flex items-center gap-1.5">
+                      <Package className="w-3.5 h-3.5 text-emerald-600" />
+                      Total Quantity:
+                    </span>
+                    <span className="font-bold text-slate-900">{prj.totalQuantity} Units</span>
+                  </div>
+                </div>
+
+                {/* Dates & Last Updated */}
+                <div className="flex items-center justify-between text-[11px] text-slate-500 pt-3 mt-3 border-t border-slate-100">
+                  <span>Created: <strong className="text-slate-700 font-mono">{prj.createdDate}</strong></span>
+                  <span>Last Updated: <strong className="text-slate-900 font-semibold">{prj.lastUpdatedDate}</strong></span>
+                </div>
+              </div>
+
+              {/* View Project Action Button */}
+              <button
+                type="button"
+                onClick={() => onSelectProject(prj)}
+                className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold shadow-xs flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer"
+              >
+                <span>View Project</span>
+                <ArrowRight className="w-3.5 h-3.5 text-emerald-400 group-hover:translate-x-0.5 transition-transform" />
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        /* PROFESSIONAL TABLE VIEW */
+        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-100/80 text-slate-700 font-bold border-b border-slate-200 text-[11px] uppercase tracking-wider">
+                  <th className="p-3.5 min-w-[200px] whitespace-nowrap">Project Name</th>
+                  <th className="p-3.5 min-w-[140px] whitespace-nowrap">Machine Type</th>
+                  <th className="p-3.5 min-w-[140px] whitespace-nowrap">Vendor</th>
+                  <th className="p-3.5 min-w-[130px] text-center whitespace-nowrap">Total Materials</th>
+                  <th className="p-3.5 min-w-[130px] text-center whitespace-nowrap">Total Quantity</th>
+                  <th className="p-3.5 min-w-[110px] whitespace-nowrap">Created Date</th>
+                  <th className="p-3.5 min-w-[110px] whitespace-nowrap">Last Updated</th>
+                  <th className="p-3.5 min-w-[100px] text-center whitespace-nowrap">Status</th>
+                  <th className="p-3.5 w-32 text-center whitespace-nowrap">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 font-medium">
+                {filteredProjects.map((prj) => (
+                  <tr key={prj.id} className="hover:bg-blue-50/40 transition-colors">
+                    {/* Project Name & Number */}
+                    <td className="p-3.5 whitespace-nowrap">
+                      <div>
+                        <span className="font-bold text-slate-900 text-sm">{prj.name}</span>
+                        <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
+                          <span className="font-mono font-semibold text-blue-600">{prj.projectNumber}</span>
+                          <span>•</span>
+                          <span className="truncate max-w-[150px]">{prj.customer}</span>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Machine Type */}
+                    <td className="p-3.5 whitespace-nowrap">
+                      <span className="px-2.5 py-1 rounded-md bg-purple-50 text-purple-700 border border-purple-200 font-bold text-xs">
+                        {prj.machineType}
+                      </span>
+                    </td>
+
+                    {/* Vendor */}
+                    <td className="p-3.5 font-semibold text-amber-700 whitespace-nowrap">
+                      {prj.vendor}
+                    </td>
+
+                    {/* Total Materials */}
+                    <td className="p-3.5 text-center whitespace-nowrap">
+                      <span className="inline-flex items-center justify-center min-w-[80px] font-extrabold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200">
+                        {prj.totalMaterials} Items
+                      </span>
+                    </td>
+
+                    {/* Total Quantity */}
+                    <td className="p-3.5 text-center whitespace-nowrap">
+                      <span className="inline-flex items-center justify-center min-w-[80px] font-extrabold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200">
+                        {prj.totalQuantity} Units
+                      </span>
+                    </td>
+
+                    {/* Created Date */}
+                    <td className="p-3.5 font-mono text-slate-600">
+                      {prj.createdDate}
+                    </td>
+
+                    {/* Last Updated */}
+                    <td className="p-3.5 font-semibold text-slate-800">
+                      {prj.lastUpdatedDate}
+                    </td>
+
+                    {/* Status */}
+                    <td className="p-3.5 text-center">
+                      <StatusBadge status={prj.status} size="sm" />
+                    </td>
+
+                    {/* Action */}
+                    <td className="p-3.5 text-center">
+                      <button
+                        type="button"
+                        onClick={() => onSelectProject(prj)}
+                        className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-black text-white text-xs font-bold shadow-2xs inline-flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                      >
+                        <span>View Project</span>
+                        <ArrowRight className="w-3 h-3 text-emerald-400" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 5. MODAL: CREATE NEW PROJECT */}
+      {/* ========================================================================= */}
+      <Modal
+        isOpen={isNewProjectModalOpen}
+        onClose={() => setIsNewProjectModalOpen(false)}
+        title="Create New Project"
+        subtitle="Establish dedicated project with auto-linked material specifications"
+        maxWidth="2xl"
+      >
+        <form onSubmit={handleCreateProject} className="space-y-4 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                Project Name * (e.g. FOHA, Project 1)
+              </label>
+              <input
+                type="text"
+                required
+                value={newProjectForm.name}
+                onChange={(e) => setNewProjectForm({ ...newProjectForm, name: e.target.value })}
+                placeholder="e.g. FOHA"
+                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                Customer Name *
+              </label>
+              <select
+                value={newProjectForm.customer}
+                onChange={(e) => setNewProjectForm({ ...newProjectForm, customer: e.target.value })}
+                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium"
+              >
+                {customers.map((c) => (
+                  <option key={c.id} value={c.name}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                Machine Type *
+              </label>
+              <select
+                value={newProjectForm.machineType}
+                onChange={(e) => setNewProjectForm({ ...newProjectForm, machineType: e.target.value as MachineCategory })}
+                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-bold"
+              >
+                {MACHINE_CATEGORIES.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                Primary Vendor *
+              </label>
+              <input
+                type="text"
+                required
+                value={newProjectForm.vendor}
+                onChange={(e) => setNewProjectForm({ ...newProjectForm, vendor: e.target.value })}
+                placeholder="Manav Metal"
+                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-semibold"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                PO Number *
+              </label>
+              <input
+                type="text"
+                required
+                value={newProjectForm.poNumber}
+                onChange={(e) => setNewProjectForm({ ...newProjectForm, poNumber: e.target.value })}
+                placeholder="PO-2026-36"
+                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-mono"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                Order Source
+              </label>
+              <select
+                value={newProjectForm.orderSource}
+                onChange={(e) => setNewProjectForm({ ...newProjectForm, orderSource: e.target.value })}
+                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium"
+              >
+                {ORDER_SOURCES.map((os) => (
+                  <option key={os} value={os}>
+                    {os}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                Start Date
+              </label>
+              <input
+                type="date"
+                required
+                value={newProjectForm.startDate}
+                onChange={(e) => setNewProjectForm({ ...newProjectForm, startDate: e.target.value })}
+                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                Target Date
+              </label>
+              <input
+                type="date"
+                required
+                value={newProjectForm.targetCompletionDate}
+                onChange={(e) => setNewProjectForm({ ...newProjectForm, targetCompletionDate: e.target.value })}
+                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-mono"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+              Project Scope & Notes
+            </label>
+            <input
+              type="text"
+              value={newProjectForm.notes}
+              onChange={(e) => setNewProjectForm({ ...newProjectForm, notes: e.target.value })}
+              placeholder="e.g. Sanitary SS 316 parts with mirror finish"
+              className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t border-slate-200">
+            <button
+              type="button"
+              onClick={() => setIsNewProjectModalOpen(false)}
+              className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs cursor-pointer"
+            >
+              Create Project & View
+            </button>
+          </div>
+        </form>
+      </Modal>
+    </div>
+  );
+};

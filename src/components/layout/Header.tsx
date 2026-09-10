@@ -22,6 +22,9 @@ import {
   Eye,
   EyeOff,
   ShieldAlert,
+  FolderKanban,
+  Layers,
+  Boxes,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 import { UserRole } from '../../types/erp';
@@ -142,11 +145,39 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {!isKaustubhRole && (
+          {isKaustubhRole ? (
+            <div className="flex items-center gap-2 border-l border-slate-200 pl-3">
+              <span className="text-xs font-bold text-slate-700 hidden sm:inline">
+                Quick Access:
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('RSB_NAVIGATE_VIEW', { detail: 'projects' }));
+                }}
+                className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                title="Open Projects Directory & History"
+              >
+                <FolderKanban className="w-3.5 h-3.5 text-blue-600" />
+                <span>Projects Directory</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('RSB_NAVIGATE_VIEW', { detail: 'entry' }));
+                }}
+                className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                title="Open Fast Material Entry Workstation"
+              >
+                <Zap className="w-3.5 h-3.5 text-amber-500" />
+                <span>Material Entry</span>
+              </button>
+            </div>
+          ) : (
             <>
               <button
                 onClick={onOpenSearch}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700 text-slate-300 hover:text-white hover:border-slate-600 text-xs transition-colors group"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700 text-slate-300 hover:text-white hover:border-slate-600 text-xs transition-colors group cursor-pointer"
               >
                 <Search className="w-3.5 h-3.5 group-hover:text-blue-400" />
                 <span className="hidden xl:inline">Search orders, PO, stock, BOMs, vendors...</span>
@@ -156,10 +187,20 @@ export const Header: React.FC<HeaderProps> = ({
                 </kbd>
               </button>
 
+              {/* 1-Click Projects Navigation Button */}
+              <button
+                onClick={() => setActiveTab('projects')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 text-xs font-bold transition-all shadow-md active:scale-95 shrink-0 cursor-pointer"
+              >
+                <FolderKanban className="w-3.5 h-3.5 text-blue-400" />
+                <span className="hidden sm:inline">Projects Directory</span>
+                <span className="sm:hidden">Projects</span>
+              </button>
+
               {/* 1-Click Daily Entry Button */}
               <button
                 onClick={() => onOpenQuickAction('inward')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 text-white text-xs font-bold transition-all shadow-md active:scale-95 shrink-0"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 text-white text-xs font-bold transition-all shadow-md active:scale-95 shrink-0 cursor-pointer"
               >
                 <Zap className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">+ Daily Entry (नया काम)</span>
@@ -170,21 +211,21 @@ export const Header: React.FC<HeaderProps> = ({
               <div className="hidden lg:flex items-center gap-1 border-l border-slate-800 pl-2">
                 <button
                   onClick={() => setActiveTab('inward')}
-                  className="px-2 py-1 rounded-md text-[11px] font-medium text-emerald-400 hover:bg-emerald-950/40 border border-emerald-500/20 flex items-center gap-1"
+                  className="px-2 py-1 rounded-md text-[11px] font-medium text-emerald-400 hover:bg-emerald-950/40 border border-emerald-500/20 flex items-center gap-1 cursor-pointer"
                 >
                   <Truck className="w-3 h-3" />
                   <span>Inward (आवक)</span>
                 </button>
                 <button
                   onClick={() => setActiveTab('production')}
-                  className="px-2 py-1 rounded-md text-[11px] font-medium text-amber-400 hover:bg-amber-950/40 border border-amber-500/20 flex items-center gap-1"
+                  className="px-2 py-1 rounded-md text-[11px] font-medium text-amber-400 hover:bg-amber-950/40 border border-amber-500/20 flex items-center gap-1 cursor-pointer"
                 >
                   <Wrench className="w-3 h-3" />
                   <span>Jobs (कारखाना)</span>
                 </button>
                 <button
                   onClick={() => setActiveTab('outward')}
-                  className="px-2 py-1 rounded-md text-[11px] font-medium text-purple-400 hover:bg-purple-950/40 border border-purple-500/20 flex items-center gap-1"
+                  className="px-2 py-1 rounded-md text-[11px] font-medium text-purple-400 hover:bg-purple-950/40 border border-purple-500/20 flex items-center gap-1 cursor-pointer"
                 >
                   <Send className="w-3 h-3" />
                   <span>Outward (जावक)</span>
