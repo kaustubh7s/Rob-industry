@@ -63,7 +63,7 @@ export const MobileAdminApp: React.FC = () => {
 
   // Quick Material Add Form State
   const [quickMatForm, setQuickMatForm] = useState({
-    projectName: projects[0]?.name || '',
+    projectName: projects[0]?.name || 'FOHA',
     machineName: '16 HD',
     description: '',
     materialType: 'SS Flat' as MaterialType,
@@ -122,11 +122,11 @@ export const MobileAdminApp: React.FC = () => {
       sizeSpecs: quickMatForm.sizeSpecs.trim(),
       quantity: Number(quickMatForm.quantity) || 1,
       unit: quickMatForm.unit,
-      projectName: quickMatForm.projectName || quickMatForm.machineName,
+      projectName: quickMatForm.projectName || (projects[0]?.name || 'FOHA'),
       customerName: 'Cadila Healthcare Ltd',
       poNumber: quickMatForm.poNo,
       poDate: new Date().toISOString().split('T')[0],
-      machineType: quickMatForm.machineName as MachineCategory,
+      machineType: (quickMatForm.machineName || '16 HD') as MachineCategory,
       orderSource: 'Customer PO',
       vendor: quickMatForm.vendor,
       bomRef: `BOM-${(quickMatForm.projectName || 'MC').substring(0, 4)}`,

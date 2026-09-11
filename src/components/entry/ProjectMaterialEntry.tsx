@@ -214,7 +214,7 @@ export const ProjectMaterialEntry: React.FC = () => {
   const [vendorName, setVendorName] = useState('Manav Metal');
   const [poNo, setPoNo] = useState('36');
   const [entryDate, setEntryDate] = useState('01-09-2026');
-  const [selectedProjectName, setSelectedProjectName] = useState<string>('16 HD');
+  const [selectedProjectName, setSelectedProjectName] = useState<string>(() => projects[0]?.name || 'FOHA');
 
   // Custom Options Dynamic Memory
   const [customMachines, setCustomMachines] = useState<string[]>([]);
@@ -321,6 +321,13 @@ export const ProjectMaterialEntry: React.FC = () => {
     }));
   };
 
+  // Sync selectedProjectName when projects list updates if currently unselected or fallback
+  useEffect(() => {
+    if ((!selectedProjectName || selectedProjectName === '16 HD') && projects.length > 0) {
+      setSelectedProjectName(projects[0].name);
+    }
+  }, [projects]);
+
   // Find previous similar orders for the selected machine
   const previousSimilarOrders = useMemo(() => {
     const cleanMachine = (machineName || '').trim().toLowerCase();
@@ -348,6 +355,7 @@ export const ProjectMaterialEntry: React.FC = () => {
     const prevPo = prevProject.poNo || prevProject.poNumber || poNo;
     const prevDate = prevProject.date || prevProject.createdDate || entryDate;
 
+    setSelectedProjectName(prevProject.name);
     setMachineName(prevMachine);
     setVendorName(prevVendor);
     setPoNo(prevPo);
@@ -389,7 +397,7 @@ export const ProjectMaterialEntry: React.FC = () => {
 
     const copiedRows: EntryRow[] = prevMaterials.map((m, idx) => ({
       id: `copy-${Date.now()}-${idx}`,
-      machineName: machineName,
+      machineName: machineName || prevProject.machineName || prevProject.machineType || '16 HD',
       date: entryDate,
       poNo: poNo,
       srNo: rows.length + idx + 1,
@@ -400,7 +408,7 @@ export const ProjectMaterialEntry: React.FC = () => {
       vendorName: vendorName,
       description: m.description,
       orderedBy: activeOrderedBy,
-      projectName: machineName,
+      projectName: prevProject.name,
     }));
 
     setRows((prev) => normalizeSrNumbers([...prev, ...copiedRows]));
@@ -415,6 +423,7 @@ export const ProjectMaterialEntry: React.FC = () => {
     const prevVendor = prevProject.vendorName || prevProject.vendor || vendorName;
     const newPo = `${Number(prevProject.poNo || prevProject.poNumber || 36) + 1}`;
 
+    setSelectedProjectName(prevProject.name);
     setMachineName(prevMachine);
     setVendorName(prevVendor);
     setPoNo(newPo);
@@ -433,7 +442,7 @@ export const ProjectMaterialEntry: React.FC = () => {
       vendorName: prevVendor,
       description: m.description,
       orderedBy: activeOrderedBy,
-      projectName: `${prevMachine} (PO ${newPo})`,
+      projectName: prevProject.name,
     }));
 
     setRows(newRows);
@@ -444,6 +453,7 @@ export const ProjectMaterialEntry: React.FC = () => {
 
   // Add 1-click suggested part
   const handleAddSuggestedPart = (part: { description: string; materialType: MaterialType; sizeSpecs: string; qty: number; unit: string }) => {
+    const targetProject = selectedProjectName || (projects.length > 0 ? projects[0].name : 'FOHA');
     const newRow: EntryRow = {
       id: `sug-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       machineName: machineName || '16 HD',
@@ -457,7 +467,7 @@ export const ProjectMaterialEntry: React.FC = () => {
       vendorName: vendorName || 'Manav Metal',
       description: part.description,
       orderedBy: activeOrderedBy,
-      projectName: machineName,
+      projectName: targetProject,
     };
 
     setRows((prev) => normalizeSrNumbers([...prev, newRow]));
@@ -467,6 +477,7 @@ export const ProjectMaterialEntry: React.FC = () => {
 
   // Add all suggested parts in 1 click
   const handleAddAllSuggestedParts = () => {
+    const targetProject = selectedProjectName || (projects.length > 0 ? projects[0].name : 'FOHA');
     const newRows: EntryRow[] = suggestedFrequentParts.map((part, idx) => ({
       id: `sug-all-${Date.now()}-${idx}`,
       machineName: machineName || '16 HD',
@@ -480,7 +491,7 @@ export const ProjectMaterialEntry: React.FC = () => {
       vendorName: vendorName || 'Manav Metal',
       description: part.description,
       orderedBy: activeOrderedBy,
-      projectName: machineName,
+      projectName: targetProject,
     }));
 
     setRows((prev) => normalizeSrNumbers([...prev, ...newRows]));
@@ -654,7 +665,7 @@ export const ProjectMaterialEntry: React.FC = () => {
       return;
     }
 
-    const targetProject = selectedProjectName || tmpl.machineName || '16 HD';
+    const targetProject = selectedProjectName || (projects.length > 0 ? projects[0].name : 'FOHA');
 
     const newRows: EntryRow[] = partsToLoad.map((p, idx) => ({
       id: `bom-${tmpl.machineName}-${Date.now()}-${idx}`,
@@ -692,11 +703,11 @@ export const ProjectMaterialEntry: React.FC = () => {
     if (e) e.preventDefault();
     if (!quickDesc.trim()) return;
 
-    const targetProject = selectedProjectName || machineName || '16 HD';
+    const targetProject = selectedProjectName || (projects.length > 0 ? projects[0].name : 'FOHA');
 
     const newRow: EntryRow = {
       id: `row-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-      machineName: machineName || targetProject,
+      machineName: machineName || '16 HD',
       date: entryDate || '01-09-2026',
       poNo: poNo || '36',
       srNo: rows.length + 1,
@@ -773,8 +784,10 @@ export const ProjectMaterialEntry: React.FC = () => {
       return;
     }
 
+    const targetProject = selectedProjectName || (projects.length > 0 ? projects[0].name : 'FOHA');
+
     const itemsToSave: Partial<ProjectMaterialRequirementItem>[] = rows.map((r) => ({
-      projectName: r.machineName || machineName || '16 HD',
+      projectName: r.projectName || targetProject,
       customerName: 'Cadila Healthcare Ltd (Zydus)',
       poNumber: r.poNo || poNo,
       poDate: r.date || entryDate,
@@ -1933,6 +1946,7 @@ export const ProjectMaterialEntry: React.FC = () => {
             <button
               type="button"
               onClick={() => {
+                const targetProject = selectedProjectName || (projects.length > 0 ? projects[0].name : 'FOHA');
                 const emptyRow: EntryRow = {
                   id: `empty-${Date.now()}`,
                   machineName: machineName || '16 HD',
@@ -1946,7 +1960,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                   vendorName: vendorName || 'Manav Metal',
                   description: 'New Component',
                   orderedBy: activeOrderedBy,
-                  projectName: machineName || '16 HD',
+                  projectName: targetProject,
                 };
                 setRows((prev) => normalizeSrNumbers([...prev, emptyRow]));
               }}
