@@ -201,6 +201,7 @@ export const ProjectMaterialEntry: React.FC = () => {
     addProject,
     projectRequirements,
     bulkImportProjectRequirements,
+    deleteProjectRequirement,
     currentUser,
     vendors,
   } = useERP();
@@ -752,7 +753,23 @@ export const ProjectMaterialEntry: React.FC = () => {
 
   // Delete Row
   const handleDeleteRow = (rowId: string) => {
+    const targetRow = rows.find((r) => r.id === rowId);
     setRows((prev) => normalizeSrNumbers(prev.filter((r) => r.id !== rowId)));
+    deleteProjectRequirement(rowId);
+    if (targetRow) {
+      const matched = projectRequirements.find(
+        (pr) =>
+          pr.id === rowId ||
+          (pr.description === targetRow.description &&
+            pr.sizeSpecs === targetRow.sizeSpecs &&
+            pr.projectName === targetRow.projectName)
+      );
+      if (matched) {
+        deleteProjectRequirement(matched.id);
+      }
+    }
+    setSaveToast('🗑️ Deleted row • Updated across all devices');
+    setTimeout(() => setSaveToast(null), 2500);
   };
 
   // Cell Change (Ordered By is strictly locked)
@@ -772,8 +789,26 @@ export const ProjectMaterialEntry: React.FC = () => {
   const handleBulkDelete = () => {
     if (selectedRowIds.length === 0) return;
     if (confirm(`Delete ${selectedRowIds.length} selected rows?`)) {
+      selectedRowIds.forEach((id) => {
+        deleteProjectRequirement(id);
+        const row = rows.find((r) => r.id === id);
+        if (row) {
+          const matched = projectRequirements.find(
+            (pr) =>
+              pr.id === id ||
+              (pr.description === row.description &&
+                pr.sizeSpecs === row.sizeSpecs &&
+                pr.projectName === row.projectName)
+          );
+          if (matched) {
+            deleteProjectRequirement(matched.id);
+          }
+        }
+      });
       setRows((prev) => normalizeSrNumbers(prev.filter((r) => !selectedRowIds.includes(r.id))));
       setSelectedRowIds([]);
+      setSaveToast(`🗑️ Deleted ${selectedRowIds.length} rows • Synced across all devices`);
+      setTimeout(() => setSaveToast(null), 2500);
     }
   };
 

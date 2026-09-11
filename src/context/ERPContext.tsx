@@ -57,6 +57,7 @@ import {
 import {
   dbUpsertProject,
   dbDeleteProject,
+  dbDeleteRequirementsByProject,
   dbUpsertRequirement,
   dbDeleteRequirement,
   dbBulkUpsertRequirements,
@@ -1581,6 +1582,9 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     dbDeleteProject(id);
+    if (projectToDelete) {
+      dbDeleteRequirementsByProject(projectToDelete.name);
+    }
     logAudit('Project Deleted', 'Projects', `Deleted project ${projectToDelete?.name || id}`);
     addNotification('Project Deleted', `Deleted project ${projectToDelete?.name || id}`, 'warning', 'projects');
   };

@@ -543,6 +543,17 @@ export const dbDeleteProject = async (projectId: string) => {
   }
 };
 
+export const dbDeleteRequirementsByProject = async (projectName: string) => {
+  const supabase = getSupabaseClient();
+  if (!supabase || !projectName) return;
+
+  try {
+    await supabase.from('project_material_requirements').delete().ilike('project_name', projectName);
+  } catch (e) {
+    console.warn('Supabase delete requirements by project failed:', e);
+  }
+};
+
 export const dbUpsertRequirement = async (req: ProjectMaterialRequirementItem) => {
   const supabase = getSupabaseClient();
   if (!supabase) return;

@@ -24,9 +24,9 @@ import {
   Filter,
   Eye,
   Sliders,
-  DollarSign,
   Activity,
   Users,
+  Trash2,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 import { ProjectItem, ProjectMaterialRequirementItem, MaterialType, MachineCategory } from '../../types/erp';
@@ -50,7 +50,9 @@ export const MobileAdminApp: React.FC = () => {
     jobCards,
     users,
     addProject,
+    deleteProject,
     addProjectRequirement,
+    deleteProjectRequirement,
   } = useERP();
 
   const [activeTab, setActiveTab] = useState<MobileTab>('overview');
@@ -488,7 +490,24 @@ export const MobileAdminApp: React.FC = () => {
 
                     <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1.5 border-t border-slate-800/80">
                       <span>Project: <strong className="text-slate-300">{m.projectName}</strong></span>
-                      <span className="text-amber-400 font-medium">{m.vendor || 'Manav Metal'}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-amber-400 font-medium">{m.vendor || 'Manav Metal'}</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm(`Delete material "${m.description}"?`)) {
+                              deleteProjectRequirement(m.id);
+                              setToastMessage(`Deleted ${m.description} • Updated everywhere`);
+                              setTimeout(() => setToastMessage(null), 3000);
+                            }
+                          }}
+                          className="p-1 rounded text-slate-500 hover:text-rose-400 active:scale-95 transition-all"
+                          title="Delete Material"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
