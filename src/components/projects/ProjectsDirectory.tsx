@@ -19,6 +19,10 @@ import {
   Sparkles,
   Tag,
   Filter,
+  Lock,
+  Trash2,
+  Database,
+  Cloud,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 import { ProjectItem, ProjectStatus, MachineCategory } from '../../types/erp';
@@ -26,6 +30,7 @@ import { StatusBadge } from '../common/StatusBadge';
 import { formatINR } from '../../utils/calculations';
 import { exportToExcel, exportToPdfReport } from '../../utils/excelIntegration';
 import { Modal } from '../common/Modal';
+import { SupabaseConnectModal } from '../admin/SupabaseConnectModal';
 
 import { getMaterialsForProject } from '../../utils/projectMaterialsHelper';
 
@@ -68,7 +73,10 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
   onSelectProject,
   onOpenEntrySheetWithProject,
 }) => {
-  const { projects, addProject, projectRequirements, orders, vendors, customers } = useERP();
+  const { projects, addProject, deleteProject, projectRequirements, orders, vendors, customers, currentUser } = useERP();
+
+  const isSuperAdmin =
+    currentUser?.role === 'super_admin' || currentUser?.name?.toLowerCase().includes('amit');
 
   // Search & Filter state
   const [searchTerm, setSearchTerm] = useState('');
@@ -78,8 +86,11 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
   const [filterOrderSource, setFilterOrderSource] = useState('ALL');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
-  // Modal for New Project
+  // Modal for New Project, Delete Project, and Supabase Sync
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<ProjectItem | null>(null);
+  const [cascadeDeleteReqs, setCascadeDeleteReqs] = useState(true);
+  const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
   const [newProjectForm, setNewProjectForm] = useState({
     name: '',
     customer: 'Cadila Healthcare Ltd (Zydus)',
@@ -286,6 +297,16 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
 
             <button
               type="button"
+              onClick={() => setIsSupabaseModalOpen(true)}
+              className="px-3 py-2 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-500/40 text-emerald-300 hover:text-emerald-200 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+              title="Cloud Backup Settings"
+            >
+              <Cloud className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Cloud Backup</span>
+            </button>
+
+            <button
+              type="button"
               onClick={handleExportExcel}
               className="px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
             >
@@ -462,88 +483,114 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
           </button>
         </div>
       ) : viewMode === 'cards' ? (
-        /* PROFESSIONAL CARD VIEW (Matching User's Specified Format) */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filteredProjects.map((prj) => (
-            <div
-              key={prj.id}
-              className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs hover:shadow-md hover:border-blue-400 transition-all space-y-4 group flex flex-col justify-between"
-            >
-              <div>
-                {/* Header */}
-                <div className="flex items-start justify-between gap-2 pb-3 border-b border-slate-100">
-                  <div>
-                    <span className="font-mono text-[11px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
-                      {prj.projectNumber}
-                    </span>
-                    <h3 className="text-lg font-black text-slate-900 group-hover:text-blue-600 transition-colors mt-1.5 leading-snug">
-                      {prj.name}
-                    </h3>
-                    <p className="text-xs text-slate-500 truncate" title={prj.customer}>
-                      {prj.customer}
-                    </p>
+          {filteredProjects.map((prj) => {
+            const mchName = prj.machineName || prj.machineType || '16 HD';
+            const vName = prj.vendorName || prj.vendor || 'Manav Metal';
+            const poNum = prj.poNo || prj.poNumber || '36';
+            const prjDate = prj.date || prj.createdDate || '01-09-2026';
+            const matCount = prj.totalMaterials || prj.materialsCount || 51;
+            const ordBy = prj.orderedBy || 'Amit';
+
+            return (
+              <div
+                key={prj.id}
+                className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs hover:shadow-md hover:border-blue-400 transition-all space-y-4 group flex flex-col justify-between"
+              >
+                <div className="space-y-3">
+                  {/* Header: Machine Name */}
+                  <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-black text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-lg border border-purple-200">
+                          {mchName}
+                        </span>
+                        <span className="font-mono text-[10px] font-bold text-slate-400">
+                          {prj.projectNumber}
+                        </span>
+                      </div>
+                      <h3 className="text-base font-black text-slate-900 group-hover:text-blue-600 transition-colors mt-1.5 leading-snug">
+                        {prj.name}
+                      </h3>
+                    </div>
+                    <StatusBadge status={prj.status} size="sm" />
                   </div>
-                  <StatusBadge status={prj.status} size="sm" />
+
+                  {/* Specification Table Box */}
+                  <div className="space-y-2 text-xs font-mono">
+                    <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100">
+                      <span className="text-slate-500 font-sans font-medium flex items-center gap-1.5">
+                        <Building2 className="w-3.5 h-3.5 text-amber-600" />
+                        Vendor:
+                      </span>
+                      <strong className="text-amber-800 truncate">{vName}</strong>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100">
+                      <span className="text-slate-500 font-sans font-medium flex items-center gap-1.5">
+                        <Tag className="w-3.5 h-3.5 text-indigo-600" />
+                        PO No:
+                      </span>
+                      <strong className="text-indigo-700">{poNum}</strong>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100">
+                      <span className="text-slate-500 font-sans font-medium flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-slate-600" />
+                        Date:
+                      </span>
+                      <strong className="text-slate-800">{prjDate}</strong>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100">
+                      <span className="text-slate-500 font-sans font-medium flex items-center gap-1.5">
+                        <Boxes className="w-3.5 h-3.5 text-blue-600" />
+                        Materials:
+                      </span>
+                      <strong className="text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                        {matCount}
+                      </strong>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2 rounded-xl bg-emerald-50/70 border border-emerald-200">
+                      <span className="text-emerald-900 font-sans font-bold flex items-center gap-1.5">
+                        <Lock className="w-3.5 h-3.5 text-emerald-600" />
+                        Ordered By:
+                      </span>
+                      <strong className="text-emerald-800">{ordBy}</strong>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Key Spec Details */}
-                <div className="mt-3.5 space-y-2 text-xs">
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
-                    <span className="text-slate-500 font-medium flex items-center gap-1.5">
-                      <Cpu className="w-3.5 h-3.5 text-purple-600" />
-                      Machine Type:
-                    </span>
-                    <span className="font-bold text-slate-900">{prj.machineType}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
-                    <span className="text-slate-500 font-medium flex items-center gap-1.5">
-                      <Building2 className="w-3.5 h-3.5 text-amber-600" />
-                      Vendor:
-                    </span>
-                    <span className="font-bold text-amber-700 truncate max-w-[180px]">{prj.vendor}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
-                    <span className="text-slate-500 font-medium flex items-center gap-1.5">
-                      <Boxes className="w-3.5 h-3.5 text-blue-600" />
-                      Materials:
-                    </span>
-                    <span className="font-extrabold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
-                      {prj.totalMaterials} Items
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
-                    <span className="text-slate-500 font-medium flex items-center gap-1.5">
-                      <Package className="w-3.5 h-3.5 text-emerald-600" />
-                      Total Quantity:
-                    </span>
-                    <span className="font-bold text-slate-900">{prj.totalQuantity} Units</span>
-                  </div>
-                </div>
-
-                {/* Dates & Last Updated */}
-                <div className="flex items-center justify-between text-[11px] text-slate-500 pt-3 mt-3 border-t border-slate-100">
-                  <span>Created: <strong className="text-slate-700 font-mono">{prj.createdDate}</strong></span>
-                  <span>Last Updated: <strong className="text-slate-900 font-semibold">{prj.lastUpdatedDate}</strong></span>
+                {/* Open Project Action Button & Super Admin Delete */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onSelectProject(prj)}
+                    className="flex-1 py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold shadow-xs flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer"
+                  >
+                    <span>Open Project</span>
+                    <ArrowRight className="w-3.5 h-3.5 text-emerald-400 group-hover:translate-x-0.5 transition-transform" />
+                  </button>
+                  {isSuperAdmin && (
+                    <button
+                      type="button"
+                      title="Delete Project (Super Admin Access)"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setProjectToDelete(prj);
+                      }}
+                      className="p-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 transition active:scale-95 cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
-
-              {/* View Project Action Button */}
-              <button
-                type="button"
-                onClick={() => onSelectProject(prj)}
-                className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold shadow-xs flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer"
-              >
-                <span>View Project</span>
-                <ArrowRight className="w-3.5 h-3.5 text-emerald-400 group-hover:translate-x-0.5 transition-transform" />
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
-        /* PROFESSIONAL TABLE VIEW */
         <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-xs border-collapse">
@@ -618,14 +665,29 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
 
                     {/* Action */}
                     <td className="p-3.5 text-center">
-                      <button
-                        type="button"
-                        onClick={() => onSelectProject(prj)}
-                        className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-black text-white text-xs font-bold shadow-2xs inline-flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
-                      >
-                        <span>View Project</span>
-                        <ArrowRight className="w-3 h-3 text-emerald-400" />
-                      </button>
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => onSelectProject(prj)}
+                          className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-black text-white text-xs font-bold shadow-2xs inline-flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                        >
+                          <span>View</span>
+                          <ArrowRight className="w-3 h-3 text-emerald-400" />
+                        </button>
+                        {isSuperAdmin && (
+                          <button
+                            type="button"
+                            title="Delete Project (Super Admin Access)"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setProjectToDelete(prj);
+                            }}
+                            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 transition active:scale-95 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -801,6 +863,80 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
           </div>
         </form>
       </Modal>
+
+      {/* Delete Project Confirmation Modal (Super Admin) */}
+      <Modal
+        isOpen={!!projectToDelete}
+        onClose={() => setProjectToDelete(null)}
+        title="⚠️ Confirm Permanent Project Deletion"
+        maxWidth="md"
+      >
+        {projectToDelete && (
+          <div className="space-y-4">
+            <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
+              <div className="flex items-center gap-2 text-rose-800 font-bold text-sm">
+                <Trash2 className="w-5 h-5 text-rose-600" />
+                <span>Delete "{projectToDelete.name}"?</span>
+              </div>
+              <p className="text-xs text-rose-700 leading-relaxed">
+                You are about to permanently delete this project from the live RSB ERP database and cloud backup. This action cannot be undone.
+              </p>
+            </div>
+
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs font-mono">
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-sans">Project Number:</span>
+                <span className="font-bold text-slate-800">{projectToDelete.projectNumber}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-sans">Machine Type:</span>
+                <span className="font-bold text-slate-800">{projectToDelete.machineType}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-sans">Customer:</span>
+                <span className="font-bold text-slate-800">{projectToDelete.customer}</span>
+              </div>
+            </div>
+
+            <label className="flex items-center gap-2 p-2.5 bg-slate-100 rounded-xl text-xs text-slate-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={cascadeDeleteReqs}
+                onChange={(e) => setCascadeDeleteReqs(e.target.checked)}
+                className="w-4 h-4 text-rose-600 rounded border-slate-300 focus:ring-rose-500"
+              />
+              <span className="font-medium">Also delete all linked material requirements for this project</span>
+            </label>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setProjectToDelete(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteProject(projectToDelete.id, cascadeDeleteReqs);
+                  setProjectToDelete(null);
+                }}
+                className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md cursor-pointer transition active:scale-95 flex items-center gap-1.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Permanently Delete Project</span>
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Supabase Integration Modal */}
+      <SupabaseConnectModal
+        isOpen={isSupabaseModalOpen}
+        onClose={() => setIsSupabaseModalOpen(false)}
+      />
     </div>
   );
 };

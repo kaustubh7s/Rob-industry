@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect, useMemo } from '
 import {
   User,
   UserRole,
+  AuthLevel,
+  UserPermissions,
   MaterialItem,
   VendorItem,
   CustomerItem,
@@ -52,6 +54,12 @@ import {
   INITIAL_VENDOR_DOCUMENTS,
   INITIAL_PROJECT_REQUIREMENTS,
 } from '../data/seedData';
+import {
+  dbUpsertProject,
+  dbDeleteProject,
+  dbUpsertRequirement,
+  dbDeleteRequirement,
+} from '../services/supabaseService';
 
 interface ERPContextType {
   // Authentication & Role
@@ -96,6 +104,7 @@ interface ERPContextType {
   // HEART OF ERP: PROJECT MATERIAL REQUIREMENT TABLE STATE & HANDLERS
   // =======================================================================
   projectRequirements: ProjectMaterialRequirementItem[];
+  setProjectRequirements: React.Dispatch<React.SetStateAction<ProjectMaterialRequirementItem[]>>;
   addProjectRequirement: (req: Omit<ProjectMaterialRequirementItem, 'id' | 'srNo'>) => void;
   updateProjectRequirement: (id: string, updates: Partial<ProjectMaterialRequirementItem>) => void;
   deleteProjectRequirement: (id: string) => void;
@@ -142,9 +151,10 @@ interface ERPContextType {
   deleteQCInspection: (id: string) => void;
 
   // Handlers for Projects
+  setProjects: React.Dispatch<React.SetStateAction<ProjectItem[]>>;
   addProject: (project: Omit<ProjectItem, 'id'>) => void;
   updateProject: (id: string, updates: Partial<ProjectItem>) => void;
-  deleteProject: (id: string) => void;
+  deleteProject: (id: string, cascadeRequirements?: boolean) => void;
 
   // Handlers for Vendors & Customers
   addVendor: (vendor: Omit<VendorItem, 'id'>) => void;
@@ -193,6 +203,12 @@ interface ERPContextType {
   bulkImportVendors: (items: any[]) => void;
   bulkImportCustomers: (items: any[]) => void;
 
+  // Super Admin Member Authorization & Access Matrix
+  addUser: (user: Omit<User, 'id'>) => void;
+  updateUser: (id: string, updates: Partial<User>) => void;
+  deleteUser: (id: string) => void;
+  alterUserAuthorization: (userId: string, authLevel: AuthLevel, permissions: UserPermissions, status?: 'Active' | 'Suspended' | 'Read Only') => void;
+
   // System Utilities
   logAction?: (action: string, module: string, details: string) => void;
   markNotificationRead: (id: string) => void;
@@ -207,7 +223,10 @@ const LOCAL_STORAGE_KEY = 'RSB_ERP_STATE_V3';
 
 export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User>(INITIAL_USERS[0]);
-  const [users] = useState<User[]>(INITIAL_USERS);
+  const [users, setUsers] = useState<User[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_users');
+    return saved ? JSON.parse(saved) : INITIAL_USERS;
+  });
   const [activeVendorId, setActiveVendorId] = useState<string>('vnd-1');
   const [activeTab, setActiveTab] = useState<string>('requirements'); // Default to heart of ERP
 
@@ -218,7 +237,15 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [projectRequirements, setProjectRequirements] = useState<ProjectMaterialRequirementItem[]>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_requirements');
-    return saved ? JSON.parse(saved) : INITIAL_PROJECT_REQUIREMENTS;
+    if (saved) {
+      try {
+        const parsed: ProjectMaterialRequirementItem[] = JSON.parse(saved);
+        return parsed.filter((r) => !r.id.startsWith('pmr-'));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return INITIAL_PROJECT_REQUIREMENTS;
   });
 
   const [vendors, setVendors] = useState<VendorItem[]>(() => {
@@ -238,32 +265,83 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [projects, setProjects] = useState<ProjectItem[]>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_projects');
-    return saved ? JSON.parse(saved) : INITIAL_PROJECTS;
+    if (saved) {
+      try {
+        const parsed: ProjectItem[] = JSON.parse(saved);
+        return parsed.filter(
+          (p) =>
+            !['prj-foha', 'prj-1', 'prj-2', 'prj-cip-skid', 'prj-sun-liquid', 'prj-int-fab', 'prj-pipeline', 'prj-rotary-dist', 'prj-cap-trans', 'prj-sealing-30'].includes(p.id)
+        );
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return INITIAL_PROJECTS;
   });
 
   const [orders, setOrders] = useState<ManufacturingOrderItem[]>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_orders');
-    return saved ? JSON.parse(saved) : INITIAL_ORDERS;
+    if (saved) {
+      try {
+        const parsed: ManufacturingOrderItem[] = JSON.parse(saved);
+        return parsed.filter((o) => !['ord-1', 'ord-2', 'ord-3'].includes(o.id));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return INITIAL_ORDERS;
   });
 
   const [inwardEntries, setInwardEntries] = useState<InwardEntry[]>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_inward');
-    return saved ? JSON.parse(saved) : INITIAL_INWARD;
+    if (saved) {
+      try {
+        const parsed: InwardEntry[] = JSON.parse(saved);
+        return parsed.filter((i) => !['inw-1', 'inw-2'].includes(i.id));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return INITIAL_INWARD;
   });
 
   const [outwardEntries, setOutwardEntries] = useState<OutwardEntry[]>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_outward');
-    return saved ? JSON.parse(saved) : INITIAL_OUTWARD;
+    if (saved) {
+      try {
+        const parsed: OutwardEntry[] = JSON.parse(saved);
+        return parsed.filter((o) => !['out-1'].includes(o.id));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return INITIAL_OUTWARD;
   });
 
   const [jobCards, setJobCards] = useState<JobCard[]>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_jobCards');
-    return saved ? JSON.parse(saved) : INITIAL_JOB_CARDS;
+    if (saved) {
+      try {
+        const parsed: JobCard[] = JSON.parse(saved);
+        return parsed.filter((j) => !['jc-1'].includes(j.id));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return INITIAL_JOB_CARDS;
   });
 
   const [qcInspections, setQcInspections] = useState<QCInspection[]>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_qc');
-    return saved ? JSON.parse(saved) : INITIAL_QC;
+    if (saved) {
+      try {
+        const parsed: QCInspection[] = JSON.parse(saved);
+        return parsed.filter((q) => !['qc-1'].includes(q.id));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return INITIAL_QC;
   });
 
   // =========================================================================
@@ -372,17 +450,41 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_po');
-    return saved ? JSON.parse(saved) : INITIAL_PURCHASE_ORDERS;
+    if (saved) {
+      try {
+        const parsed: PurchaseOrder[] = JSON.parse(saved);
+        return parsed.filter((p) => !['po-1'].includes(p.id));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return INITIAL_PURCHASE_ORDERS;
   });
 
   const [salesOrders, setSalesOrders] = useState<SalesOrder[]>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_so');
-    return saved ? JSON.parse(saved) : INITIAL_SALES_ORDERS;
+    if (saved) {
+      try {
+        const parsed: SalesOrder[] = JSON.parse(saved);
+        return parsed.filter((s) => !['so-1'].includes(s.id));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return INITIAL_SALES_ORDERS;
   });
 
   const [costingRecords, setCostingRecords] = useState<ProjectCosting[]>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_costing');
-    return saved ? JSON.parse(saved) : INITIAL_COSTING;
+    if (saved) {
+      try {
+        const parsed: ProjectCosting[] = JSON.parse(saved);
+        return parsed.filter((c) => !['cst-1'].includes(c.id));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return INITIAL_COSTING;
   });
 
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => {
@@ -392,7 +494,15 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [notifications, setNotifications] = useState<Notification[]>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_notif');
-    return saved ? JSON.parse(saved) : INITIAL_NOTIFICATIONS;
+    if (saved) {
+      try {
+        const parsed: Notification[] = JSON.parse(saved);
+        return parsed.filter((n) => !['notif-1'].includes(n.id));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return INITIAL_NOTIFICATIONS;
   });
 
   const [boms, setBoms] = useState<BOMRecord[]>(() => {
@@ -553,10 +663,25 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const shortageQty = Math.max(0, req.quantity - availableStock);
     const stockStatus = shortageQty === 0 ? 'Available' : availableStock > 0 ? 'Partial Available' : 'Shortage';
 
+    const mchName = req.machineName || req.machineType || '16 HD';
+    const poNum = req.poNo || req.poNumber || '36';
+    const vendorNm = req.vendorName || req.vendor || 'Manav Metal';
+    const formattedDate = req.date || req.poDate || new Date().toISOString().split('T')[0];
+
     const newReq: ProjectMaterialRequirementItem = {
       ...req,
       id: 'pmr-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
       srNo: projectRequirements.length + 1,
+      machineName: mchName,
+      date: formattedDate,
+      poNo: poNum,
+      vendorName: vendorNm,
+      orderedBy: req.orderedBy || currentUser.name, // Auto-populated from logged-in user, read-only
+      projectName: req.projectName || mchName,
+      poNumber: poNum,
+      poDate: req.poDate || formattedDate,
+      machineType: (req.machineType || mchName) as any,
+      vendor: vendorNm,
       availableStock,
       shortageQty,
       stockStatus,
@@ -573,8 +698,9 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
     }
 
-    logAudit('Requirement Added', 'Project Material Requirement', `Added ${newReq.description} (${newReq.sizeSpecs}) for project ${newReq.projectName}`);
-    addNotification('Material Requirement Added', `Added ${newReq.description} to ${newReq.projectName}`, 'info', 'requirements');
+    logAudit('Requirement Added', 'Project Material Requirement', `Added ${newReq.description} (${newReq.sizeSpecs}) for machine ${newReq.machineName || newReq.projectName} by ${newReq.orderedBy}`);
+    addNotification('Material Requirement Added', `Added ${newReq.description} (${newReq.orderedBy})`, 'info', 'requirements');
+    dbUpsertRequirement(newReq);
   };
 
   const updateProjectRequirement = (id: string, updates: Partial<ProjectMaterialRequirementItem>) => {
@@ -583,6 +709,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (r.id === id) {
           const merged = { ...r, ...updates };
           merged.totalCost = (merged.materialCost || 0) + (merged.laborCost || 0) + (merged.machineCost || 0) + (merged.outsourcingCost || 0);
+          dbUpsertRequirement(merged);
           return merged;
         }
         return r;
@@ -593,22 +720,26 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteProjectRequirement = (id: string) => {
     setProjectRequirements((prev) => prev.filter((r) => r.id !== id));
+    dbDeleteRequirement(id);
     logAudit('Requirement Deleted', 'Project Material Requirement', `Deleted Requirement ID ${id}`);
   };
 
   const bulkImportProjectRequirements = (items: any[]) => {
+    const todayFormatted = new Date().toISOString().split('T')[0];
     const mapped: ProjectMaterialRequirementItem[] = items.map((it, idx) => {
       const spec = it.sizeSpecs || it['Size Specification'] || it['Size Specs'] || '80 x 6 x 485';
       const desc = it.description || it['Description'] || it['Part Description'] || 'SS Machine Component';
       const matType = it.materialType || it['Material Type'] || 'SS Flat';
       const qty = Number(it.quantity || it['Qty'] || it['Quantity'] || 1);
-      const prj = it.projectName || it['Project'] || it['Project Name'] || 'FOHA';
-      const poNum = it.poNumber || it['PO No'] || it['PO Number'] || '36';
+      const prj = it.projectName || it['Project'] || it['Project Name'] || it['Machine Name'] || '16 HD';
+      const poNum = it.poNo || it.poNumber || it['PO No'] || it['PO Number'] || '36';
       const cust = it.customerName || it['Customer'] || it['Customer Name'] || 'Cadila Healthcare Ltd (Zydus)';
-      const mchType = it.machineType || it['Machine Type'] || 'Mono Conveyor';
+      const mchType = it.machineName || it.machineType || it['Machine Name'] || it['Machine Type'] || '16 HD';
       const unit = it.unit || it['Unit'] || 'Nos';
-      const vendor = it.vendor || it['Vendor'] || 'Manav Metal';
+      const vendor = it.vendorName || it.vendor || it['Vendor Name'] || it['Vendor'] || 'Manav Metal';
       const bomRef = it.bomRef || it['BOM Ref'] || 'BOM-MC-01';
+      const orderedBy = it.orderedBy || it['Ordered By'] || currentUser.name;
+      const entryDate = it.date || it['Date'] || todayFormatted;
 
       const matchedMat = materials.find(
         (m) =>
@@ -636,14 +767,19 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         projectName: prj,
         customerName: cust,
         poNumber: poNum,
-        poDate: new Date().toISOString().split('T')[0],
+        poDate: entryDate,
         machineType: mchType as any,
+        machineName: mchType,
+        date: entryDate,
+        poNo: poNum,
+        vendorName: vendor,
+        orderedBy,
         orderSource: 'Excel Import',
         deliveryDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
         vendor,
         bomRef,
         lastPurchaseRate: unitCost,
-        lastPurchaseDate: new Date().toISOString().split('T')[0],
+        lastPurchaseDate: entryDate,
         vendorRating: 4.9,
         vendorReliability: 98,
         stockStatus,
@@ -748,7 +884,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: 'jc-' + Date.now(),
       jobCardNo,
       project: req.projectName,
-      customer: req.customerName,
+      customer: req.customerName || 'RSB Client',
       drawingRef: `DWG-RSB-${req.machineType.slice(0, 2).toUpperCase()}-${req.sizeSpecs.replace(/\s+/g, '')}`,
       material: `${req.materialType} ${req.sizeSpecs}`,
       sizeSpecs: req.sizeSpecs,
@@ -757,7 +893,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       machineType: req.machineType,
       assignedOperator: req.assignedOperator || 'Mahesh Thakor',
       startDate: new Date().toISOString().split('T')[0],
-      endDate: req.deliveryDate,
+      endDate: req.deliveryDate || new Date().toISOString().split('T')[0],
       completionPct: 0,
       status: 'Pending',
       linkedRequirementId: req.id,
@@ -1217,16 +1353,40 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     logAudit('Project Created', 'Projects', `Created project ${newPrj.name} (${newPrj.projectNumber})`);
     addNotification('Project Created', `Created project ${newPrj.name}`, 'info', 'projects');
+    dbUpsertProject(newPrj);
   };
 
   const updateProject = (id: string, updates: Partial<ProjectItem>) => {
-    setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
+    setProjects((prev) =>
+      prev.map((p) => {
+        if (p.id === id) {
+          const merged = { ...p, ...updates };
+          dbUpsertProject(merged);
+          return merged;
+        }
+        return p;
+      })
+    );
     logAudit('Project Updated', 'Projects', `Updated project ID ${id}`);
   };
 
-  const deleteProject = (id: string) => {
+  const deleteProject = (id: string, cascadeRequirements: boolean = true) => {
+    const projectToDelete = projects.find((p) => p.id === id);
     setProjects((prev) => prev.filter((p) => p.id !== id));
-    logAudit('Project Deleted', 'Projects', `Deleted project ID ${id}`);
+
+    if (cascadeRequirements && projectToDelete) {
+      setProjectRequirements((prev) =>
+        prev.filter(
+          (r) =>
+            r.projectName !== projectToDelete.name &&
+            r.projectName !== projectToDelete.projectNumber
+        )
+      );
+    }
+
+    dbDeleteProject(id);
+    logAudit('Project Deleted', 'Projects', `Deleted project ${projectToDelete?.name || id}`);
+    addNotification('Project Deleted', `Deleted project ${projectToDelete?.name || id}`, 'warning', 'projects');
   };
 
   // Stakeholders Handlers
@@ -1247,6 +1407,63 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteVendor = (id: string) => {
     setVendors((prev) => prev.filter((v) => v.id !== id));
     logAudit('Vendor Deleted', 'Vendor Management', `Deleted vendor ID ${id}`);
+  };
+
+  // Super Admin Member Authorization Handlers
+  const addUser = (userData: Omit<User, 'id'>) => {
+    const newUser: User = {
+      ...userData,
+      id: 'usr-' + Date.now(),
+      status: userData.status || 'Active',
+      lastActive: 'Just now',
+    };
+    setUsers((prev) => {
+      const next = [newUser, ...prev];
+      localStorage.setItem(LOCAL_STORAGE_KEY + '_users', JSON.stringify(next));
+      return next;
+    });
+    logAudit('Member Created', 'User Authorization', `Added member ${newUser.name} (${newUser.role})`);
+  };
+
+  const updateUser = (id: string, updates: Partial<User>) => {
+    setUsers((prev) => {
+      const next = prev.map((u) => (u.id === id ? { ...u, ...updates } : u));
+      localStorage.setItem(LOCAL_STORAGE_KEY + '_users', JSON.stringify(next));
+      return next;
+    });
+    logAudit('Member Updated', 'User Authorization', `Updated user ID ${id}`);
+  };
+
+  const deleteUser = (id: string) => {
+    setUsers((prev) => {
+      const next = prev.filter((u) => u.id !== id);
+      localStorage.setItem(LOCAL_STORAGE_KEY + '_users', JSON.stringify(next));
+      return next;
+    });
+    logAudit('Member Deleted', 'User Authorization', `Deleted user ID ${id}`);
+  };
+
+  const alterUserAuthorization = (
+    userId: string,
+    authLevel: AuthLevel,
+    permissions: UserPermissions,
+    status?: 'Active' | 'Suspended' | 'Read Only'
+  ) => {
+    setUsers((prev) => {
+      const next = prev.map((u) =>
+        u.id === userId
+          ? {
+              ...u,
+              authLevel,
+              permissions,
+              status: status || u.status || 'Active',
+            }
+          : u
+      );
+      localStorage.setItem(LOCAL_STORAGE_KEY + '_users', JSON.stringify(next));
+      return next;
+    });
+    logAudit('Authorization Altered', 'Super Admin Security', `Altered authorization level for user ID ${userId} to ${authLevel}`);
   };
 
   const addCustomer = (customer: Omit<CustomerItem, 'id'>) => {
@@ -1746,6 +1963,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActiveTab,
         materials,
         projectRequirements,
+        setProjectRequirements,
         addProjectRequirement,
         updateProjectRequirement,
         deleteProjectRequirement,
@@ -1759,6 +1977,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         customers,
         machines,
         projects,
+        setProjects,
         orders,
         inwardEntries,
         outwardEntries,
@@ -1832,6 +2051,10 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         bulkImportInward,
         bulkImportVendors,
         bulkImportCustomers,
+        addUser,
+        updateUser,
+        deleteUser,
+        alterUserAuthorization,
         logAction: logAudit,
         markNotificationRead,
         resetToDemoData,

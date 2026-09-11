@@ -133,11 +133,11 @@ export const ProjectMaterialRequirementsTable: React.FC = () => {
       const matchSearch =
         req.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
         req.sizeSpecs.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        req.projectName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        req.poNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        req.vendor.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        req.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        req.bomRef.toLowerCase().includes(searchTerm.toLowerCase());
+        (req.projectName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (req.poNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (req.vendor || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (req.customerName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (req.bomRef || '').toLowerCase().includes(searchTerm.toLowerCase());
 
       const matchProject = filterProject === 'ALL' || req.projectName === filterProject;
       const matchMachine = filterMachine === 'ALL' || req.machineType === filterMachine;
@@ -153,8 +153,8 @@ export const ProjectMaterialRequirementsTable: React.FC = () => {
   const totalComponents = projectRequirements.length;
   const inProductionCount = projectRequirements.filter((r) => r.productionStatus !== 'Pending' && r.productionStatus !== 'Completed').length;
   const completedCount = projectRequirements.filter((r) => r.productionStatus === 'Completed').length;
-  const shortagesCount = projectRequirements.filter((r) => r.stockStatus === 'Shortage' || r.shortageQty > 0).length;
-  const delayedCount = projectRequirements.filter((r) => new Date(r.deliveryDate) < new Date() && r.productionStatus !== 'Completed').length;
+  const shortagesCount = projectRequirements.filter((r) => r.stockStatus === 'Shortage' || (r.shortageQty || 0) > 0).length;
+  const delayedCount = projectRequirements.filter((r) => (r.deliveryDate ? new Date(r.deliveryDate) < new Date() : false) && r.productionStatus !== 'Completed').length;
   const completionPct = totalComponents > 0 ? Math.round((completedCount / totalComponents) * 100) : 0;
   const totalProjectCost = projectRequirements.reduce((acc, r) => acc + (r.totalCost || 0), 0);
   const totalProjectRevenue = projectRequirements.reduce((acc, r) => acc + (r.sellingPriceAllocated || r.totalCost * 1.55), 0);

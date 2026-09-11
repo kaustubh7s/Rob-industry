@@ -9,6 +9,22 @@ export type UserRole =
   | 'operator'
   | 'vendor';
 
+export type AuthLevel = 
+  | 'Tier 1: Super Admin'
+  | 'Tier 2: Plant Head / Admin'
+  | 'Tier 3: Department Manager'
+  | 'Tier 4: Data Entry Operator'
+  | 'Tier 5: External Vendor';
+
+export interface UserPermissions {
+  canEditMaterials: boolean;
+  canApproveOrders: boolean;
+  canDeleteRecords: boolean;
+  canManageUsers: boolean;
+  canExportReports: boolean;
+  canOverrideLock: boolean;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -18,6 +34,10 @@ export interface User {
   avatar?: string;
   department: string;
   vendorId?: string;
+  authLevel?: AuthLevel;
+  permissions?: UserPermissions;
+  status?: 'Active' | 'Suspended' | 'Read Only';
+  lastActive?: string;
 }
 
 export type MaterialType = 
@@ -144,6 +164,11 @@ export interface ProjectItem {
   projectValue: number;
   poNumber: string;
   vendor?: string;
+  machineName?: string;
+  date?: string;
+  poNo?: string;
+  vendorName?: string;
+  orderedBy?: string;
   createdDate?: string;
   lastUpdatedDate?: string;
   materialsCount?: number;
@@ -184,12 +209,17 @@ export interface ProjectMaterialRequirementItem {
   
   // Project Info
   projectName: string;
-  customerName: string;
+  customerName?: string;
   poNumber: string;
   poDate: string;
   machineType: MachineCategory;
-  orderSource: string;
-  deliveryDate: string;
+  orderSource?: string;
+  deliveryDate?: string;
+  machineName?: string;
+  date?: string;
+  poNo?: string;
+  vendorName?: string;
+  orderedBy?: string;
 
   // Vendor & Procurement
   vendor: string;

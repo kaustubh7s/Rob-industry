@@ -79,51 +79,48 @@ const MACHINE_TEMPLATE_COMPONENTS: Record<string, StandardPartTemplate[]> = {
 };
 
 /**
- * Extracts normalized search tokens from a project name or ID.
- */
-function getTokens(str: string): string[] {
-  return str
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, ' ')
-    .split(/\s+/)
-    .filter((t) => t.length > 1 && !['and', 'the', 'with', 'line', 'skid', 'unit', 'high', 'speed'].includes(t));
-}
-
-/**
- * Robust matcher checking if a requirement or order belongs to a project.
+ * Strict and accurate matcher checking if a requirement or order belongs to a project.
  */
 export function isRequirementMatchedToProject(reqProjectName: string, project: ProjectItem): boolean {
-  if (!reqProjectName || !project || !project.name) return false;
+  if (!reqProjectName || !project) return false;
 
-  const rName = reqProjectName.trim().toLowerCase();
-  const pName = project.name.trim().toLowerCase();
+  const r = reqProjectName.trim().toLowerCase();
+  const pName = (project.name || '').trim().toLowerCase();
   const pNum = (project.projectNumber || '').trim().toLowerCase();
+  const pId = (project.id || '').trim().toLowerCase();
+  const pMachine = (project.machineName || project.machineType || '').trim().toLowerCase();
 
-  // Exact or direct substring
-  if (rName === pName || pName.includes(rName) || rName.includes(pName)) return true;
-  if (pNum && (rName.includes(pNum) || pNum.includes(rName))) return true;
+  // 1. Exact direct matches
+  if (r === pName || (pNum && r === pNum) || (pId && r === pId)) {
+    return true;
+  }
 
-  // Keyword token match (e.g. "foha" in both, or "cip" and "torrent" in both)
-  const rTokens = getTokens(rName);
-  const pTokens = getTokens(pName);
+  // 2. Exact machine name match ONLY IF project name equals machine name
+  if (pMachine && r === pMachine && pName === pMachine) {
+    return true;
+  }
 
-  const hasOverlap = rTokens.some((t) => pTokens.includes(t));
-  if (hasOverlap) return true;
+  // 3. Composite name matches e.g. "Kaustubh (PO-2026-50)", "Kaustubh - 20 HD", "Kaustubh [PRJ-2026-011]"
+  if (pName && (
+    r.startsWith(pName + ' (') ||
+    r.startsWith(pName + ' -') ||
+    r.startsWith(pName + ' [') ||
+    r.startsWith(pName + ' /')
+  )) {
+    return true;
+  }
 
-  // Common aliases
-  if (pName.includes('foha') && rName.includes('foha')) return true;
-  if (pName.includes('cip') && rName.includes('cip')) return true;
-  if (pName.includes('sealing') && rName.includes('sealing')) return true;
-  if (pName.includes('pipeline') && rName.includes('pipeline')) return true;
-  if (pName.includes('distributor') && rName.includes('distributor')) return true;
-  if (pName.includes('transfer') && rName.includes('transfer')) return true;
+  // 4. If requirement has project number substring
+  if (pNum && pNum.length > 3 && r.includes(pNum)) {
+    return true;
+  }
 
   return false;
 }
 
 /**
- * Retrieves all materials for a project. If no materials are explicitly registered yet,
- * it dynamically produces standard RSB fabrication component specifications tailored for that project.
+ * Retrieves all materials strictly belonging to a project.
+ * Returns an empty array [] if no materials have been added yet, ensuring real and authentic project state.
  */
 export function getMaterialsForProject(
   project: ProjectItem,
@@ -172,7 +169,14 @@ export function getMaterialsForProject(
     } as ProjectMaterialRequirementItem));
   }
 
-  // 3. Dynamic Tailored RSB Component Specification Generator
+  // 3. For real empty projects, return empty array (0 materials)
+  return [];
+}
+
+/**
+ * Optional utility: Generates standard RSB BOM template components only when explicitly requested by user.
+ */
+export function generateTemplateMaterialsForProject(project: ProjectItem): ProjectMaterialRequirementItem[] {
   const mch = project.machineType || 'Mono Conveyor';
   const templates = MACHINE_TEMPLATE_COMPONENTS[mch] || MACHINE_TEMPLATE_COMPONENTS['DEFAULT'];
 
@@ -184,7 +188,7 @@ export function getMaterialsForProject(
     const totalCost = matCost + laborCost + machineCost;
 
     return {
-      id: `gen-req-${project.id}-${idx + 1}`,
+      id: `gen-req-${project.id}-${Date.now()}-${idx + 1}`,
       srNo: idx + 1,
       description: tpl.description,
       materialType: tpl.materialType,
@@ -195,9 +199,14 @@ export function getMaterialsForProject(
       weightKg: tpl.weightKg || 2.0,
       projectName: project.name,
       customerName: project.customer || 'Cadila Healthcare Ltd (Zydus)',
-      poNumber: project.poNumber || 'PO-2026-36',
+      poNumber: project.poNumber || '36',
       poDate: project.startDate || new Date().toISOString().split('T')[0],
       machineType: project.machineType || '16 HD',
+      machineName: project.machineName || project.machineType || '16 HD',
+      date: project.date || '01-09-2026',
+      poNo: project.poNo || project.poNumber || '36',
+      vendorName: project.vendorName || project.vendor || 'Manav Metal',
+      orderedBy: project.orderedBy || 'Amit',
       orderSource: project.orderSource || 'Customer PO',
       deliveryDate: project.targetCompletionDate || new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
       vendor: project.vendor || tpl.defaultVendor || 'Manav Metal',

@@ -34,6 +34,7 @@ import { QuickActionModal } from './components/common/QuickActionModal';
 import { ProjectMaterialEntry } from './components/entry/ProjectMaterialEntry';
 import { EasyTutorialModal } from './components/common/EasyTutorialModal';
 import { Modal } from './components/common/Modal';
+import { MobileAdminApp } from './components/mobile/MobileAdminApp';
 
 const ERPAppContent: React.FC = () => {
   const { activeTab, setActiveTab, currentUser } = useERP();
@@ -45,7 +46,27 @@ const ERPAppContent: React.FC = () => {
   const [isCalcModalOpen, setIsCalcModalOpen] = useState(false);
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
 
-  const isKaustubhAdmin = currentUser.role === 'kaustubh';
+  // Dedicated Mobile Device Detection (Leaves PC UI 100% untouched)
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth < 768;
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const isProductionWorkstation =
+    currentUser.role === 'super_admin' ||
+    currentUser.role === 'kaustubh' ||
+    currentUser.role === 'operator' ||
+    currentUser.role === 'admin';
 
   const handleOpenQuickAction = (action?: 'order' | 'inward' | 'outward' | 'job' | 'qc') => {
     if (action) setQuickActionInitial(action);
@@ -64,8 +85,13 @@ const ERPAppContent: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // On Phone View: Render dedicated executive mobile monitoring app
+  if (isMobile) {
+    return <MobileAdminApp />;
+  }
+
   return (
-    <div className={`min-h-screen flex flex-col ${isKaustubhAdmin ? 'bg-[#f8fafc] text-slate-900' : 'bg-slate-950 text-slate-100'} selection:bg-slate-900 selection:text-white`}>
+    <div className={`min-h-screen flex flex-col ${isProductionWorkstation ? 'bg-[#f8fafc] text-slate-900' : 'bg-slate-950 text-slate-100'} selection:bg-slate-900 selection:text-white`}>
       {/* Header */}
       <Header
         onOpenSearch={() => setIsSearchOpen(true)}
@@ -77,14 +103,14 @@ const ERPAppContent: React.FC = () => {
 
       {/* Main Body */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar (Hidden for Kaustubh Admin role) */}
-        {!isKaustubhAdmin && <Sidebar onOpenTutorial={() => setIsTutorialOpen(true)} />}
+        {/* Sidebar (Hidden in focused production workstation view) */}
+        {!isProductionWorkstation && <Sidebar onOpenTutorial={() => setIsTutorialOpen(true)} />}
 
         {/* Main View Port */}
-        <main className={`flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 ${isKaustubhAdmin ? 'bg-[#f8fafc] w-full' : 'bg-slate-950'}`}>
-          <div className={`${isKaustubhAdmin ? 'max-w-[1600px]' : 'max-w-7xl'} mx-auto space-y-6`}>
-            {/* Kaustubh Admin Exclusive View: ONLY Project Material Entry */}
-            {isKaustubhAdmin ? (
+        <main className={`flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 ${isProductionWorkstation ? 'bg-[#f8fafc] w-full' : 'bg-slate-950'}`}>
+          <div className={`${isProductionWorkstation ? 'max-w-[1600px]' : 'max-w-7xl'} mx-auto space-y-6`}>
+            {/* Primary Factory Workstation: Material Entry, Projects Directory & Security Matrix */}
+            {isProductionWorkstation ? (
               <ProjectMaterialEntry />
             ) : (
               <>

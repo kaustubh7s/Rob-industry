@@ -17,6 +17,8 @@ import {
   Sparkles,
   ShieldCheck,
   Zap,
+  Lock,
+  Tag,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 import { ProjectItem, ProjectMaterialRequirementItem, MaterialType, MachineCategory } from '../../types/erp';
@@ -73,9 +75,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     addProjectRequirement,
     updateProjectRequirement,
     deleteProjectRequirement,
+    deleteProject,
     orders,
     vendors,
+    currentUser,
   } = useERP();
+
+  const isSuperAdmin =
+    currentUser?.role === 'super_admin' || currentUser?.name?.toLowerCase().includes('amit');
 
   // Search & Filters within this project's materials
   const [searchTerm, setSearchTerm] = useState('');
@@ -83,8 +90,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const [filterMachine, setFilterMachine] = useState('ALL');
   const [filterVendor, setFilterVendor] = useState('ALL');
 
-  // Modal State for Adding / Editing Material
+  // Modal State for Adding / Editing Material & Deleting Project
   const [isAddMaterialModalOpen, setIsAddMaterialModalOpen] = useState(false);
+  const [isDeleteProjectModalOpen, setIsDeleteProjectModalOpen] = useState(false);
+  const [cascadeDeleteReqs, setCascadeDeleteReqs] = useState(true);
   const [editingItem, setEditingItem] = useState<ProjectMaterialRequirementItem | null>(null);
 
   // Form State
@@ -251,54 +260,55 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     }
   };
 
-  // Export Project Excel
+  // Export Project Excel (Exact 10 Columns)
   const handleExportExcel = () => {
     const data = filteredMaterials.map((m, idx) => ({
+      'Machine Name': m.machineName || m.machineType || project.machineName || project.machineType || '16 HD',
+      'Date': m.date || project.date || project.startDate || '01-09-2026',
+      'PO No': m.poNo || m.poNumber || project.poNo || project.poNumber || '36',
       'Sr No': idx + 1,
-      'Project': project.name,
-      'Machine Type': m.machineType,
-      'Vendor': m.vendor,
-      'Order Source': m.orderSource,
-      'PO Number': m.poNumber,
       'Material Type': m.materialType,
       'Size Specification': m.sizeSpecs,
-      'Quantity': m.quantity,
-      'Unit': m.unit,
+      'Qty': m.quantity,
+      'Vendor Name': m.vendorName || m.vendor || project.vendorName || project.vendor || 'Manav Metal',
       'Description': m.description,
-      'Grade': m.materialGrade,
-      'Stock Status': m.stockStatus,
+      'Ordered By': m.orderedBy || project.orderedBy || currentUser.name || 'Amit',
     }));
-    exportToExcel(data, `RSB_Project_${project.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_Materials`);
+    exportToExcel(data, `RSB_Project_${(project.machineName || project.name).replace(/[^a-zA-Z0-9_-]/g, '_')}_10Col`);
   };
 
   // Export PDF Report
   const handleExportPdf = () => {
     const headers = [
-      'Sr',
+      'Machine Name',
+      'Date',
+      'PO No',
+      'Sr No',
       'Material Type',
       'Size Specification',
-      'Quantity',
-      'Vendor',
-      'Machine Type',
-      'Project',
-      'Order Source',
+      'Qty',
+      'Vendor Name',
+      'Description',
+      'Ordered By',
     ];
     const rows = filteredMaterials.map((m, idx) => [
+      m.machineName || m.machineType || project.machineName || project.machineType || '16 HD',
+      m.date || project.date || project.startDate || '01-09-2026',
+      m.poNo || m.poNumber || project.poNo || project.poNumber || '36',
       String(idx + 1),
       m.materialType,
       m.sizeSpecs,
-      `${m.quantity} ${m.unit}`,
-      m.vendor || project.vendor || 'Manav Metal',
-      m.machineType || project.machineType,
-      project.name,
-      m.orderSource || project.orderSource,
+      `${m.quantity} ${m.unit || 'Nos'}`,
+      m.vendorName || m.vendor || project.vendor || 'Manav Metal',
+      m.description,
+      m.orderedBy || project.orderedBy || currentUser.name || 'Amit',
     ]);
 
     exportToPdfReport(
-      `RSB Manufacturing Material Requirement: ${project.name}`,
+      `RSB Equipment Material Requirement Specification: ${project.name}`,
       headers,
       rows,
-      `Project_${project.name}_Materials_Spec`
+      `Project_${project.name}_10Col_Spec`
     );
   };
 
@@ -327,13 +337,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 {project.projectNumber || 'PRJ-2026-FOHA'}
               </span>
               <span className="px-2.5 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200 text-xs font-bold">
-                {project.machineType}
+                {project.machineName || project.machineType}
               </span>
               <StatusBadge status={project.status} size="sm" />
             </div>
 
             <p className="text-xs text-slate-500 font-medium">
-              Client: <strong className="text-slate-800">{project.customer}</strong> • Machine Execution & Dedicated Material Specification Matrix
+              Client: <strong className="text-slate-800">{project.customer}</strong> • RSB Standard 10-Column Material Workflow
             </p>
           </div>
 
@@ -344,7 +354,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 type="button"
                 onClick={() => onOpenInEntrySheet(project.name)}
                 className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
-                title="Open and edit this project in the fast spreadsheet entry workstation"
+                title="Open in Rapid 4-Step Material Entry Workstation"
               >
                 <Zap className="w-3.5 h-3.5 text-amber-400" />
                 <span>Open in Entry Workstation</span>
@@ -373,13 +383,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>Add Material</span>
+              <span>Add Row</span>
             </button>
 
             <button
               type="button"
               onClick={handleExportExcel}
               className="px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+              title="Export 10-Column Material Table to Excel"
             >
               <Download className="w-3.5 h-3.5 text-emerald-600" />
               <span>Export Excel</span>
@@ -393,78 +404,91 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               <FileText className="w-3.5 h-3.5 text-slate-600" />
               <span>PDF Spec</span>
             </button>
+
+            {isSuperAdmin && (
+              <button
+                type="button"
+                onClick={() => setIsDeleteProjectModalOpen(true)}
+                className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+                title="Delete Project (Super Admin Access)"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                <span>Delete Project</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
 
       {/* ========================================================================= */}
-      {/* 2. PROJECT INFORMATION BANNER (MANDATORY SPEC REQUIREMENT) */}
+      {/* 2. PROJECT INFORMATION BANNER (Machine Name, PO No, Date, Vendor, Ordered By) */}
       {/* ========================================================================= */}
       <div className="bg-slate-900 border border-slate-800 text-white rounded-2xl p-5 shadow-md">
         <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-800">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-5 h-5 text-blue-400" />
             <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-200">
-              Project Information
+              Project Specification & Overview
             </h2>
           </div>
           <span className="text-xs text-slate-400 font-mono">
-            Auto-Linked Master Record
+            RSB Workflow Record
           </span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 font-mono text-xs">
+          {/* 1. Machine Name */}
           <div className="p-3 rounded-xl bg-slate-800/80 border border-slate-700/60">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-              Project Name
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1 font-sans flex items-center gap-1">
+              <Cpu className="w-3 h-3 text-blue-400" />
+              Machine Name
             </span>
-            <p className="text-sm font-bold text-white truncate" title={project.name}>
-              {project.name}
+            <p className="text-base font-black text-white truncate">
+              {project.machineName || project.machineType || '16 HD'}
             </p>
           </div>
 
+          {/* 2. PO Number */}
           <div className="p-3 rounded-xl bg-slate-800/80 border border-slate-700/60">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-              Machine Type
-            </span>
-            <p className="text-sm font-bold text-cyan-300 truncate">
-              {project.machineType}
-            </p>
-          </div>
-
-          <div className="p-3 rounded-xl bg-slate-800/80 border border-slate-700/60">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-              Vendor
-            </span>
-            <p className="text-sm font-bold text-amber-300 truncate">
-              {project.vendor || 'Manav Metal'}
-            </p>
-          </div>
-
-          <div className="p-3 rounded-xl bg-slate-800/80 border border-slate-700/60">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-              Order Source
-            </span>
-            <p className="text-sm font-bold text-slate-200 truncate">
-              {project.orderSource || 'Customer PO'}
-            </p>
-          </div>
-
-          <div className="p-3 rounded-xl bg-slate-800/80 border border-slate-700/60">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1 font-sans flex items-center gap-1">
+              <Tag className="w-3 h-3 text-indigo-400" />
               PO Number
             </span>
-            <p className="text-sm font-bold font-mono text-emerald-400 truncate">
-              {project.poNumber || 'PO-2026-36'}
+            <p className="text-base font-black text-indigo-300 truncate">
+              {project.poNo || project.poNumber || '36'}
             </p>
           </div>
 
+          {/* 3. Date */}
           <div className="p-3 rounded-xl bg-slate-800/80 border border-slate-700/60">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1 font-sans flex items-center gap-1">
+              <Calendar className="w-3 h-3 text-emerald-400" />
               Date
             </span>
-            <p className="text-sm font-bold font-mono text-slate-300 truncate">
-              {project.startDate || project.createdDate || '2026-08-10'}
+            <p className="text-base font-black text-emerald-300 truncate">
+              {project.date || project.startDate || '01-09-2026'}
+            </p>
+          </div>
+
+          {/* 4. Vendor */}
+          <div className="p-3 rounded-xl bg-slate-800/80 border border-slate-700/60">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1 font-sans flex items-center gap-1">
+              <Building2 className="w-3 h-3 text-amber-400" />
+              Vendor
+            </span>
+            <p className="text-base font-black text-amber-300 truncate">
+              {project.vendorName || project.vendor || 'Manav Metal'}
+            </p>
+          </div>
+
+          {/* 5. Ordered By */}
+          <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-800/60">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block mb-1 font-sans flex items-center gap-1">
+              <Lock className="w-3 h-3 text-emerald-400" />
+              Ordered By (Locked)
+            </span>
+            <p className="text-base font-black text-emerald-300 truncate">
+              {project.orderedBy || currentUser.name || 'Amit'}
             </p>
           </div>
         </div>
@@ -648,75 +672,82 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-100/80 text-slate-700 font-bold border-b border-slate-200 text-[11px] uppercase tracking-wider">
-                  <th className="p-3.5 w-12 text-center whitespace-nowrap">Sr</th>
-                  <th className="p-3.5 min-w-[160px] whitespace-nowrap">Material Type</th>
-                  <th className="p-3.5 min-w-[200px] whitespace-nowrap">Size Specification</th>
-                  <th className="p-3.5 min-w-[130px] w-36 text-center whitespace-nowrap">Quantity</th>
-                  <th className="p-3.5 min-w-[140px] whitespace-nowrap">Vendor</th>
-                  <th className="p-3.5 min-w-[140px] whitespace-nowrap">Machine Type</th>
-                  <th className="p-3.5 min-w-[150px] whitespace-nowrap">Project</th>
-                  <th className="p-3.5 min-w-[120px] whitespace-nowrap">Order Source</th>
-                  <th className="p-3.5 w-28 text-center whitespace-nowrap">Actions</th>
+                <tr className="bg-slate-100 text-slate-800 font-bold border-b border-slate-200 text-[11px] uppercase tracking-wider">
+                  <th className="p-3 whitespace-nowrap">Machine Name</th>
+                  <th className="p-3 whitespace-nowrap">Date</th>
+                  <th className="p-3 whitespace-nowrap">PO No</th>
+                  <th className="p-3 w-12 text-center whitespace-nowrap">Sr No</th>
+                  <th className="p-3 min-w-[130px] whitespace-nowrap">Material Type</th>
+                  <th className="p-3 min-w-[160px] whitespace-nowrap">Size Specification</th>
+                  <th className="p-3 min-w-[90px] text-center whitespace-nowrap">Qty</th>
+                  <th className="p-3 min-w-[140px] whitespace-nowrap">Vendor Name</th>
+                  <th className="p-3 min-w-[180px] whitespace-nowrap">Description</th>
+                  <th className="p-3 min-w-[120px] whitespace-nowrap">Ordered By</th>
+                  <th className="p-3 w-28 text-center whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 font-medium">
                 {filteredMaterials.map((m, idx) => (
                   <tr key={m.id || idx} className="hover:bg-blue-50/40 transition-colors">
-                    <td className="p-3.5 text-center font-mono font-bold text-slate-400 whitespace-nowrap">
+                    {/* 1. Machine Name */}
+                    <td className="p-3 font-bold text-purple-900 whitespace-nowrap">
+                      {m.machineName || m.machineType || project.machineName || project.machineType || '16 HD'}
+                    </td>
+
+                    {/* 2. Date */}
+                    <td className="p-3 font-mono text-slate-700 whitespace-nowrap">
+                      {m.date || project.date || project.startDate || '01-09-2026'}
+                    </td>
+
+                    {/* 3. PO No */}
+                    <td className="p-3 font-mono font-bold text-indigo-700 whitespace-nowrap">
+                      {m.poNo || m.poNumber || project.poNo || project.poNumber || '36'}
+                    </td>
+
+                    {/* 4. Sr No */}
+                    <td className="p-3 text-center font-mono font-bold text-slate-400 whitespace-nowrap">
                       {idx + 1}
                     </td>
 
-                    {/* Material Type */}
-                    <td className="p-3.5 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        <span className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-800 border border-slate-200 font-bold text-[11px]">
-                          {m.materialType}
-                        </span>
-                        {m.description && (
-                          <span className="text-slate-500 text-[11px] truncate max-w-[150px]" title={m.description}>
-                            • {m.description}
-                          </span>
-                        )}
-                      </div>
+                    {/* 5. Material Type */}
+                    <td className="p-3 whitespace-nowrap">
+                      <span className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-800 border border-slate-200 font-bold text-[11px]">
+                        {m.materialType}
+                      </span>
                     </td>
 
-                    {/* Size Specification */}
-                    <td className="p-3.5 font-mono font-bold text-blue-700 whitespace-nowrap">
+                    {/* 6. Size Specification */}
+                    <td className="p-3 font-mono font-bold text-blue-700 whitespace-nowrap">
                       {m.sizeSpecs}
                     </td>
 
-                    {/* Quantity */}
-                    <td className="p-3.5 text-center whitespace-nowrap">
-                      <span className="inline-flex items-center justify-center min-w-[84px] px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-300 font-mono font-black text-xs rounded-lg shadow-2xs">
-                        {m.quantity}&nbsp;<span className="text-slate-600 font-bold text-[11px]">{m.unit || 'Nos'}</span>
+                    {/* 7. Quantity */}
+                    <td className="p-3 text-center whitespace-nowrap">
+                      <span className="inline-flex items-center justify-center min-w-[80px] px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-300 font-mono font-black text-xs rounded-lg shadow-2xs">
+                        {m.quantity}&nbsp;<span className="text-slate-600 font-bold text-[10px]">{m.unit || 'Nos'}</span>
                       </span>
                     </td>
 
-                    {/* Vendor */}
-                    <td className="p-3.5 font-semibold text-amber-700 whitespace-nowrap">
-                      {m.vendor || project.vendor || 'Manav Metal'}
+                    {/* 8. Vendor Name */}
+                    <td className="p-3 font-semibold text-amber-800 whitespace-nowrap">
+                      {m.vendorName || m.vendor || project.vendorName || project.vendor || 'Manav Metal'}
                     </td>
 
-                    {/* Machine Type */}
-                    <td className="p-3.5 font-semibold text-purple-700 whitespace-nowrap">
-                      {m.machineType || project.machineType}
+                    {/* 9. Description */}
+                    <td className="p-3 font-semibold text-slate-900 min-w-[180px]">
+                      {m.description}
                     </td>
 
-                    {/* Project */}
-                    <td className="p-3.5 whitespace-nowrap">
-                      <span className="px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 border border-blue-200 font-bold text-[11px]">
-                        {project.name}
+                    {/* 10. Ordered By */}
+                    <td className="p-3 whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-black">
+                        <Lock className="w-3 h-3 text-emerald-600" />
+                        {m.orderedBy || project.orderedBy || currentUser.name || 'Amit'}
                       </span>
-                    </td>
-
-                    {/* Order Source */}
-                    <td className="p-3.5 text-slate-600 whitespace-nowrap">
-                      {m.orderSource || project.orderSource || 'Customer PO'}
                     </td>
 
                     {/* Actions */}
-                    <td className="p-3.5 text-center whitespace-nowrap">
+                    <td className="p-3 text-center whitespace-nowrap">
                       <div className="flex items-center justify-center gap-1">
                         <button
                           type="button"
@@ -901,6 +932,73 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Delete Project Confirmation Modal (Super Admin) */}
+      <Modal
+        isOpen={isDeleteProjectModalOpen}
+        onClose={() => setIsDeleteProjectModalOpen(false)}
+        title="⚠️ Confirm Permanent Project Deletion"
+        maxWidth="md"
+      >
+        <div className="space-y-4">
+          <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
+            <div className="flex items-center gap-2 text-rose-800 font-bold text-sm">
+              <Trash2 className="w-5 h-5 text-rose-600" />
+              <span>Delete "{project.name}"?</span>
+            </div>
+            <p className="text-xs text-rose-700 leading-relaxed">
+              You are about to permanently delete this project from the live RSB ERP system and Supabase cloud. This action cannot be undone.
+            </p>
+          </div>
+
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs font-mono">
+            <div className="flex justify-between">
+              <span className="text-slate-500 font-sans">Project ID:</span>
+              <span className="font-bold text-slate-800">{project.projectNumber || project.id}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500 font-sans">Machine Type:</span>
+              <span className="font-bold text-slate-800">{project.machineName || project.machineType}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500 font-sans">Total Materials:</span>
+              <span className="font-bold text-blue-600">{displayMaterials.length} items</span>
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2 p-2.5 bg-slate-100 rounded-xl text-xs text-slate-700 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={cascadeDeleteReqs}
+              onChange={(e) => setCascadeDeleteReqs(e.target.checked)}
+              className="w-4 h-4 text-rose-600 rounded border-slate-300 focus:ring-rose-500"
+            />
+            <span className="font-medium">Also delete all linked material requirement rows ({displayMaterials.length} items)</span>
+          </label>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
+            <button
+              type="button"
+              onClick={() => setIsDeleteProjectModalOpen(false)}
+              className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                deleteProject(project.id, cascadeDeleteReqs);
+                setIsDeleteProjectModalOpen(false);
+                onBack();
+              }}
+              className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md cursor-pointer transition active:scale-95 flex items-center gap-1.5"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Permanently Delete Project</span>
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );
