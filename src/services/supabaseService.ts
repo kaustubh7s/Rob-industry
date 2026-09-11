@@ -602,3 +602,64 @@ export const dbDeleteRequirement = async (reqId: string) => {
     console.warn('Supabase requirement delete failed:', e);
   }
 };
+
+export const dbBulkUpsertRequirements = async (
+  reqs: ProjectMaterialRequirementItem[]
+): Promise<{ success: boolean; count: number; message?: string }> => {
+  const supabase = getSupabaseClient();
+  if (!supabase || reqs.length === 0) return { success: false, count: 0, message: 'No Supabase client or empty list' };
+
+  try {
+    const mapped = reqs.map((r) => ({
+      id: r.id,
+      sr_no: r.srNo,
+      description: r.description,
+      material_type: r.materialType,
+      material_grade: r.materialGrade,
+      size_specs: r.sizeSpecs,
+      quantity: r.quantity,
+      unit: r.unit,
+      weight_kg: r.weightKg,
+      project_name: r.projectName,
+      customer_name: r.customerName,
+      po_number: r.poNumber,
+      po_date: r.poDate,
+      machine_type: r.machineType,
+      order_source: r.orderSource,
+      delivery_date: r.deliveryDate,
+      vendor: r.vendor,
+      bom_ref: r.bomRef,
+      stock_status: r.stockStatus,
+      available_stock: r.availableStock,
+      shortage_qty: r.shortageQty,
+      production_status: r.productionStatus,
+      qc_status: r.qcStatus,
+      dispatch_status: r.dispatchStatus,
+      job_card_no: r.jobCardNo,
+      assigned_operator: r.assignedOperator,
+      assigned_machine: r.assignedMachine,
+      production_stage: r.productionStage,
+      material_cost: r.materialCost,
+      labor_cost: r.laborCost,
+      machine_cost: r.machineCost,
+      outsourcing_cost: r.outsourcingCost,
+      total_cost: r.totalCost,
+      selling_price_allocated: r.sellingPriceAllocated,
+      notes: r.notes,
+      ordered_by: r.orderedBy,
+      timestamp: (r as any).timestamp || r.date || new Date().toISOString(),
+    }));
+
+    const { error } = await supabase.from('project_material_requirements').upsert(mapped, { onConflict: 'id' });
+    if (error) {
+      console.warn('Supabase bulk requirements upsert warning:', error);
+      return { success: false, count: 0, message: error.message };
+    }
+
+    return { success: true, count: mapped.length };
+  } catch (e: any) {
+    console.warn('Supabase bulk requirements upsert error:', e);
+    return { success: false, count: 0, message: e?.message };
+  }
+};
+

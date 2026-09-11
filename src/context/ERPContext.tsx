@@ -59,7 +59,10 @@ import {
   dbDeleteProject,
   dbUpsertRequirement,
   dbDeleteRequirement,
+  dbBulkUpsertRequirements,
+  pullAllDataFromSupabase,
 } from '../services/supabaseService';
+import { getSupabaseClient } from '../lib/supabaseClient';
 
 interface ERPContextType {
   // Authentication & Role
@@ -597,6 +600,168 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(LOCAL_STORAGE_KEY + '_vdocs', JSON.stringify(vendorDocuments));
   }, [vendorDocuments]);
 
+  // Initial Background Sync & Real-time Live Subscription with Supabase Cloud
+  useEffect(() => {
+    let isMounted = true;
+
+    const initCloudSync = async () => {
+      const client = getSupabaseClient();
+      if (!client) return;
+
+      // 1. Pull latest projects and requirements from cloud on startup
+      try {
+        const pullRes = await pullAllDataFromSupabase();
+        if (isMounted && pullRes.success && pullRes.data) {
+          if (pullRes.data.projects && pullRes.data.projects.length > 0) {
+            setProjects((prev) => {
+              const remoteIds = new Set(pullRes.data!.projects!.map((p) => p.id));
+              const localUnsynced = prev.filter((p) => !remoteIds.has(p.id));
+              return [...pullRes.data!.projects!, ...localUnsynced];
+            });
+          }
+          if (pullRes.data.requirements && pullRes.data.requirements.length > 0) {
+            setProjectRequirements((prev) => {
+              const remoteIds = new Set(pullRes.data!.requirements!.map((r) => r.id));
+              const localUnsynced = prev.filter((r) => !remoteIds.has(r.id));
+              return [...pullRes.data!.requirements!, ...localUnsynced];
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Initial cloud pull skipped:', err);
+      }
+
+      // 2. Realtime listener: Listen for any new orders/requirements saved on other devices/phones
+      try {
+        const channel = client
+          .channel('rsb-live-sync')
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'project_material_requirements' },
+            async (payload) => {
+              if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+                const updatedReq = payload.new as any;
+                if (!updatedReq || !updatedReq.id) return;
+                const formatted: ProjectMaterialRequirementItem = {
+                  id: updatedReq.id,
+                  srNo: updatedReq.sr_no,
+                  description: updatedReq.description,
+                  materialType: updatedReq.material_type,
+                  materialGrade: updatedReq.material_grade || 'SS 304',
+                  sizeSpecs: updatedReq.size_specs,
+                  quantity: Number(updatedReq.quantity || 1),
+                  unit: updatedReq.unit || 'Nos',
+                  weightKg: Number(updatedReq.weight_kg || 0),
+                  projectName: updatedReq.project_name,
+                  customerName: updatedReq.customer_name,
+                  poNumber: updatedReq.po_number,
+                  poDate: updatedReq.po_date,
+                  machineType: updatedReq.machine_type,
+                  orderSource: updatedReq.order_source,
+                  deliveryDate: updatedReq.delivery_date,
+                  vendor: updatedReq.vendor,
+                  bomRef: updatedReq.bom_ref,
+                  lastPurchaseRate: Number(updatedReq.last_purchase_rate || 0),
+                  lastPurchaseDate: updatedReq.last_purchase_date,
+                  vendorRating: Number(updatedReq.vendor_rating || 5),
+                  vendorReliability: Number(updatedReq.vendor_reliability || 100),
+                  stockStatus: updatedReq.stock_status,
+                  availableStock: Number(updatedReq.available_stock || 0),
+                  shortageQty: Number(updatedReq.shortage_qty || 0),
+                  productionStatus: updatedReq.production_status,
+                  qcStatus: updatedReq.qc_status,
+                  dispatchStatus: updatedReq.dispatch_status,
+                  jobCardNo: updatedReq.job_card_no,
+                  assignedOperator: updatedReq.assigned_operator,
+                  assignedMachine: updatedReq.assigned_machine,
+                  productionStage: updatedReq.production_stage,
+                  materialCost: Number(updatedReq.material_cost || 0),
+                  laborCost: Number(updatedReq.labor_cost || 0),
+                  machineCost: Number(updatedReq.machine_cost || 0),
+                  outsourcingCost: Number(updatedReq.outsourcing_cost || 0),
+                  totalCost: Number(updatedReq.total_cost || 0),
+                  sellingPriceAllocated: Number(updatedReq.selling_price_allocated || 0),
+                  notes: updatedReq.notes,
+                  orderedBy: updatedReq.ordered_by,
+                };
+
+                setProjectRequirements((prev) => {
+                  const existingIdx = prev.findIndex((r) => r.id === formatted.id);
+                  if (existingIdx >= 0) {
+                    const copy = [...prev];
+                    copy[existingIdx] = formatted;
+                    return copy;
+                  }
+                  return [formatted, ...prev];
+                });
+              } else if (payload.eventType === 'DELETE') {
+                const oldId = (payload.old as any)?.id;
+                if (oldId) {
+                  setProjectRequirements((prev) => prev.filter((r) => r.id !== oldId));
+                }
+              }
+            }
+          )
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'projects' },
+            async (payload) => {
+              if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+                const updatedPrj = payload.new as any;
+                if (!updatedPrj || !updatedPrj.id) return;
+                const formattedPrj: ProjectItem = {
+                  id: updatedPrj.id,
+                  projectNumber: updatedPrj.project_number,
+                  name: updatedPrj.name,
+                  customer: updatedPrj.customer,
+                  orderSource: updatedPrj.order_source,
+                  machineType: updatedPrj.machine_type,
+                  vendor: updatedPrj.vendor,
+                  poNumber: updatedPrj.po_number,
+                  startDate: updatedPrj.start_date || new Date().toISOString().split('T')[0],
+                  targetCompletionDate: updatedPrj.target_completion_date || new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+                  priority: updatedPrj.priority || 'medium',
+                  status: updatedPrj.status || 'Production',
+                  projectValue: Number(updatedPrj.project_value || 0),
+                  notes: updatedPrj.notes,
+                  progressPct: Number(updatedPrj.progress_pct || 0),
+                };
+                setProjects((prev) => {
+                  const idx = prev.findIndex((p) => p.id === formattedPrj.id);
+                  if (idx >= 0) {
+                    const copy = [...prev];
+                    copy[idx] = formattedPrj;
+                    return copy;
+                  }
+                  return [formattedPrj, ...prev];
+                });
+              } else if (payload.eventType === 'DELETE') {
+                const oldId = (payload.old as any)?.id;
+                if (oldId) {
+                  setProjects((prev) => prev.filter((p) => p.id !== oldId));
+                }
+              }
+            }
+          )
+          .subscribe();
+
+        return () => {
+          client.removeChannel(channel);
+        };
+      } catch (e) {
+        console.warn('Realtime subscription error:', e);
+      }
+    };
+
+    const cleanupPromise = initCloudSync();
+    return () => {
+      isMounted = false;
+      cleanupPromise.then((cleanup) => {
+        if (typeof cleanup === 'function') cleanup();
+      });
+    };
+  }, []);
+
   // Audit Logger Helper
   const logAudit = (action: string, module: string, details: string) => {
     const newLog: AuditLog = {
@@ -800,6 +965,37 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setProjectRequirements((prev) => [...prev, ...mapped]);
     logAudit('Excel Customer PO Import', 'Project Material Requirement', `Imported ${mapped.length} material requirements from Customer PO Excel`);
     addNotification('Customer PO Imported', `Generated ${mapped.length} material requirements with automatic stock matching`, 'success', 'requirements');
+
+    // Automatically synchronize all saved requirements to Supabase cloud in real-time
+    dbBulkUpsertRequirements(mapped);
+
+    // Auto-create/upsert project on Supabase if not already created
+    mapped.forEach((req) => {
+      const existingProject = projects.find((p) => p.name.toLowerCase() === req.projectName.toLowerCase());
+      if (!existingProject) {
+        const autoProject: ProjectItem = {
+          id: 'prj-' + Date.now() + '-' + Math.random().toString(36).substring(2, 5),
+          name: req.projectName,
+          projectNumber: `PRJ-${String(projects.length + 1).padStart(3, '0')}`,
+          customer: req.customerName || 'Cadila Healthcare Ltd (Zydus)',
+          orderSource: 'Customer PO',
+          machineType: (req.machineType || '16 HD') as any,
+          vendor: req.vendor || 'Manav Metal',
+          poNumber: req.poNumber || '36',
+          poNo: req.poNumber || '36',
+          startDate: req.poDate || todayFormatted,
+          targetCompletionDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+          priority: 'high',
+          status: 'Production',
+          projectValue: 450000,
+          progressPct: 10,
+          materialsCount: mapped.length,
+          totalQuantity: mapped.reduce((acc, m) => acc + (Number(m.quantity) || 0), 0),
+        };
+        addProject(autoProject);
+        dbUpsertProject(autoProject);
+      }
+    });
   };
 
   // Populate from BOM

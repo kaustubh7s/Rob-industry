@@ -824,8 +824,8 @@ export const ProjectMaterialEntry: React.FC = () => {
       origin: { y: 0.6 },
     });
 
-    setSaveToast(`🎉 Successfully saved Machine Order "${machineName}" with ${rows.length} materials (Ordered By: ${activeOrderedBy})!`);
-    setTimeout(() => setSaveToast(null), 4000);
+    setSaveToast(`🎉 Saved Order for Project "${targetProject}" with ${rows.length} materials • ☁️ Auto-Synced to Cloud & Live across all devices!`);
+    setTimeout(() => setSaveToast(null), 4500);
   };
 
   // Export to Excel (Exact 10 Columns)
