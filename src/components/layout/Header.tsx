@@ -343,8 +343,19 @@ export const Header: React.FC<HeaderProps> = ({
                       }`}
                     >
                       <div>
-                        <span className="block font-semibold text-white">{opt.title}</span>
-                        <span className="text-[10px] text-slate-400 font-normal">{opt.subtitle}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="block font-bold text-white text-xs">{opt.user.name}</span>
+                          <span className={`px-1.5 py-0.2 rounded text-[9px] font-mono font-bold uppercase border ${
+                            opt.user.authLevel?.startsWith('Tier 1') || opt.user.role === 'super_admin'
+                              ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                              : opt.user.authLevel?.startsWith('Tier 2') || opt.user.role === 'kaustubh' || opt.user.role === 'admin'
+                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                              : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                          }`}>
+                            {opt.user.authLevel ? opt.user.authLevel.replace(/^Tier \d+:\s*/i, '') : opt.user.role}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-normal">{opt.user.department || 'Plant Operations'}</span>
                       </div>
                       <div className="flex items-center gap-1">
                         {!isSelected && <Lock className="w-3 h-3 text-slate-400" />}

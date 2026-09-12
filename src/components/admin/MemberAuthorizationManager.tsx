@@ -184,32 +184,45 @@ export const MemberAuthorizationManager: React.FC = () => {
     if (!editForm) return;
 
     let derivedRole: UserRole = editForm.role;
+    let derivedDept = editForm.department;
     if (editForm.authLevel === 'Tier 1: Super Admin') {
       derivedRole = 'super_admin';
+      if (!derivedDept || derivedDept === 'Material Data Entry Floor') {
+        derivedDept = 'Super Admin & Executive Management';
+      }
     } else if (editForm.authLevel === 'Tier 2: Plant Head / Admin') {
       derivedRole = editForm.name.toLowerCase().includes('kaustubh') ? 'kaustubh' : 'admin';
+      if (!derivedDept || derivedDept === 'Material Data Entry Floor') {
+        derivedDept = 'Plant Administration & Engineering';
+      }
     } else if (editForm.authLevel === 'Tier 4: Data Entry Operator') {
       derivedRole = 'operator';
+      if (!derivedDept || derivedDept === 'Super Admin & Executive Management') {
+        derivedDept = 'Material Data Entry Floor';
+      }
     }
 
-    alterUserAuthorization(
-      editForm.id,
-      editForm.authLevel,
-      editForm.permissions,
-      editForm.status
-    );
+    const updatedPermissions: UserPermissions = {
+      ...editForm.permissions,
+      canEditMaterials: true,
+      canApproveOrders: editForm.authLevel === 'Tier 1: Super Admin' || editForm.authLevel === 'Tier 2: Plant Head / Admin' ? true : editForm.permissions.canApproveOrders,
+      canOverrideLock: editForm.authLevel === 'Tier 1: Super Admin' || editForm.authLevel === 'Tier 2: Plant Head / Admin' ? true : editForm.permissions.canOverrideLock,
+      canManageUsers: editForm.authLevel === 'Tier 1: Super Admin' ? true : (editForm.permissions.canManageUsers || false),
+      canDeleteRecords: editForm.authLevel === 'Tier 1: Super Admin' ? true : (editForm.permissions.canDeleteRecords || false),
+      canExportReports: true,
+    };
 
     updateUser(editForm.id, {
       name: editForm.name,
       email: editForm.email,
       role: derivedRole,
-      department: editForm.department,
+      department: derivedDept,
       authLevel: editForm.authLevel,
       status: editForm.status,
-      permissions: editForm.permissions,
+      permissions: updatedPermissions,
     });
 
-    setSaveToast(`Successfully updated authorizations for ${editForm.name}`);
+    setSaveToast(`Successfully updated authorizations for ${editForm.name} to ${editForm.authLevel}`);
     setTimeout(() => setSaveToast(null), 3000);
     setEditingUser(null);
     setEditForm(null);
@@ -1006,7 +1019,48 @@ export const MemberAuthorizationManager: React.FC = () => {
                 </label>
                 <select
                   value={editForm.authLevel}
-                  onChange={(e) => setEditForm({ ...editForm, authLevel: e.target.value as AuthLevel })}
+                  onChange={(e) => {
+                    const newTier = e.target.value as AuthLevel;
+                    let autoDept = editForm.department;
+                    let autoPerms = { ...editForm.permissions };
+                    if (newTier === 'Tier 1: Super Admin') {
+                      autoDept = 'Super Admin & Executive Management';
+                      autoPerms = {
+                        canEditMaterials: true,
+                        canApproveOrders: true,
+                        canDeleteRecords: true,
+                        canManageUsers: true,
+                        canExportReports: true,
+                        canOverrideLock: true,
+                      };
+                    } else if (newTier === 'Tier 2: Plant Head / Admin') {
+                      autoDept = 'Plant Administration & Engineering';
+                      autoPerms = {
+                        canEditMaterials: true,
+                        canApproveOrders: true,
+                        canDeleteRecords: true,
+                        canManageUsers: false,
+                        canExportReports: true,
+                        canOverrideLock: true,
+                      };
+                    } else if (newTier === 'Tier 4: Data Entry Operator') {
+                      autoDept = 'Material Data Entry Floor';
+                      autoPerms = {
+                        canEditMaterials: true,
+                        canApproveOrders: false,
+                        canDeleteRecords: false,
+                        canManageUsers: false,
+                        canExportReports: true,
+                        canOverrideLock: false,
+                      };
+                    }
+                    setEditForm({
+                      ...editForm,
+                      authLevel: newTier,
+                      department: autoDept,
+                      permissions: autoPerms,
+                    });
+                  }}
                   className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
                 >
                   {ALL_AUTH_LEVELS.map((tier) => (
