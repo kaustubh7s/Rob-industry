@@ -288,13 +288,16 @@ export const ProjectMaterialEntry: React.FC = () => {
   // Ordered By is locked to the logged-in user (Amit, Kaustubh, Rahul)
   const activeOrderedBy = currentUser?.name || 'Amit';
 
-  // Seed Initial 10-column table
+  // Seed Initial 10-column table (discard empty/blank drafts)
   const [rows, setRows] = useState<EntryRow[]>(() => {
     const saved = localStorage.getItem(DRAFT_STORAGE_KEY);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const hasRealData = parsed.some((r) => r.description && r.description.trim() !== '' && r.description !== 'New Component');
+          if (hasRealData) return parsed;
+        }
       } catch (e) {
         console.error('Failed to parse draft:', e);
       }
@@ -312,10 +315,13 @@ export const ProjectMaterialEntry: React.FC = () => {
 
   const quickDescInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isUserManuallyEditingRef = useRef<boolean>(false);
 
-  // Auto-save draft to localStorage
+  // Auto-save draft to localStorage (only save if there are real items)
   useEffect(() => {
-    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(rows));
+    if (rows.length > 0) {
+      localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(rows));
+    }
     const now = new Date();
     setLastAutoSavedTime(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
   }, [rows]);
@@ -334,6 +340,75 @@ export const ProjectMaterialEntry: React.FC = () => {
       setSelectedProjectName(projects[0].name);
     }
   }, [projects]);
+
+  // REAL-TIME LIVE WORKSTATION SYNC: Automatically synchronize rows & order header with live Supabase DB & other workstations
+  useEffect(() => {
+    if (!selectedProjectName) return;
+    const currentProject = projects.find((p) => p.name.toLowerCase() === selectedProjectName.toLowerCase());
+    if (!currentProject) return;
+
+    // Load actual material requirements for this project from live state
+    const projectMats = getMaterialsForProject(currentProject, projectRequirements);
+
+    if (projectMats.length > 0) {
+      const mappedRows: EntryRow[] = projectMats.map((m, idx) => ({
+        id: m.id,
+        machineName: m.machineName || m.machineType || currentProject.machineName || currentProject.machineType || machineName,
+        date: m.poDate || m.date || currentProject.startDate || entryDate,
+        poNo: m.poNumber || m.poNo || currentProject.poNo || currentProject.poNumber || poNo,
+        srNo: idx + 1,
+        materialType: (m.materialType || 'SS Flat') as MaterialType,
+        sizeSpecs: m.sizeSpecs || '80 x 6 x 485',
+        quantity: Number(m.quantity) || 1,
+        unit: m.unit || 'Nos',
+        vendorName: m.vendor || m.vendorName || currentProject.vendorName || currentProject.vendor || vendorName,
+        description: m.description || 'Component',
+        orderedBy: m.orderedBy || activeOrderedBy,
+        projectName: currentProject.name,
+      }));
+
+      setRows((prev) => {
+        // If current rows are empty or only contain placeholder blank rows, immediately populate from DB
+        const isPlaceholderOnly = prev.length === 0 || prev.every((r) => !r.description || r.description === 'New Component' || !r.sizeSpecs);
+        if (isPlaceholderOnly) {
+          return mappedRows;
+        }
+
+        // If not actively typing and requirements changed from cloud or another workstation, sync rows
+        if (!isUserManuallyEditingRef.current) {
+          const prevKey = prev.map((r) => `${r.id}_${r.quantity}_${r.description}_${r.sizeSpecs}`).join('|');
+          const nextKey = mappedRows.map((r) => `${r.id}_${r.quantity}_${r.description}_${r.sizeSpecs}`).join('|');
+          if (prevKey !== nextKey) {
+            return mappedRows;
+          }
+        }
+        return prev;
+      });
+
+      // Update header fields to match project
+      if (currentProject.machineName || currentProject.machineType) {
+        setMachineName(currentProject.machineName || currentProject.machineType || '16 HD');
+      }
+      if (currentProject.vendorName || currentProject.vendor) {
+        setVendorName(currentProject.vendorName || currentProject.vendor || 'Manav Metal');
+      }
+      if (currentProject.poNo || currentProject.poNumber) {
+        setPoNo(currentProject.poNo || currentProject.poNumber || '36');
+      }
+      if (currentProject.date || currentProject.startDate) {
+        setEntryDate(currentProject.date || currentProject.startDate || '01-09-2026');
+      }
+    } else {
+      // If project has 0 materials, clear stale rows belonging to other projects
+      setRows((prev) => {
+        const hasOtherProject = prev.some((r) => r.projectName && r.projectName.toLowerCase() !== selectedProjectName.toLowerCase());
+        if (hasOtherProject) {
+          return [];
+        }
+        return prev;
+      });
+    }
+  }, [selectedProjectName, projectRequirements, projects]);
 
   // Find previous similar orders for the selected machine
   const previousSimilarOrders = useMemo(() => {
@@ -840,6 +915,7 @@ export const ProjectMaterialEntry: React.FC = () => {
   // Cell Change (Ordered By is strictly locked)
   const handleCellChange = (id: string, field: keyof EntryRow, value: any) => {
     if (field === 'orderedBy') return; // Read-only
+    isUserManuallyEditingRef.current = true;
     setRows((prev) =>
       prev.map((r) => {
         if (r.id === id) {
@@ -854,6 +930,7 @@ export const ProjectMaterialEntry: React.FC = () => {
   const handleBulkDelete = () => {
     if (selectedRowIds.length === 0) return;
     if (confirm(`Delete ${selectedRowIds.length} selected rows?`)) {
+      isUserManuallyEditingRef.current = false;
       selectedRowIds.forEach((id) => {
         deleteProjectRequirement(id);
         const row = rows.find((r) => r.id === id);
@@ -879,6 +956,7 @@ export const ProjectMaterialEntry: React.FC = () => {
 
   // Save Project
   const handleSaveProject = () => {
+    isUserManuallyEditingRef.current = false;
     const targetProject = selectedProjectName || (projects.length > 0 ? projects[0].name : 'FOHA');
 
     const itemsToSave: Partial<ProjectMaterialRequirementItem>[] = rows.map((r) => ({
@@ -913,6 +991,7 @@ export const ProjectMaterialEntry: React.FC = () => {
     }));
 
     replaceProjectRequirements(targetProject, itemsToSave);
+    localStorage.removeItem(DRAFT_STORAGE_KEY);
 
     confetti({
       particleCount: 100,

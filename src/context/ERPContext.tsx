@@ -832,8 +832,54 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     const cleanupPromise = initCloudSync();
+
+    // Cross-tab and window focus instant synchronization
+    let broadcast: BroadcastChannel | null = null;
+    try {
+      broadcast = new BroadcastChannel('rsb_erp_live_sync');
+      broadcast.onmessage = async (event) => {
+        if (event.data?.type === 'SYNC_ALL' || event.data?.type === 'PROJECTS_UPDATED') {
+          const pullRes = await pullAllDataFromSupabase();
+          if (pullRes.success && pullRes.data) {
+            if (pullRes.data.projects && pullRes.data.projects.length > 0) setProjects(pullRes.data.projects);
+            if (pullRes.data.requirements && pullRes.data.requirements.length > 0) setProjectRequirements(pullRes.data.requirements);
+          }
+        }
+      };
+    } catch (e) {
+      // BroadcastChannel fallback
+    }
+
+    const handleWindowFocus = async () => {
+      try {
+        const pullRes = await pullAllDataFromSupabase();
+        if (pullRes.success && pullRes.data) {
+          if (pullRes.data.projects && pullRes.data.projects.length > 0) {
+            setProjects((prev) => {
+              const remoteIds = new Set(pullRes.data!.projects!.map((p) => p.id));
+              const localUnsynced = prev.filter((p) => !remoteIds.has(p.id));
+              return [...pullRes.data!.projects!, ...localUnsynced];
+            });
+          }
+          if (pullRes.data.requirements && pullRes.data.requirements.length > 0) {
+            setProjectRequirements((prev) => {
+              const remoteIds = new Set(pullRes.data!.requirements!.map((r) => r.id));
+              const localUnsynced = prev.filter((r) => !remoteIds.has(r.id));
+              return [...pullRes.data!.requirements!, ...localUnsynced];
+            });
+          }
+        }
+      } catch (err) {
+        // silent
+      }
+    };
+
+    window.addEventListener('focus', handleWindowFocus);
+
     return () => {
       isMounted = false;
+      window.removeEventListener('focus', handleWindowFocus);
+      if (broadcast) broadcast.close();
       cleanupPromise.then((cleanup) => {
         if (typeof cleanup === 'function') cleanup();
       });
@@ -1078,6 +1124,57 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (mapped.length > 0) {
       dbBulkUpsertRequirements(mapped);
     }
+
+    // Update project metrics (materialsCount & totalQuantity) and sync to Supabase
+    const existingProject = projects.find((p) => p.name.toLowerCase() === projectName.toLowerCase());
+    const totalQty = mapped.reduce((acc, m) => acc + (Number(m.quantity) || 0), 0);
+    const firstItem = mapped[0];
+
+    if (existingProject) {
+      const updatedPrj: ProjectItem = {
+        ...existingProject,
+        materialsCount: mapped.length,
+        totalQuantity: totalQty,
+        machineName: firstItem?.machineName || existingProject.machineName,
+        vendorName: firstItem?.vendorName || existingProject.vendorName,
+        poNo: firstItem?.poNo || existingProject.poNo,
+        date: firstItem?.date || existingProject.date,
+      };
+      setProjects((prev) => prev.map((p) => (p.id === updatedPrj.id ? updatedPrj : p)));
+      dbUpsertProject(updatedPrj);
+    } else if (mapped.length > 0) {
+      const autoProject: ProjectItem = {
+        id: 'prj-' + Date.now() + '-' + Math.random().toString(36).substring(2, 5),
+        name: projectName,
+        projectNumber: `PRJ-${String(projects.length + 1).padStart(3, '0')}`,
+        customer: firstItem?.customerName || 'Cadila Healthcare Ltd (Zydus)',
+        orderSource: 'Workstation Entry',
+        machineType: (firstItem?.machineType || '16 HD') as any,
+        machineName: firstItem?.machineName || '16 HD',
+        vendor: firstItem?.vendorName || 'Manav Metal',
+        vendorName: firstItem?.vendorName || 'Manav Metal',
+        poNumber: firstItem?.poNumber || '36',
+        poNo: firstItem?.poNo || '36',
+        startDate: firstItem?.date || todayFormatted,
+        targetCompletionDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+        priority: 'high',
+        status: 'Material Procurement',
+        projectValue: 450000,
+        progressPct: 10,
+        materialsCount: mapped.length,
+        totalQuantity: totalQty,
+        orderedBy: firstItem?.orderedBy || currentUser?.name || 'Amit',
+      };
+      addProject(autoProject);
+      dbUpsertProject(autoProject);
+    }
+
+    // Broadcast across tabs/windows
+    try {
+      const bc = new BroadcastChannel('rsb_erp_live_sync');
+      bc.postMessage({ type: 'PROJECTS_UPDATED', projectName });
+      bc.close();
+    } catch (e) {}
   };
 
   const bulkImportProjectRequirements = (items: any[]) => {
