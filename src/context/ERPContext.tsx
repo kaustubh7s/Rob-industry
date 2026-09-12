@@ -709,7 +709,23 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             setProjects(pullRes.data.projects);
           }
           if (pullRes.data.requirements) {
-            setProjectRequirements(pullRes.data.requirements);
+            const remoteReqs = pullRes.data.requirements;
+            setProjectRequirements((prev) => {
+              const localMap = new Map(prev.map((r) => [r.id, r]));
+              return remoteReqs.map((remoteReq: ProjectMaterialRequirementItem) => {
+                const local = localMap.get(remoteReq.id);
+                const isArrived = remoteReq.isReceived ?? local?.isReceived ?? false;
+                return {
+                  ...remoteReq,
+                  isReceived: isArrived,
+                  receivedAt: remoteReq.receivedAt || (isArrived ? local?.receivedAt : undefined),
+                  receivedBy: remoteReq.receivedBy || (isArrived ? local?.receivedBy : undefined),
+                  receivedByInitials: remoteReq.receivedByInitials || (isArrived ? local?.receivedByInitials : undefined),
+                  receivedByRole: remoteReq.receivedByRole || (isArrived ? local?.receivedByRole : undefined),
+                  receivedNotes: remoteReq.receivedNotes || (isArrived ? local?.receivedNotes : undefined),
+                };
+              });
+            });
           }
           if (pullRes.data.materials && pullRes.data.materials.length > 0) {
             setMaterials(pullRes.data.materials);
@@ -795,6 +811,12 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   sellingPriceAllocated: Number(updatedReq.selling_price_allocated || 0),
                   notes: updatedReq.notes,
                   orderedBy: updatedReq.ordered_by,
+                  isReceived: Boolean(updatedReq.is_received || updatedReq.isReceived || (updatedReq.notes && updatedReq.notes.includes('[INWARD_VERIFIED]'))),
+                  receivedAt: updatedReq.received_at || updatedReq.receivedAt,
+                  receivedBy: updatedReq.received_by || updatedReq.receivedBy,
+                  receivedByInitials: updatedReq.received_by_initials || updatedReq.receivedByInitials,
+                  receivedByRole: updatedReq.received_by_role || updatedReq.receivedByRole,
+                  receivedNotes: updatedReq.received_notes || updatedReq.receivedNotes,
                 };
 
                 setProjectRequirements((prev) => {
@@ -828,21 +850,21 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   customer: updatedPrj.customer,
                   orderSource: updatedPrj.order_source,
                   machineType: updatedPrj.machine_type,
-                  vendor: updatedPrj.vendor,
-                  poNumber: updatedPrj.po_number,
-                  startDate: updatedPrj.start_date || new Date().toISOString().split('T')[0],
-                  targetCompletionDate: updatedPrj.target_completion_date || new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
-                  priority: updatedPrj.priority || 'medium',
-                  status: updatedPrj.status || 'Production',
+                  poNumber: updatedPrj.po_number || updatedPrj.poNumber || '36',
+                  vendor: updatedPrj.vendor || 'Manav Metal',
+                  startDate: updatedPrj.start_date,
+                  targetCompletionDate: updatedPrj.target_completion_date,
+                  priority: updatedPrj.priority,
+                  status: updatedPrj.status,
                   projectValue: Number(updatedPrj.project_value || 0),
                   notes: updatedPrj.notes,
                   progressPct: Number(updatedPrj.progress_pct || 0),
                 };
                 setProjects((prev) => {
-                  const idx = prev.findIndex((p) => p.id === formattedPrj.id);
-                  if (idx >= 0) {
+                  const existingIdx = prev.findIndex((p) => p.id === formattedPrj.id);
+                  if (existingIdx >= 0) {
                     const copy = [...prev];
-                    copy[idx] = formattedPrj;
+                    copy[existingIdx] = formattedPrj;
                     return copy;
                   }
                   return [formattedPrj, ...prev];
@@ -876,7 +898,25 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const pullRes = await pullAllDataFromSupabase();
           if (pullRes.success && pullRes.data) {
             if (pullRes.data.projects && pullRes.data.projects.length > 0) setProjects(pullRes.data.projects);
-            if (pullRes.data.requirements && pullRes.data.requirements.length > 0) setProjectRequirements(pullRes.data.requirements);
+            if (pullRes.data.requirements && pullRes.data.requirements.length > 0) {
+              const remoteReqs = pullRes.data.requirements;
+              setProjectRequirements((prev) => {
+                const localMap = new Map(prev.map((r) => [r.id, r]));
+                return remoteReqs.map((remoteReq: ProjectMaterialRequirementItem) => {
+                  const local = localMap.get(remoteReq.id);
+                  const isArrived = remoteReq.isReceived ?? local?.isReceived ?? false;
+                  return {
+                    ...remoteReq,
+                    isReceived: isArrived,
+                    receivedAt: remoteReq.receivedAt || (isArrived ? local?.receivedAt : undefined),
+                    receivedBy: remoteReq.receivedBy || (isArrived ? local?.receivedBy : undefined),
+                    receivedByInitials: remoteReq.receivedByInitials || (isArrived ? local?.receivedByInitials : undefined),
+                    receivedByRole: remoteReq.receivedByRole || (isArrived ? local?.receivedByRole : undefined),
+                    receivedNotes: remoteReq.receivedNotes || (isArrived ? local?.receivedNotes : undefined),
+                  };
+                });
+              });
+            }
           }
         }
       };
@@ -892,7 +932,23 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             setProjects(pullRes.data.projects);
           }
           if (pullRes.data.requirements) {
-            setProjectRequirements(pullRes.data.requirements);
+            const remoteReqs = pullRes.data.requirements;
+            setProjectRequirements((prev) => {
+              const localMap = new Map(prev.map((r) => [r.id, r]));
+              return remoteReqs.map((remoteReq: ProjectMaterialRequirementItem) => {
+                const local = localMap.get(remoteReq.id);
+                const isArrived = remoteReq.isReceived ?? local?.isReceived ?? false;
+                return {
+                  ...remoteReq,
+                  isReceived: isArrived,
+                  receivedAt: remoteReq.receivedAt || (isArrived ? local?.receivedAt : undefined),
+                  receivedBy: remoteReq.receivedBy || (isArrived ? local?.receivedBy : undefined),
+                  receivedByInitials: remoteReq.receivedByInitials || (isArrived ? local?.receivedByInitials : undefined),
+                  receivedByRole: remoteReq.receivedByRole || (isArrived ? local?.receivedByRole : undefined),
+                  receivedNotes: remoteReq.receivedNotes || (isArrived ? local?.receivedNotes : undefined),
+                };
+              });
+            });
           }
         }
       } catch (err) {
@@ -1184,17 +1240,31 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateProjectRequirement = (id: string, updates: Partial<ProjectMaterialRequirementItem>) => {
-    setProjectRequirements((prev) =>
-      prev.map((r) => {
-        if (r.id === id) {
-          const merged = { ...r, ...updates };
-          merged.totalCost = (merged.materialCost || 0) + (merged.laborCost || 0) + (merged.machineCost || 0) + (merged.outsourcingCost || 0);
-          dbUpsertRequirement(merged);
-          return merged;
-        }
-        return r;
-      })
-    );
+    setProjectRequirements((prev) => {
+      const exists = prev.some((r) => r.id === id);
+      let updatedList: ProjectMaterialRequirementItem[];
+      if (exists) {
+        updatedList = prev.map((r) => {
+          if (r.id === id) {
+            const merged = { ...r, ...updates };
+            merged.totalCost = (merged.materialCost || 0) + (merged.laborCost || 0) + (merged.machineCost || 0) + (merged.outsourcingCost || 0);
+            dbUpsertRequirement(merged);
+            return merged;
+          }
+          return r;
+        });
+      } else {
+        const newEntry = { id, ...updates } as ProjectMaterialRequirementItem;
+        dbUpsertRequirement(newEntry);
+        updatedList = [newEntry, ...prev];
+      }
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(updatedList));
+      } catch (e) {
+        console.error(e);
+      }
+      return updatedList;
+    });
     logAudit('Requirement Updated', 'Project Material Requirement', `Updated Requirement ID ${id}`);
   };
 
@@ -1234,14 +1304,54 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Dedicated Material Inward / Receiving Verification Toggle
   const toggleMaterialReceived = (reqId: string, customNotes?: string) => {
-    const target = projectRequirements.find((r) => r.id === reqId);
+    let target = projectRequirements.find((r) => r.id === reqId);
+
+    // If not found in projectRequirements, check if it's an order-backed material item
+    if (!target) {
+      const orderMatch = orders.find((o) => `ord-mat-${o.id}` === reqId || o.id === reqId);
+      if (orderMatch) {
+        target = {
+          id: reqId,
+          srNo: 1,
+          description: orderMatch.drawingRef ? `${orderMatch.materialType} Part (${orderMatch.drawingRef})` : `${orderMatch.materialType} Component`,
+          materialType: orderMatch.materialType,
+          materialGrade: 'SS 304',
+          sizeSpecs: orderMatch.sizeSpecs,
+          quantity: orderMatch.quantity,
+          unit: orderMatch.unit || 'Nos',
+          weightKg: 2.5,
+          projectName: orderMatch.project,
+          customerName: orderMatch.customer,
+          poNumber: orderMatch.poNumber,
+          poDate: orderMatch.date,
+          machineType: orderMatch.machineType as any,
+          orderSource: orderMatch.orderSource,
+          deliveryDate: orderMatch.deliveryDate,
+          vendor: orderMatch.vendor || 'Manav Metal',
+          bomRef: `BOM-${orderMatch.orderNumber}`,
+          stockStatus: 'Available',
+          availableStock: orderMatch.currentStock || 15,
+          shortageQty: 0,
+          productionStatus: orderMatch.status,
+          qcStatus: 'Passed',
+          dispatchStatus: 'Not Ready',
+          materialCost: 450 * orderMatch.quantity,
+          laborCost: 180 * orderMatch.quantity,
+          machineCost: 120 * orderMatch.quantity,
+          outsourcingCost: 0,
+          totalCost: orderMatch.totalAmount || 750 * orderMatch.quantity,
+        };
+        setProjectRequirements((prev) => [target!, ...prev.filter((r) => r.id !== reqId)]);
+      }
+    }
+
     if (!target) return;
 
     const willBeReceived = !target.isReceived;
     const now = new Date();
     const formattedDate = `${String(now.getDate()).padStart(2, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-${now.getFullYear()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 
-    const initials = (currentUser?.name || 'Admin')
+    const initials = (currentUser?.name || 'Chandramani')
       .split(' ')
       .map((part) => part[0])
       .join('')
@@ -1261,10 +1371,10 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ? {
           isReceived: true,
           receivedAt: formattedDate,
-          receivedBy: currentUser?.name || 'Amit',
+          receivedBy: currentUser?.name || 'Chandramani',
           receivedByInitials: initials,
           receivedByRole: userRoleDisplay,
-          receivedNotes: customNotes || `Verified arrival by ${currentUser?.name} (${userRoleDisplay})`,
+          receivedNotes: customNotes || `Verified arrival by ${currentUser?.name || 'Chandramani'} (${userRoleDisplay})`,
           stockStatus: 'Available',
         }
       : {
@@ -1276,11 +1386,11 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           receivedNotes: undefined,
         };
 
-    updateProjectRequirement(reqId, updates);
+    updateProjectRequirement(target.id, updates);
     logAudit(
       willBeReceived ? 'Material Received Verified' : 'Material Receiving Reverted',
       'Project Material Requirement',
-      `${target.description} for ${target.projectName} marked ${willBeReceived ? 'RECEIVED' : 'PENDING'} by ${currentUser?.name} [${initials}]`
+      `${target.description} for ${target.projectName} marked ${willBeReceived ? 'RECEIVED' : 'PENDING'} by ${currentUser?.name || 'Chandramani'} [${initials}]`
     );
     addNotification(
       willBeReceived ? 'Material Received' : 'Receiving Reverted',

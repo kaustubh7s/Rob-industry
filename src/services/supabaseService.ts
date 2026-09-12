@@ -80,6 +80,12 @@ CREATE TABLE IF NOT EXISTS public.project_material_requirements (
   selling_price_allocated NUMERIC DEFAULT 0,
   notes TEXT,
   ordered_by TEXT,
+  is_received BOOLEAN DEFAULT FALSE,
+  received_at TEXT,
+  received_by TEXT,
+  received_by_initials TEXT,
+  received_by_role TEXT,
+  received_notes TEXT,
   timestamp TIMESTAMPTZ DEFAULT NOW(),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -352,6 +358,12 @@ export const pushAllDataToSupabase = async (erpState: {
         selling_price_allocated: r.sellingPriceAllocated,
         notes: r.notes,
         ordered_by: r.orderedBy,
+        is_received: Boolean(r.isReceived),
+        received_at: r.receivedAt || null,
+        received_by: r.receivedBy || null,
+        received_by_initials: r.receivedByInitials || null,
+        received_by_role: r.receivedByRole || null,
+        received_notes: r.receivedNotes || null,
         timestamp: (r as any).timestamp || r.date || new Date().toISOString(),
       }));
 
@@ -540,6 +552,12 @@ export const pullAllDataFromSupabase = async (): Promise<{
       sellingPriceAllocated: Number(r.selling_price_allocated || 0),
       notes: r.notes,
       orderedBy: r.ordered_by,
+      isReceived: Boolean(r.is_received || r.isReceived || (r.notes && r.notes.includes('[INWARD_VERIFIED]'))),
+      receivedAt: r.received_at || r.receivedAt || (r.is_received ? (r.timestamp || new Date().toISOString()) : undefined),
+      receivedBy: r.received_by || r.receivedBy || (r.is_received ? 'Chandramani' : undefined),
+      receivedByInitials: r.received_by_initials || r.receivedByInitials || (r.is_received ? 'CP' : undefined),
+      receivedByRole: r.received_by_role || r.receivedByRole || (r.is_received ? 'Stores Incharge' : undefined),
+      receivedNotes: r.received_notes || r.receivedNotes || undefined,
       timestamp: r.timestamp,
     }));
 
@@ -788,6 +806,12 @@ export const dbUpsertRequirement = async (req: ProjectMaterialRequirementItem) =
       selling_price_allocated: req.sellingPriceAllocated,
       notes: req.notes,
       ordered_by: req.orderedBy,
+      is_received: Boolean(req.isReceived),
+      received_at: req.receivedAt || null,
+      received_by: req.receivedBy || null,
+      received_by_initials: req.receivedByInitials || null,
+      received_by_role: req.receivedByRole || null,
+      received_notes: req.receivedNotes || null,
       timestamp: (req as any).timestamp || req.date || new Date().toISOString(),
     });
   } catch (e) {
@@ -850,6 +874,12 @@ export const dbBulkUpsertRequirements = async (
       selling_price_allocated: r.sellingPriceAllocated,
       notes: r.notes,
       ordered_by: r.orderedBy,
+      is_received: Boolean(r.isReceived),
+      received_at: r.receivedAt || null,
+      received_by: r.receivedBy || null,
+      received_by_initials: r.receivedByInitials || null,
+      received_by_role: r.receivedByRole || null,
+      received_notes: r.receivedNotes || null,
       timestamp: (r as any).timestamp || r.date || new Date().toISOString(),
     }));
 
