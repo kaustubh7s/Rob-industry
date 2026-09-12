@@ -856,12 +856,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               {isSavingToDb ? (
                 <>
                   <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Saving to DB...</span>
+                  <span>Saving...</span>
                 </>
               ) : (
                 <>
                   <Database className="w-3.5 h-3.5 text-emerald-200" />
-                  <span>Save to DB</span>
+                  <span>Save</span>
                 </>
               )}
             </button>
