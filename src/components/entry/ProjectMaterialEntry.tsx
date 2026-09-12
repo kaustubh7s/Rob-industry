@@ -201,7 +201,12 @@ export const ProjectMaterialEntry: React.FC = () => {
     addProject,
     projectRequirements,
     bulkImportProjectRequirements,
+    replaceProjectRequirements,
     deleteProjectRequirement,
+    trashItems,
+    restoreFromTrash,
+    permanentlyDeleteFromTrash,
+    emptyTrash,
     currentUser,
     vendors,
   } = useERP();
@@ -225,6 +230,7 @@ export const ProjectMaterialEntry: React.FC = () => {
 
   // Modals for Custom Additions & Direct Project Creation
   const [isAddProjectModalOpen, setIsAddProjectModalOpen] = useState(false);
+  const [isTrashModalOpen, setIsTrashModalOpen] = useState(false);
   const [isCustomMachineModalOpen, setIsCustomMachineModalOpen] = useState(false);
   const [isCustomMaterialModalOpen, setIsCustomMaterialModalOpen] = useState(false);
   const [isCustomVendorModalOpen, setIsCustomVendorModalOpen] = useState(false);
@@ -550,6 +556,25 @@ export const ProjectMaterialEntry: React.FC = () => {
       if (found.vendorName || found.vendor) setVendorName(found.vendorName || found.vendor || 'Manav Metal');
       if (found.poNo || found.poNumber) setPoNo(found.poNo || found.poNumber || '36');
       if (found.date || found.createdDate) setEntryDate(found.date || found.createdDate || '01-09-2026');
+
+      // Sync workstation rows with the project's actual material requirements
+      const existingMats = getMaterialsForProject(found, projectRequirements);
+      const mappedRows: EntryRow[] = existingMats.map((m, idx) => ({
+        id: m.id,
+        machineName: m.machineName || m.machineType || found.machineType || '16 HD',
+        date: m.poDate || m.date || found.startDate || '01-09-2026',
+        poNo: m.poNumber || m.poNo || found.poNumber || '36',
+        srNo: idx + 1,
+        materialType: m.materialType as MaterialType,
+        sizeSpecs: m.sizeSpecs,
+        quantity: m.quantity,
+        unit: m.unit || 'Nos',
+        vendorName: m.vendor || m.vendorName || found.vendor || 'Manav Metal',
+        description: m.description,
+        orderedBy: m.orderedBy || activeOrderedBy,
+        projectName: found.name,
+      }));
+      setRows(mappedRows);
     }
   };
 
@@ -802,13 +827,13 @@ export const ProjectMaterialEntry: React.FC = () => {
           pr.id === rowId ||
           (pr.description === targetRow.description &&
             pr.sizeSpecs === targetRow.sizeSpecs &&
-            pr.projectName === targetRow.projectName)
+            pr.projectName === (targetRow.projectName || selectedProjectName))
       );
       if (matched) {
         deleteProjectRequirement(matched.id);
       }
     }
-    setSaveToast('🗑️ Deleted row • Updated across all devices');
+    setSaveToast('🗑️ Deleted row • Moved to Trash & purged from DB');
     setTimeout(() => setSaveToast(null), 2500);
   };
 
@@ -838,7 +863,7 @@ export const ProjectMaterialEntry: React.FC = () => {
               pr.id === id ||
               (pr.description === row.description &&
                 pr.sizeSpecs === row.sizeSpecs &&
-                pr.projectName === row.projectName)
+                pr.projectName === (row.projectName || selectedProjectName))
           );
           if (matched) {
             deleteProjectRequirement(matched.id);
@@ -847,21 +872,17 @@ export const ProjectMaterialEntry: React.FC = () => {
       });
       setRows((prev) => normalizeSrNumbers(prev.filter((r) => !selectedRowIds.includes(r.id))));
       setSelectedRowIds([]);
-      setSaveToast(`🗑️ Deleted ${selectedRowIds.length} rows • Synced across all devices`);
+      setSaveToast(`🗑️ Deleted ${selectedRowIds.length} rows • Moved to Trash & purged from DB`);
       setTimeout(() => setSaveToast(null), 2500);
     }
   };
 
   // Save Project
   const handleSaveProject = () => {
-    if (rows.length === 0) {
-      alert('Please add at least one material row before saving.');
-      return;
-    }
-
     const targetProject = selectedProjectName || (projects.length > 0 ? projects[0].name : 'FOHA');
 
     const itemsToSave: Partial<ProjectMaterialRequirementItem>[] = rows.map((r) => ({
+      id: r.id,
       projectName: r.projectName || targetProject,
       customerName: 'Cadila Healthcare Ltd (Zydus)',
       poNumber: r.poNo || poNo,
@@ -891,7 +912,7 @@ export const ProjectMaterialEntry: React.FC = () => {
       notes: `RSB Machine Workflow | Ordered by ${activeOrderedBy}`,
     }));
 
-    bulkImportProjectRequirements(itemsToSave);
+    replaceProjectRequirements(targetProject, itemsToSave);
 
     confetti({
       particleCount: 100,
@@ -1219,6 +1240,20 @@ export const ProjectMaterialEntry: React.FC = () => {
           >
             <FolderKanban className="w-4 h-4 text-blue-600" />
             <span>Projects Directory ({projects.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsTrashModalOpen(true)}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 border ${
+              trashItems.length > 0
+                ? 'bg-rose-50 text-rose-750 border-rose-300 hover:bg-rose-100 shadow-2xs'
+                : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+            }`}
+            title="Open Trash Bin to restore deleted projects or material items"
+          >
+            <Trash2 className={`w-4 h-4 ${trashItems.length > 0 ? 'text-rose-600 animate-bounce' : 'text-slate-500'}`} />
+            <span>Trash Bin ({trashItems.length})</span>
           </button>
 
           {currentUser.role === 'super_admin' && (
@@ -2664,6 +2699,108 @@ export const ProjectMaterialEntry: React.FC = () => {
           })()}
         </Modal>
       )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: TRASH / RECYCLE BIN & INSTANT RECOVERY */}
+      {/* ========================================================================= */}
+      <Modal
+        isOpen={isTrashModalOpen}
+        onClose={() => setIsTrashModalOpen(false)}
+        title="🗑️ Trash & Recovery Vault"
+        subtitle="Recover accidentally deleted projects and material rows, or permanently empty trash"
+        maxWidth="2xl"
+      >
+        <div className="space-y-4 text-xs font-sans">
+          <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+            <div className="flex items-center gap-2">
+              <span className={`w-2.5 h-2.5 rounded-full ${trashItems.length > 0 ? 'bg-rose-500 animate-pulse' : 'bg-slate-400'}`} />
+              <span className="text-slate-700 font-bold">
+                {trashItems.length} Deleted Items in Vault
+              </span>
+            </div>
+            {trashItems.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm('Permanently purge all items from trash? This cannot be undone.')) {
+                    emptyTrash();
+                  }
+                }}
+                className="px-3 py-1.5 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-800 text-[11px] font-bold cursor-pointer transition-all active:scale-95"
+              >
+                Empty Entire Trash
+              </button>
+            )}
+          </div>
+
+          {trashItems.length === 0 ? (
+            <div className="py-12 text-center text-slate-400 space-y-2">
+              <Trash2 className="w-10 h-10 mx-auto text-slate-300 opacity-60" />
+              <p className="font-bold text-slate-600">Trash Vault is Empty</p>
+              <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
+                Any projects or material rows you delete will appear here and can be recovered with 1 click.
+              </p>
+            </div>
+          ) : (
+            <div className="max-h-[380px] overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-xl">
+              {trashItems.map((item) => (
+                <div key={item.id} className="p-3.5 flex items-center justify-between gap-3 hover:bg-slate-50/80 transition-colors">
+                  <div className="space-y-1 min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${
+                        item.type === 'project'
+                          ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                          : 'bg-blue-100 text-blue-800 border border-blue-200'
+                      }`}>
+                        {item.type === 'project' ? '📁 Project' : '📦 Material'}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        Deleted: {item.deletedAt} • by {item.deletedBy}
+                      </span>
+                    </div>
+                    <h4 className="text-xs font-black text-slate-900 truncate">{item.title}</h4>
+                    <p className="text-[11px] text-slate-500 truncate font-mono">{item.subtitle}</p>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        restoreFromTrash(item.id);
+                        setSaveToast(`✨ Restored "${item.title}" back to active database!`);
+                        setTimeout(() => setSaveToast(null), 3000);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-2xs flex items-center gap-1 cursor-pointer active:scale-95"
+                      title="Restore back to active ERP and database"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Recover</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => permanentlyDeleteFromTrash(item.id)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                      title="Delete permanently"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex justify-end pt-2">
+            <button
+              type="button"
+              onClick={() => setIsTrashModalOpen(false)}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+            >
+              Close Vault
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

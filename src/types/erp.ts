@@ -179,6 +179,17 @@ export interface ProjectItem {
   progressPct: number;
 }
 
+export interface TrashItem {
+  id: string;
+  type: 'project' | 'requirement';
+  deletedAt: string;
+  deletedBy: string;
+  title: string;
+  subtitle: string;
+  projectData?: ProjectItem;
+  requirementData?: ProjectMaterialRequirementItem;
+}
+
 export type ProductionStatus = 
   | 'Pending'
   | 'In Production'

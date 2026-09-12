@@ -31,6 +31,7 @@ import {
   ProjectMaterialRequirementItem,
   ActiveProcessingMaterial,
   DispatchReadyItem,
+  TrashItem,
 } from '../types/erp';
 import {
   INITIAL_USERS,
@@ -221,6 +222,15 @@ interface ERPContextType {
   updateUser: (id: string, updates: Partial<User>) => void;
   deleteUser: (id: string) => void;
   alterUserAuthorization: (userId: string, authLevel: AuthLevel, permissions: UserPermissions, status?: 'Active' | 'Suspended' | 'Read Only') => void;
+
+  // Heart of ERP: Replace/Sync project requirements with full DB reconciliation
+  replaceProjectRequirements: (projectName: string, items: any[]) => void;
+
+  // Dedicated Trash / Recycle Bin with Instant Recovery
+  trashItems: TrashItem[];
+  restoreFromTrash: (trashId: string) => void;
+  permanentlyDeleteFromTrash: (trashId: string) => void;
+  emptyTrash: () => void;
 
   // System Utilities
   logAction?: (action: string, module: string, details: string) => void;
@@ -548,7 +558,22 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : INITIAL_VENDOR_DOCUMENTS;
   });
 
+  const [trashItems, setTrashItems] = useState<TrashItem[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_trash');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return [];
+  });
+
   // Sync to localStorage
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY + '_trash', JSON.stringify(trashItems));
+  }, [trashItems]);
   useEffect(() => {
     localStorage.setItem(LOCAL_STORAGE_KEY + '_materials', JSON.stringify(materials));
   }, [materials]);
@@ -946,9 +971,113 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteProjectRequirement = (id: string) => {
+    const reqToDelete = projectRequirements.find((r) => r.id === id);
+    if (reqToDelete) {
+      const trashEntry: TrashItem = {
+        id: `trash-req-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        type: 'requirement',
+        deletedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toISOString().split('T')[0],
+        deletedBy: currentUser?.name || 'Amit',
+        title: `${reqToDelete.description} (${reqToDelete.sizeSpecs})`,
+        subtitle: `Project: ${reqToDelete.projectName} • ${reqToDelete.quantity} ${reqToDelete.unit} • Vendor: ${reqToDelete.vendor || 'Manav Metal'}`,
+        requirementData: reqToDelete,
+      };
+      setTrashItems((prev) => [trashEntry, ...prev]);
+    }
+
     setProjectRequirements((prev) => prev.filter((r) => r.id !== id));
     dbDeleteRequirement(id);
-    logAudit('Requirement Deleted', 'Project Material Requirement', `Deleted Requirement ID ${id}`);
+    logAudit('Requirement Deleted', 'Project Material Requirement', `Deleted Requirement ID ${id} (Moved to Trash)`);
+  };
+
+  // Replace and synchronize all requirements for a project in DB and local state
+  const replaceProjectRequirements = (projectName: string, items: any[]) => {
+    if (!projectName) return;
+    
+    // 1. Immediately delete from Supabase DB to purge any removed/duplicate rows
+    dbDeleteRequirementsByProject(projectName);
+
+    // 2. Map and insert active rows
+    const todayFormatted = new Date().toISOString().split('T')[0];
+    const mapped: ProjectMaterialRequirementItem[] = items.map((it, idx) => {
+      const spec = it.sizeSpecs || it['Size Specification'] || it['Size Specs'] || '80 x 6 x 485';
+      const desc = it.description || it['Description'] || it['Part Description'] || 'SS Machine Component';
+      const matType = it.materialType || it['Material Type'] || 'SS Flat';
+      const qty = Number(it.quantity || it['Qty'] || it['Quantity'] || 1);
+      const prj = projectName || it.projectName || it['Project'] || '16 HD';
+      const poNum = it.poNo || it.poNumber || it['PO No'] || '36';
+      const cust = it.customerName || it['Customer'] || 'Cadila Healthcare Ltd (Zydus)';
+      const mchType = it.machineName || it.machineType || '16 HD';
+      const unit = it.unit || it['Unit'] || 'Nos';
+      const vendor = it.vendorName || it.vendor || 'Manav Metal';
+      const bomRef = it.bomRef || 'BOM-MC-01';
+      const orderedBy = it.orderedBy || currentUser?.name || 'Amit';
+      const entryDate = it.date || it['Date'] || todayFormatted;
+
+      const matchedMat = materials.find(
+        (m) =>
+          m.sizeSpecs.toLowerCase().replace(/\s+/g, '') === spec.toLowerCase().replace(/\s+/g, '')
+      );
+
+      const availableStock = matchedMat ? matchedMat.currentStock : 20;
+      const shortageQty = Math.max(0, qty - availableStock);
+      const stockStatus = shortageQty === 0 ? 'Available' : availableStock > 0 ? 'Partial Available' : 'Shortage';
+
+      const unitCost = matchedMat ? matchedMat.unitCost : 450;
+      const matCost = qty * unitCost;
+      const laborCost = Math.round(matCost * 0.4);
+      const machineCost = Math.round(matCost * 0.25);
+
+      return {
+        id: it.id && it.id.startsWith('pmr-') ? it.id : ('pmr-' + (idx + 1) + '-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4)),
+        srNo: idx + 1,
+        description: desc,
+        materialType: matType as any,
+        materialGrade: matchedMat?.grade || 'SS 304',
+        sizeSpecs: spec,
+        quantity: qty,
+        unit,
+        projectName: prj,
+        customerName: cust,
+        poNumber: poNum,
+        poDate: entryDate,
+        machineType: mchType as any,
+        machineName: mchType,
+        date: entryDate,
+        poNo: poNum,
+        vendorName: vendor,
+        orderedBy,
+        orderSource: 'Workstation Entry',
+        deliveryDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+        vendor,
+        bomRef,
+        lastPurchaseRate: unitCost,
+        lastPurchaseDate: entryDate,
+        vendorRating: 4.9,
+        vendorReliability: 98,
+        stockStatus,
+        availableStock,
+        shortageQty,
+        productionStatus: 'Pending',
+        qcStatus: 'Not Started',
+        dispatchStatus: 'Not Ready',
+        materialCost: matCost,
+        laborCost,
+        machineCost,
+        outsourcingCost: 0,
+        totalCost: matCost + laborCost + machineCost,
+        sellingPriceAllocated: Math.round((matCost + laborCost + machineCost) * 1.6),
+      };
+    });
+
+    setProjectRequirements((prev) => [
+      ...prev.filter((r) => r.projectName !== projectName),
+      ...mapped,
+    ]);
+
+    if (mapped.length > 0) {
+      dbBulkUpsertRequirements(mapped);
+    }
   };
 
   const bulkImportProjectRequirements = (items: any[]) => {
@@ -1641,6 +1770,24 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteProject = (id: string, cascadeRequirements: boolean = true) => {
     const projectToDelete = projects.find((p) => p.id === id);
+    if (projectToDelete) {
+      const deletedReqs = projectRequirements.filter(
+        (r) => r.projectName === projectToDelete.name || r.projectName === projectToDelete.projectNumber
+      );
+
+      // Move Project to Trash Bin
+      const trashEntry: TrashItem = {
+        id: `trash-prj-${Date.now()}`,
+        type: 'project',
+        deletedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toISOString().split('T')[0],
+        deletedBy: currentUser?.name || 'Amit',
+        title: `Project: ${projectToDelete.name} (${projectToDelete.projectNumber})`,
+        subtitle: `Machine: ${projectToDelete.machineType} • Vendor: ${projectToDelete.vendor || 'Manav Metal'} • ${deletedReqs.length} Material Items`,
+        projectData: projectToDelete,
+      };
+      setTrashItems((prev) => [trashEntry, ...prev]);
+    }
+
     setProjects((prev) => prev.filter((p) => p.id !== id));
 
     if (cascadeRequirements && projectToDelete) {
@@ -1653,12 +1800,45 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
     }
 
+    // INSTANT DB DELETE
     dbDeleteProject(id);
     if (projectToDelete) {
       dbDeleteRequirementsByProject(projectToDelete.name);
     }
-    logAudit('Project Deleted', 'Projects', `Deleted project ${projectToDelete?.name || id}`);
-    addNotification('Project Deleted', `Deleted project ${projectToDelete?.name || id}`, 'warning', 'projects');
+    logAudit('Project Deleted', 'Projects', `Deleted project ${projectToDelete?.name || id} (Moved to Trash)`);
+    addNotification('Project Moved to Trash', `Deleted project ${projectToDelete?.name || id}. Restore anytime from Trash Bin.`, 'warning', 'projects');
+  };
+
+  // Trash Bin Operations
+  const restoreFromTrash = (trashId: string) => {
+    const item = trashItems.find((t) => t.id === trashId);
+    if (!item) return;
+
+    if (item.type === 'project' && item.projectData) {
+      const prj = item.projectData;
+      setProjects((prev) => [prj, ...prev.filter((p) => p.id !== prj.id)]);
+      dbUpsertProject(prj);
+      logAudit('Project Restored', 'Trash Bin', `Restored project ${prj.name} from Trash Bin`);
+      addNotification('Project Restored', `Restored project "${prj.name}" to active projects`, 'success', 'projects');
+    } else if (item.type === 'requirement' && item.requirementData) {
+      const req = item.requirementData;
+      setProjectRequirements((prev) => [req, ...prev.filter((r) => r.id !== req.id)]);
+      dbUpsertRequirement(req);
+      logAudit('Requirement Restored', 'Trash Bin', `Restored ${req.description} from Trash Bin`);
+      addNotification('Material Restored', `Restored "${req.description}" to ${req.projectName}`, 'success', 'requirements');
+    }
+
+    setTrashItems((prev) => prev.filter((t) => t.id !== trashId));
+  };
+
+  const permanentlyDeleteFromTrash = (trashId: string) => {
+    setTrashItems((prev) => prev.filter((t) => t.id !== trashId));
+    logAudit('Trash Item Purged', 'Trash Bin', `Permanently deleted trash item ${trashId}`);
+  };
+
+  const emptyTrash = () => {
+    setTrashItems([]);
+    logAudit('Trash Emptied', 'Trash Bin', 'Permanently emptied all items in Trash Bin');
   };
 
   // Stakeholders Handlers
@@ -2372,6 +2552,11 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateUser,
         deleteUser,
         alterUserAuthorization,
+        replaceProjectRequirements,
+        trashItems,
+        restoreFromTrash,
+        permanentlyDeleteFromTrash,
+        emptyTrash,
         logAction: logAudit,
         markNotificationRead,
         resetToDemoData,

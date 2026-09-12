@@ -23,6 +23,7 @@ import {
   Trash2,
   Database,
   Cloud,
+  RotateCcw,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 import { ProjectItem, ProjectStatus, MachineCategory } from '../../types/erp';
@@ -73,7 +74,20 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
   onSelectProject,
   onOpenEntrySheetWithProject,
 }) => {
-  const { projects, addProject, deleteProject, projectRequirements, orders, vendors, customers, currentUser } = useERP();
+  const {
+    projects,
+    addProject,
+    deleteProject,
+    projectRequirements,
+    orders,
+    vendors,
+    customers,
+    currentUser,
+    trashItems,
+    restoreFromTrash,
+    permanentlyDeleteFromTrash,
+    emptyTrash,
+  } = useERP();
 
   const isSuperAdmin =
     currentUser?.role === 'super_admin' || currentUser?.name?.toLowerCase().includes('amit');
@@ -86,8 +100,9 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
   const [filterOrderSource, setFilterOrderSource] = useState('ALL');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
-  // Modal for New Project, Delete Project, and Supabase Sync
+  // Modal for New Project, Delete Project, Supabase Sync, and Trash Bin
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
+  const [isTrashModalOpen, setIsTrashModalOpen] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<ProjectItem | null>(null);
   const [cascadeDeleteReqs, setCascadeDeleteReqs] = useState(true);
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
@@ -303,6 +318,20 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
             >
               <Cloud className="w-3.5 h-3.5 text-emerald-400" />
               <span>Cloud Backup</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsTrashModalOpen(true)}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 border ${
+                trashItems.length > 0
+                  ? 'bg-rose-50 text-rose-750 border-rose-300 hover:bg-rose-100 shadow-2xs'
+                  : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+              }`}
+              title="Open Trash Bin to restore deleted projects or materials"
+            >
+              <Trash2 className={`w-3.5 h-3.5 ${trashItems.length > 0 ? 'text-rose-600 animate-bounce' : 'text-slate-500'}`} />
+              <span>Trash Bin ({trashItems.length})</span>
             </button>
 
             <button
@@ -937,6 +966,106 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
         isOpen={isSupabaseModalOpen}
         onClose={() => setIsSupabaseModalOpen(false)}
       />
+
+      {/* ========================================================================= */}
+      {/* MODAL: TRASH / RECYCLE BIN & INSTANT RECOVERY */}
+      {/* ========================================================================= */}
+      <Modal
+        isOpen={isTrashModalOpen}
+        onClose={() => setIsTrashModalOpen(false)}
+        title="🗑️ Trash & Recovery Vault"
+        subtitle="Recover accidentally deleted projects and material rows, or permanently empty trash"
+        maxWidth="2xl"
+      >
+        <div className="space-y-4 text-xs font-sans">
+          <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+            <div className="flex items-center gap-2">
+              <span className={`w-2.5 h-2.5 rounded-full ${trashItems.length > 0 ? 'bg-rose-500 animate-pulse' : 'bg-slate-400'}`} />
+              <span className="text-slate-700 font-bold">
+                {trashItems.length} Deleted Items in Vault
+              </span>
+            </div>
+            {trashItems.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm('Permanently purge all items from trash? This cannot be undone.')) {
+                    emptyTrash();
+                  }
+                }}
+                className="px-3 py-1.5 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-800 text-[11px] font-bold cursor-pointer transition-all active:scale-95"
+              >
+                Empty Entire Trash
+              </button>
+            )}
+          </div>
+
+          {trashItems.length === 0 ? (
+            <div className="py-12 text-center text-slate-400 space-y-2">
+              <Trash2 className="w-10 h-10 mx-auto text-slate-300 opacity-60" />
+              <p className="font-bold text-slate-600">Trash Vault is Empty</p>
+              <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
+                Any projects or material rows you delete will appear here and can be recovered with 1 click.
+              </p>
+            </div>
+          ) : (
+            <div className="max-h-[380px] overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-xl">
+              {trashItems.map((item) => (
+                <div key={item.id} className="p-3.5 flex items-center justify-between gap-3 hover:bg-slate-50/80 transition-colors">
+                  <div className="space-y-1 min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${
+                        item.type === 'project'
+                          ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                          : 'bg-blue-100 text-blue-800 border border-blue-200'
+                      }`}>
+                        {item.type === 'project' ? '📁 Project' : '📦 Material'}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        Deleted: {item.deletedAt} • by {item.deletedBy}
+                      </span>
+                    </div>
+                    <h4 className="text-xs font-black text-slate-900 truncate">{item.title}</h4>
+                    <p className="text-[11px] text-slate-500 truncate font-mono">{item.subtitle}</p>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        restoreFromTrash(item.id);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-2xs flex items-center gap-1 cursor-pointer active:scale-95"
+                      title="Restore back to active ERP and database"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Recover</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => permanentlyDeleteFromTrash(item.id)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                      title="Delete permanently"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex justify-end pt-2">
+            <button
+              type="button"
+              onClick={() => setIsTrashModalOpen(false)}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+            >
+              Close Vault
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
