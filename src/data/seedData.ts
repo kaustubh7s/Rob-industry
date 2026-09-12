@@ -79,25 +79,7 @@ export const INITIAL_USERS: User[] = [
       canOverrideLock: false,
     },
   },
-  {
-    id: 'usr-1',
-    name: 'Sanjay Sharma',
-    email: 'sanjay.sharma@rsbmetal.com',
-    role: 'super_admin',
-    password: 'Admin@amit',
-    department: 'Executive Management',
-    authLevel: 'Tier 1: Super Admin',
-    status: 'Active',
-    lastActive: '1 hour ago',
-    permissions: {
-      canEditMaterials: true,
-      canApproveOrders: true,
-      canDeleteRecords: true,
-      canManageUsers: true,
-      canExportReports: true,
-      canOverrideLock: true,
-    },
-  },
+
   {
     id: 'usr-2',
     name: 'Rajesh B. Patel',
@@ -634,7 +616,7 @@ export const INITIAL_BOMS: BOMRecord[] = [
     status: 'Approved',
     effectiveDate: '2026-08-01',
     createdBy: 'Rajesh B. Patel',
-    approvedBy: 'Sanjay Sharma',
+    approvedBy: 'Amit',
     totalEstimatedCost: 485000,
     notes: 'Multi-level BOM for high-speed pharma conveyor assembly',
     history: [
@@ -695,7 +677,7 @@ export const INITIAL_BOMS: BOMRecord[] = [
     status: 'Approved',
     effectiveDate: '2026-08-10',
     createdBy: 'Vikram Joshi',
-    approvedBy: 'Sanjay Sharma',
+    approvedBy: 'Amit',
     totalEstimatedCost: 680000,
     notes: 'Sanitary washing skid compliant with FDA pharma guidelines',
     items: [

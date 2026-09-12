@@ -229,7 +229,18 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentUser, setCurrentUser] = useState<User>(INITIAL_USERS[0]);
   const [users, setUsers] = useState<User[]>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_users');
-    return saved ? JSON.parse(saved) : INITIAL_USERS;
+    if (saved) {
+      try {
+        const parsed: User[] = JSON.parse(saved);
+        const filtered = parsed.filter(
+          (u) => u.name !== 'Sanjay Sharma' && u.email !== 'sanjay.sharma@rsbmetal.com' && u.id !== 'usr-1'
+        );
+        return filtered;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return INITIAL_USERS;
   });
   const [activeVendorId, setActiveVendorId] = useState<string>('vnd-1');
   const [activeTab, setActiveTab] = useState<string>('requirements'); // Default to heart of ERP

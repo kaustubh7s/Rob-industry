@@ -183,6 +183,15 @@ export const MemberAuthorizationManager: React.FC = () => {
   const handleSaveEdit = () => {
     if (!editForm) return;
 
+    let derivedRole: UserRole = editForm.role;
+    if (editForm.authLevel === 'Tier 1: Super Admin') {
+      derivedRole = 'super_admin';
+    } else if (editForm.authLevel === 'Tier 2: Plant Head / Admin') {
+      derivedRole = editForm.name.toLowerCase().includes('kaustubh') ? 'kaustubh' : 'admin';
+    } else if (editForm.authLevel === 'Tier 4: Data Entry Operator') {
+      derivedRole = 'operator';
+    }
+
     alterUserAuthorization(
       editForm.id,
       editForm.authLevel,
@@ -193,8 +202,11 @@ export const MemberAuthorizationManager: React.FC = () => {
     updateUser(editForm.id, {
       name: editForm.name,
       email: editForm.email,
-      role: editForm.role,
+      role: derivedRole,
       department: editForm.department,
+      authLevel: editForm.authLevel,
+      status: editForm.status,
+      permissions: editForm.permissions,
     });
 
     setSaveToast(`Successfully updated authorizations for ${editForm.name}`);
@@ -371,7 +383,7 @@ export const MemberAuthorizationManager: React.FC = () => {
             <div>
               <div className="text-[10px] uppercase font-mono text-slate-400">Active Operators</div>
               <div className="text-lg font-black text-emerald-400 font-mono mt-0.5">
-                {users.filter((u) => u.status === 'Active' || !u.status).length} Online
+                {users.filter((u) => u.id === currentUser.id || u.role === currentUser.role || u.email === currentUser.email).length} Online
               </div>
             </div>
             <Activity className="w-5 h-5 text-emerald-400 opacity-60" />
@@ -485,9 +497,28 @@ export const MemberAuthorizationManager: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-medium">
                   {filteredUsers.map((user) => {
-                    const isAmit = user.role === 'super_admin' || user.email === 'amit@rsb.com';
-                    const isKaustubh = user.role === 'kaustubh';
-                    const isRahul = user.role === 'operator';
+                    const isRootAmit = user.name.toLowerCase().includes('amit') || user.email === 'amit@rsbequipments.com' || user.email === 'amit@rsb.com';
+                    const isSuperAdmin = user.authLevel?.startsWith('Tier 1') || user.role === 'super_admin';
+                    const isPlantHead = user.authLevel?.startsWith('Tier 2') || user.role === 'kaustubh' || user.role === 'admin';
+                    const isManager = user.authLevel?.startsWith('Tier 3');
+
+                    const roleBadgeLabel = isRootAmit
+                      ? 'ROOT ADMIN'
+                      : isSuperAdmin
+                      ? 'SUPER ADMIN'
+                      : isPlantHead
+                      ? 'PLANT HEAD'
+                      : isManager
+                      ? 'MANAGER'
+                      : 'OPERATOR';
+
+                    const roleBadgeColor = isSuperAdmin
+                      ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                      : isPlantHead
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                      : isManager
+                      ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                      : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40';
 
                     return (
                       <tr key={user.id} className="hover:bg-slate-800/50 transition-colors group">
@@ -499,21 +530,9 @@ export const MemberAuthorizationManager: React.FC = () => {
                             <div>
                               <div className="flex items-center gap-2">
                                 <span className="font-extrabold text-white text-sm">{user.name}</span>
-                                {isAmit && (
-                                  <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[9px] font-bold">
-                                    ROOT ADMIN
-                                  </span>
-                                )}
-                                {isKaustubh && (
-                                  <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-bold">
-                                    PLANT HEAD
-                                  </span>
-                                )}
-                                {isRahul && (
-                                  <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-[9px] font-bold">
-                                    OPERATOR
-                                  </span>
-                                )}
+                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-bold uppercase tracking-wider border ${roleBadgeColor}`}>
+                                  {roleBadgeLabel}
+                                </span>
                               </div>
                               <span className="text-[11px] text-slate-400 font-mono">{user.email}</span>
                             </div>
@@ -570,18 +589,22 @@ export const MemberAuthorizationManager: React.FC = () => {
                         </td>
 
                         <td className="px-4 py-3.5">
-                          <span
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              user.status === 'Suspended'
-                                ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
-                                : user.status === 'Read Only'
-                                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
-                                : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                            }`}
-                          >
-                            <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                            {user.status || 'Active'}
-                          </span>
+                          {user.id === currentUser.id || user.email === currentUser.email || user.role === currentUser.role ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-xs shadow-emerald-500/20">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                              Online (Logged In)
+                            </span>
+                          ) : user.status === 'Suspended' ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/40">
+                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                              Suspended
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700">
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                              Offline ({user.lastActive || 'Logged Out'})
+                            </span>
+                          )}
                         </td>
 
                         <td className="px-4 py-3.5 text-right">
@@ -605,7 +628,7 @@ export const MemberAuthorizationManager: React.FC = () => {
                             </button>
 
                             {/* Delete (disabled for Amit root) */}
-                            {!isAmit && (
+                            {!isRootAmit && (
                               <button
                                 onClick={() => handleDelete(user)}
                                 className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-950/60 text-rose-400 border border-slate-700 hover:border-rose-500/40 transition-colors"
@@ -722,16 +745,20 @@ export const MemberAuthorizationManager: React.FC = () => {
             </p>
             <div className="space-y-2 mt-3">
               {[
-                { name: 'Terminal 01 - Material Inward Bay', ip: '192.168.1.101', user: 'Rahul (Operator)', status: 'Connected' },
-                { name: 'Terminal 02 - Assembly Bay 16 HD', ip: '192.168.1.104', user: 'Kaustubh (Plant Admin)', status: 'Connected' },
-                { name: 'Terminal 03 - QC Inspection Desk', ip: '192.168.1.109', user: 'Sanjay Sharma', status: 'Idle' },
+                { name: 'Terminal 01 - Material Inward Bay', ip: '192.168.1.101', user: 'Rahul (Operator)', status: currentUser.role === 'operator' ? 'Connected' : 'Idle' },
+                { name: 'Terminal 02 - Assembly Bay 16 HD', ip: '192.168.1.104', user: 'Kaustubh (Plant Admin)', status: currentUser.role === 'kaustubh' || currentUser.role === 'admin' ? 'Connected' : 'Idle' },
+                { name: 'Terminal 03 - Super Admin Workstation', ip: '192.168.1.109', user: 'Amit (Super Admin)', status: currentUser.role === 'super_admin' ? 'Connected' : 'Idle' },
               ].map((term) => (
                 <div key={term.name} className="p-3 rounded-xl bg-slate-850 border border-slate-800 flex items-center justify-between">
                   <div>
                     <div className="text-xs font-bold text-white">{term.name}</div>
                     <div className="text-[10px] font-mono text-slate-400">{term.ip} • {term.user}</div>
                   </div>
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold">
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                    term.status === 'Connected'
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                      : 'bg-slate-800 text-slate-400 border border-slate-700'
+                  }`}>
                     {term.status}
                   </span>
                 </div>
