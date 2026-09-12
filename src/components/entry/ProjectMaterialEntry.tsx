@@ -340,14 +340,54 @@ export const ProjectMaterialEntry: React.FC = () => {
     });
   }, [machineName, projects]);
 
-  // Smart suggestions for the selected machine
+  // Smart suggestions for the selected machine (Dynamically learns from last and previous orders)
   const suggestedFrequentParts = useMemo(() => {
-    const found = Object.keys(MACHINE_FREQUENT_COMPONENTS).find(
-      (k) => k.toLowerCase() === machineName.trim().toLowerCase()
-    );
-    if (found) return MACHINE_FREQUENT_COMPONENTS[found];
+    const cleanMachine = (machineName || '').trim().toLowerCase();
+    const staticList =
+      MACHINE_FREQUENT_COMPONENTS[
+        Object.keys(MACHINE_FREQUENT_COMPONENTS).find((k) => k.toLowerCase() === cleanMachine) || ''
+      ] || [];
+
+    // Dynamically learn parts entered in previous orders for this machine
+    const learnedParts: { description: string; materialType: MaterialType; sizeSpecs: string; qty: number; unit: string }[] = [];
+
+    projectRequirements.forEach((r) => {
+      const rMch = (r.machineName || r.machineType || '').trim().toLowerCase();
+      const matchesMachine = cleanMachine ? rMch.includes(cleanMachine) || cleanMachine.includes(rMch) : true;
+      if (matchesMachine && r.description && r.sizeSpecs) {
+        const alreadyInLearned = learnedParts.some(
+          (lp) =>
+            lp.description.toLowerCase() === r.description.toLowerCase() &&
+            lp.sizeSpecs.toLowerCase().replace(/\s+/g, '') === r.sizeSpecs.toLowerCase().replace(/\s+/g, '')
+        );
+        if (!alreadyInLearned) {
+          learnedParts.push({
+            description: r.description.trim(),
+            materialType: (r.materialType || 'SS Flat') as MaterialType,
+            sizeSpecs: r.sizeSpecs.trim(),
+            qty: r.quantity || 2,
+            unit: r.unit || 'Nos',
+          });
+        }
+      }
+    });
+
+    // Merge static default suggestions with dynamically learned parts from past orders
+    const combined = [...staticList];
+    learnedParts.forEach((lp) => {
+      const exists = combined.some(
+        (c) =>
+          c.description.toLowerCase() === lp.description.toLowerCase() &&
+          c.sizeSpecs.toLowerCase().replace(/\s+/g, '') === lp.sizeSpecs.toLowerCase().replace(/\s+/g, '')
+      );
+      if (!exists) {
+        combined.push(lp);
+      }
+    });
+
+    if (combined.length > 0) return combined;
     return MACHINE_FREQUENT_COMPONENTS['16 HD'] || [];
-  }, [machineName]);
+  }, [machineName, projectRequirements]);
 
   // Handle Smart Duplicate / Use Previous Order
   const handleUsePreviousOrder = (prevProject: ProjectItem) => {
