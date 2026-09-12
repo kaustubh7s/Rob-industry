@@ -3,30 +3,35 @@ import {
   ShieldCheck,
   ShieldAlert,
   UserPlus,
+  KeyRound,
   Search,
+  Lock,
+  Unlock,
   CheckCircle2,
+  XCircle,
   Edit2,
   Trash2,
+  Sparkles,
   Users,
   Building2,
+  Cpu,
+  Layers,
+  Check,
+  RotateCcw,
   Shield,
   Activity,
   AlertTriangle,
+  FileText,
   Key,
-  Download,
-  Cloud,
-  X,
-  UserCheck,
-  Check,
-  Copy,
-  ExternalLink,
-  ChevronRight,
+  Flame,
+  Radio,
   Clock,
-  Sparkles,
-  LayoutGrid,
-  List,
-  Lock,
-  Unlock,
+  Terminal,
+  RefreshCw,
+  Sliders,
+  Download,
+  Database,
+  Cloud,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 import { User, UserRole, AuthLevel, UserPermissions } from '../../types/erp';
@@ -43,9 +48,9 @@ const ALL_AUTH_LEVELS: AuthLevel[] = [
 ];
 
 const ROLE_OPTIONS: { role: UserRole; title: string; defaultLevel: AuthLevel; department: string }[] = [
-  { role: 'super_admin', title: 'Super Admin', defaultLevel: 'Tier 1: Super Admin', department: 'Super Admin & Executive Management' },
-  { role: 'kaustubh', title: 'Plant Head (Kaustubh)', defaultLevel: 'Tier 2: Plant Head / Admin', department: 'Plant Administration & Engineering' },
-  { role: 'admin', title: 'Plant Operations Admin', defaultLevel: 'Tier 2: Plant Head / Admin', department: 'Plant Administration & Engineering' },
+  { role: 'super_admin', title: 'Super Admin', defaultLevel: 'Tier 1: Super Admin', department: 'Executive Management' },
+  { role: 'kaustubh', title: 'Plant Admin (Kaustubh)', defaultLevel: 'Tier 2: Plant Head / Admin', department: 'Plant Administration & Engineering' },
+  { role: 'admin', title: 'Plant Operations Admin', defaultLevel: 'Tier 2: Plant Head / Admin', department: 'Plant Operations' },
   { role: 'purchase_manager', title: 'Purchase Manager', defaultLevel: 'Tier 3: Department Manager', department: 'Procurement & Vendor Mgmt' },
   { role: 'production_manager', title: 'Production Manager', defaultLevel: 'Tier 3: Department Manager', department: 'Shop Floor & Tooling' },
   { role: 'store_manager', title: 'Store & Inventory Manager', defaultLevel: 'Tier 3: Department Manager', department: 'Warehouse & Stores' },
@@ -68,19 +73,18 @@ export const MemberAuthorizationManager: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTier, setFilterTier] = useState<string>('ALL');
   const [filterDepartment, setFilterDepartment] = useState<string>('ALL');
-  const [filterStatus, setFilterStatus] = useState<string>('ALL');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [saveToast, setSaveToast] = useState<string | null>(null);
-  const [copiedPin, setCopiedPin] = useState(false);
 
-  // Drawer & Modals state
-  const [selectedDrawerUser, setSelectedDrawerUser] = useState<User | null>(null);
+  // Security Emergency Lockdown State
+  const [isFactoryLockdownActive, setIsFactoryLockdownActive] = useState(false);
+
+  // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [generatedResetPin, setGeneratedResetPin] = useState<{ user: User; pin: string; expiresAt: string } | null>(null);
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
 
-  // New Member Form State
+  // New Member Form State (Zero manual password input - auto-generates one-time activation code)
   const [newMemberForm, setNewMemberForm] = useState({
     name: '',
     email: '',
@@ -98,7 +102,7 @@ export const MemberAuthorizationManager: React.FC = () => {
     },
   });
 
-  // Edit Member Form State
+  // Edit Member Form State (Zero password fields)
   const [editForm, setEditForm] = useState<{
     id: string;
     name: string;
@@ -123,25 +127,15 @@ export const MemberAuthorizationManager: React.FC = () => {
 
       const matchTier = filterTier === 'ALL' || u.authLevel === filterTier;
       const matchDept = filterDepartment === 'ALL' || u.department === filterDepartment;
-      const matchStatus = filterStatus === 'ALL' || (u.status || 'Active') === filterStatus;
 
-      return matchSearch && matchTier && matchDept && matchStatus;
+      return matchSearch && matchTier && matchDept;
     });
-  }, [users, searchTerm, filterTier, filterDepartment, filterStatus]);
+  }, [users, searchTerm, filterTier, filterDepartment]);
 
   // Unique departments for filter
   const uniqueDepartments = useMemo(() => {
     return Array.from(new Set(users.map((u) => u.department))).filter(Boolean);
   }, [users]);
-
-  // Executive KPI Counts
-  const superAdminCount = useMemo(() => {
-    return users.filter((u) => u.authLevel?.startsWith('Tier 1') || u.role === 'super_admin').length;
-  }, [users]);
-
-  const activeOnlineCount = useMemo(() => {
-    return users.filter((u) => u.id === currentUser.id || u.email === currentUser.email).length;
-  }, [users, currentUser]);
 
   // Open Edit Modal
   const handleOpenEdit = (user: User) => {
@@ -166,7 +160,7 @@ export const MemberAuthorizationManager: React.FC = () => {
     });
   };
 
-  // Issue Emergency 1-Time Reset PIN
+  // Issue Emergency 1-Time Reset PIN (Zero Knowledge Architecture)
   const handleIssueResetPin = (user: User) => {
     const randomPin = Math.floor(100000 + Math.random() * 900000).toString();
     const formattedPin = `${randomPin.slice(0, 3)}-${randomPin.slice(3)}`;
@@ -226,26 +220,13 @@ export const MemberAuthorizationManager: React.FC = () => {
       permissions: updatedPermissions,
     });
 
-    if (selectedDrawerUser && selectedDrawerUser.id === editForm.id) {
-      setSelectedDrawerUser({
-        ...selectedDrawerUser,
-        name: editForm.name,
-        email: editForm.email,
-        role: derivedRole,
-        department: derivedDept,
-        authLevel: editForm.authLevel,
-        status: editForm.status,
-        permissions: updatedPermissions,
-      });
-    }
-
-    setSaveToast(`Updated IAM authorizations for ${editForm.name}`);
+    setSaveToast(`Successfully updated authorizations for ${editForm.name} to ${editForm.authLevel}`);
     setTimeout(() => setSaveToast(null), 3000);
     setEditingUser(null);
     setEditForm(null);
   };
 
-  // Create New Member
+  // Create New Member with auto-generated activation token
   const handleCreateMember = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMemberForm.name.trim() || !newMemberForm.email.trim()) {
@@ -268,17 +249,18 @@ export const MemberAuthorizationManager: React.FC = () => {
 
     addUser(newUser);
 
-    try {
-      confetti({
-        particleCount: 50,
-        spread: 60,
-        origin: { y: 0.7 },
-      });
-    } catch {
-      // ignore
-    }
+    confetti({
+      particleCount: 50,
+      spread: 60,
+      origin: { y: 0.6 },
+    });
 
+    // Generate immediate 1-time activation code
     handleIssueResetPin(newUser);
+
+    setSaveToast(`Member ${newUser.name} successfully registered.`);
+    setTimeout(() => setSaveToast(null), 3500);
+
     setIsAddModalOpen(false);
     setNewMemberForm({
       name: '',
@@ -298,541 +280,324 @@ export const MemberAuthorizationManager: React.FC = () => {
     });
   };
 
-  // Delete Member Handler
+  // Delete Member Safeguard
   const handleDelete = (user: User) => {
-    if (user.id === 'usr-amit' || user.email === 'amit@rsbequipments.com') {
-      alert('Root Super Admin (Amit) account is cryptographically locked and cannot be removed.');
+    if (user.role === 'super_admin' || user.email === 'amit@rsb.com') {
+      alert('Super Admin root account cannot be deleted.');
       return;
     }
-    if (confirm(`Are you sure you want to revoke account access for ${user.name} (${user.email})?`)) {
+    if (confirm(`Are you sure you want to permanently revoke access for ${user.name}?`)) {
       deleteUser(user.id);
-      if (selectedDrawerUser?.id === user.id) {
-        setSelectedDrawerUser(null);
-      }
       setSaveToast(`Revoked access for ${user.name}`);
       setTimeout(() => setSaveToast(null), 3000);
     }
   };
 
-  // Helper for Role Badge Colors & Labels
-  const getRoleBadge = (user: User) => {
-    const isRootAmit = user.name.toLowerCase().includes('amit') || user.email === 'amit@rsbequipments.com' || user.email === 'amit@rsb.com';
-    const isSuperAdmin = user.authLevel?.startsWith('Tier 1') || user.role === 'super_admin';
-    const isPlantHead = user.authLevel?.startsWith('Tier 2') || user.role === 'kaustubh' || user.role === 'admin';
-    const isManager = user.authLevel?.startsWith('Tier 3');
-
-    if (isRootAmit) {
-      return {
-        label: 'Super Admin',
-        badgeClass: 'bg-rose-500/15 text-rose-300 border-rose-500/30',
-        dotClass: 'bg-rose-400',
-      };
-    }
-    if (isSuperAdmin) {
-      return {
-        label: 'Super Admin',
-        badgeClass: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
-        dotClass: 'bg-purple-400',
-      };
-    }
-    if (isPlantHead) {
-      return {
-        label: 'Plant Head',
-        badgeClass: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30',
-        dotClass: 'bg-indigo-400',
-      };
-    }
-    if (isManager) {
-      return {
-        label: 'Department Manager',
-        badgeClass: 'bg-blue-500/15 text-blue-300 border-blue-500/30',
-        dotClass: 'bg-blue-400',
-      };
-    }
-    return {
-      label: 'Data Entry Operator',
-      badgeClass: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-      dotClass: 'bg-emerald-400',
-    };
-  };
-
   return (
-    <div className="space-y-6 pb-12 animate-fadeIn select-none">
+    <div className="space-y-6 text-slate-100">
       {/* Toast Notification */}
       {saveToast && (
-        <div className="fixed bottom-6 right-6 z-50 px-4 py-3 rounded-2xl bg-slate-900/95 border border-purple-500/50 text-white text-xs font-bold shadow-2xl flex items-center gap-2.5 backdrop-blur-md animate-slideUp">
-          <Sparkles className="w-4 h-4 text-purple-400 shrink-0" />
-          <span>{saveToast}</span>
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3 rounded-xl bg-slate-900 border border-emerald-500/50 text-white shadow-2xl animate-bounce">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+          <span className="text-xs font-bold">{saveToast}</span>
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* 1. EXECUTIVE IAM PAGE HEADER */}
-      {/* ========================================================================= */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-900/90 via-slate-900/80 to-slate-950/90 border border-slate-800/80 p-6 md:p-8 shadow-2xl backdrop-blur-xl">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-purple-600/5 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-1/3 w-96 h-96 bg-indigo-600/5 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="relative flex flex-col xl:flex-row items-start xl:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-950/50 border border-purple-500/30 text-purple-300 text-[10px] font-mono font-bold uppercase tracking-wider">
-              <Shield className="w-3.5 h-3.5 text-purple-400" />
-              <span>Identity & Access Management (IAM)</span>
+      {/* Super Admin Executive Banner */}
+      <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-purple-950/80 to-slate-900 border border-purple-500/30 shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-purple-600/10 rounded-full blur-3xl pointer-events-none" />
+        
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-xl bg-purple-600/30 border border-purple-500/50 flex items-center justify-center text-purple-300 shadow-inner">
+                <ShieldCheck className="w-6 h-6 text-purple-400" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-black text-white tracking-tight">
+                    Super Admin Security & Authorization Matrix
+                  </h2>
+                  <span className="px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[10px] font-mono font-bold uppercase">
+                    Root Tier-1 Control
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Logged in as <strong className="text-purple-300">Super Admin Amit</strong>. Zero-knowledge encrypted identity management.
+                </p>
+              </div>
             </div>
-            <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">
-              Identity & Access Control Center
-            </h1>
-            <p className="text-xs md:text-sm text-slate-400 max-w-2xl font-normal leading-relaxed">
-              Manage organization users, roles, permissions, and security access across RSB Equipments.
-            </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
-            {/* Super Admin Executive Info Pill */}
-            <div className="hidden lg:flex items-center gap-3 px-4 py-2 rounded-2xl bg-slate-950/80 border border-slate-800 shadow-inner">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center font-bold text-white text-xs shadow-md">
-                {currentUser.name ? currentUser.name[0].toUpperCase() : 'A'}
-              </div>
-              <div className="text-left">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-extrabold text-white">{currentUser.name || 'Amit'}</span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                </div>
-                <div className="text-[10px] text-slate-400 font-mono">Organization Owner</div>
-              </div>
-            </div>
-
-            {/* Export Access Report */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Plant Lockdown Emergency Switch */}
             <button
-              type="button"
-              onClick={exportDatabaseBackup}
-              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
-              title="Export Full Access Ledger & Permissions (.JSON)"
+              onClick={() => {
+                const nextState = !isFactoryLockdownActive;
+                if (confirm(nextState ? '⚠️ ACTIVATE EMERGENCY PLANT LOCKDOWN? All non-admin sessions will be quarantined.' : 'Deactivate Plant Lockdown?')) {
+                  setIsFactoryLockdownActive(nextState);
+                  setSaveToast(nextState ? '🚨 Plant Emergency Lockdown ACTIVATED' : 'Plant Lockdown Deactivated');
+                }
+              }}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 ${
+                isFactoryLockdownActive
+                  ? 'bg-rose-600 hover:bg-rose-500 text-white animate-pulse border border-rose-400 ring-2 ring-rose-500/30'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+              }`}
             >
-              <Download className="w-3.5 h-3.5 text-slate-400" />
-              <span>Export Report</span>
+              <AlertTriangle className={`w-4 h-4 ${isFactoryLockdownActive ? 'text-white' : 'text-amber-400'}`} />
+              <span>{isFactoryLockdownActive ? 'LOCKDOWN ACTIVE' : 'Emergency Lockdown'}</span>
             </button>
 
-            {/* Security Settings (Cloud Backup) */}
+            {/* Enterprise Cloud Backup */}
             <button
-              type="button"
               onClick={() => setIsSupabaseModalOpen(true)}
-              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
-              title="Cloud Synchronization & Storage Settings"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-500/50 text-xs font-bold rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
+              title="Enterprise Cloud Backup Settings"
             >
-              <Cloud className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Security Settings</span>
+              <Cloud className="w-4 h-4 text-emerald-400" />
+              <span>Cloud Backup</span>
             </button>
 
-            {/* Register Member Primary Action */}
+            {/* 1-Click Database Backup */}
             <button
-              type="button"
+              onClick={exportDatabaseBackup}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-purple-300 border border-purple-500/40 text-xs font-bold rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
+              title="Download 1-Click Full Encrypted Database JSON Backup"
+            >
+              <Download className="w-4 h-4 text-purple-400" />
+              <span>Export Backup (.JSON)</span>
+            </button>
+
+            {/* Add New Member Button */}
+            <button
               onClick={() => setIsAddModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-purple-900/30 transition-all active:scale-95 cursor-pointer ring-1 ring-purple-400/30"
+              className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-extrabold rounded-xl shadow-lg shadow-purple-600/30 transition-all active:scale-95 cursor-pointer"
             >
               <UserPlus className="w-4 h-4" />
-              <span>Invite Member</span>
+              <span>Register Member</span>
             </button>
           </div>
         </div>
 
-        {/* ========================================================================= */}
-        {/* 2. EXECUTIVE SUMMARY KPI CARDS */}
-        {/* ========================================================================= */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 mt-6 pt-6 border-t border-slate-800/80">
-          <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800/80 flex items-center justify-between shadow-xs">
+        {/* Security Matrix KPI Cards */}
+        <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-purple-500/20 max-w-sm">
+          <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between">
             <div>
-              <div className="text-[11px] font-semibold text-slate-400">Total Members</div>
-              <div className="text-xl font-black text-white font-mono mt-0.5">{users.length}</div>
+              <div className="text-[10px] uppercase font-mono text-slate-400">Total Enrolled</div>
+              <div className="text-lg font-black text-white font-mono mt-0.5">{users.length} Members</div>
             </div>
-            <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center">
-              <Users className="w-4 h-4 text-purple-400" />
-            </div>
+            <Users className="w-5 h-5 text-purple-400 opacity-60" />
           </div>
 
-          <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800/80 flex items-center justify-between shadow-xs">
+          <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between">
             <div>
-              <div className="text-[11px] font-semibold text-slate-400">Active Users</div>
-              <div className="text-xl font-black text-emerald-400 font-mono mt-0.5 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                {activeOnlineCount} Online
+              <div className="text-[10px] uppercase font-mono text-slate-400">Active Operators</div>
+              <div className="text-lg font-black text-emerald-400 font-mono mt-0.5">
+                {users.filter((u) => u.id === currentUser.id || u.role === currentUser.role || u.email === currentUser.email).length} Online
               </div>
             </div>
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
-              <Activity className="w-4 h-4 text-emerald-400" />
-            </div>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800/80 flex items-center justify-between shadow-xs">
-            <div>
-              <div className="text-[11px] font-semibold text-slate-400">Super Admins</div>
-              <div className="text-xl font-black text-rose-300 font-mono mt-0.5">{superAdminCount}</div>
-            </div>
-            <div className="w-9 h-9 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center">
-              <ShieldAlert className="w-4 h-4 text-rose-400" />
-            </div>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800/80 flex items-center justify-between shadow-xs">
-            <div>
-              <div className="text-[11px] font-semibold text-slate-400">Departments</div>
-              <div className="text-xl font-black text-indigo-300 font-mono mt-0.5">{uniqueDepartments.length}</div>
-            </div>
-            <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
-              <Building2 className="w-4 h-4 text-indigo-400" />
-            </div>
-          </div>
-
-          <div className="col-span-2 sm:col-span-1 p-4 rounded-2xl bg-slate-950/60 border border-slate-800/80 flex items-center justify-between shadow-xs">
-            <div>
-              <div className="text-[11px] font-semibold text-slate-400">Security Status</div>
-              <div className="text-xs font-black text-cyan-300 font-mono mt-1.5 flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400" />
-                Protected
-              </div>
-            </div>
-            <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center">
-              <ShieldCheck className="w-4 h-4 text-cyan-400" />
-            </div>
+            <Activity className="w-5 h-5 text-emerald-400 opacity-60" />
           </div>
         </div>
       </div>
 
-      {/* ========================================================================= */}
-      {/* 3. ENTERPRISE FILTER & VIEW CONTROL BAR */}
-      {/* ========================================================================= */}
-      <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800/80 shadow-lg backdrop-blur-md flex flex-col md:flex-row items-center justify-between gap-3">
-        <div className="relative w-full md:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search users by name, email, department..."
-            className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-white placeholder-slate-500 text-xs focus:border-purple-500 outline-none transition-all"
-          />
-        </div>
+      {/* MEMBERS ROSTER TABLE */}
+      <div className="space-y-4">
+        {/* Filter Bar */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 rounded-xl bg-slate-900 border border-slate-800">
+          <div className="relative w-full sm:w-80">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search member by name, role, email..."
+              className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-500 text-xs focus:border-purple-500 outline-none"
+            />
+          </div>
 
-        <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-start md:justify-end">
-          <select
-            value={filterTier}
-            onChange={(e) => setFilterTier(e.target.value)}
-            className="px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-slate-300 text-xs font-medium focus:border-purple-500 outline-none transition-all cursor-pointer"
-          >
-            <option value="ALL">All Authorization Tiers</option>
-            {ALL_AUTH_LEVELS.map((tier) => (
-              <option key={tier} value={tier}>
-                {tier}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={filterDepartment}
-            onChange={(e) => setFilterDepartment(e.target.value)}
-            className="px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-slate-300 text-xs font-medium focus:border-purple-500 outline-none transition-all cursor-pointer"
-          >
-            <option value="ALL">All Departments</option>
-            {uniqueDepartments.map((dept) => (
-              <option key={dept} value={dept}>
-                {dept}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-slate-300 text-xs font-medium focus:border-purple-500 outline-none transition-all cursor-pointer"
-          >
-            <option value="ALL">All Statuses</option>
-            <option value="Active">Active</option>
-            <option value="Read Only">Read Only</option>
-            <option value="Suspended">Suspended</option>
-          </select>
-
-          {/* View Toggle */}
-          <div className="flex items-center p-1 rounded-xl bg-slate-950/80 border border-slate-800">
-            <button
-              type="button"
-              onClick={() => setViewMode('grid')}
-              className={`p-1.5 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'grid' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
-              }`}
-              title="Identity Cards View"
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <select
+              value={filterTier}
+              onChange={(e) => setFilterTier(e.target.value)}
+              className="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs font-medium focus:border-purple-500 outline-none"
             >
-              <LayoutGrid className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('list')}
-              className={`p-1.5 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'list' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
-              }`}
-              title="Compact Table View"
+              <option value="ALL">All Authorization Tiers</option>
+              {ALL_AUTH_LEVELS.map((tier) => (
+                <option key={tier} value={tier}>
+                  {tier}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={filterDepartment}
+              onChange={(e) => setFilterDepartment(e.target.value)}
+              className="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs font-medium focus:border-purple-500 outline-none"
             >
-              <List className="w-3.5 h-3.5" />
-            </button>
+              <option value="ALL">All Departments</option>
+              {uniqueDepartments.map((dept) => (
+                <option key={dept} value={dept}>
+                  {dept}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
-      </div>
 
-      {/* ========================================================================= */}
-      {/* 4. USER DIRECTORY: MODERN IDENTITY CARDS (GRID VIEW) */}
-      {/* ========================================================================= */}
-      {viewMode === 'grid' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredUsers.map((user) => {
-            const isOnline = user.id === currentUser.id || user.email === currentUser.email;
-            const badge = getRoleBadge(user);
-            const isRootAmit = user.name.toLowerCase().includes('amit') || user.email === 'amit@rsbequipments.com';
-
-            return (
-              <div
-                key={user.id}
-                className="group relative rounded-3xl bg-slate-900/80 border border-slate-800/90 hover:border-purple-500/40 p-5 shadow-xl transition-all duration-200 hover:-translate-y-0.5 flex flex-col justify-between backdrop-blur-md"
-              >
-                <div className="space-y-4">
-                  {/* Card Header */}
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="relative">
-                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center font-extrabold text-white text-sm shadow-md ring-1 ring-white/10">
-                          {user.name.slice(0, 2).toUpperCase()}
-                        </div>
-                        <span
-                          className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-slate-900 ${
-                            isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
-                          }`}
-                          title={isOnline ? 'Online (Logged In)' : 'Offline'}
-                        />
-                      </div>
-
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <h3 className="font-extrabold text-white text-base leading-tight">{user.name}</h3>
-                        </div>
-                        <span className="text-[11px] text-slate-400 font-mono block mt-0.5">{user.email}</span>
-                      </div>
-                    </div>
-
-                    {/* Role Badge */}
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider border shrink-0 ${badge.badgeClass}`}>
-                      {badge.label}
-                    </span>
-                  </div>
-
-                  {/* Department & Operational Status */}
-                  <div className="p-3 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-1.5 text-xs">
-                    <div className="flex items-center justify-between text-slate-300">
-                      <span className="text-[11px] text-slate-500 font-medium">Department</span>
-                      <span className="font-bold text-slate-200 text-right truncate max-w-[180px]">{user.department || 'Plant Operations'}</span>
-                    </div>
-
-                    <div className="flex items-center justify-between text-slate-300">
-                      <span className="text-[11px] text-slate-500 font-medium">Status</span>
-                      <span className={`inline-flex items-center gap-1.5 font-bold ${isOnline ? 'text-emerald-400' : 'text-slate-400'}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-400' : 'bg-slate-500'}`} />
-                        {isOnline ? 'Online' : user.status === 'Suspended' ? 'Suspended' : `Offline (${user.lastActive || '5m ago'})`}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Security Permission Tags (Chips) */}
-                  <div className="space-y-1.5">
-                    <span className="text-[10px] uppercase font-mono font-bold text-slate-500 tracking-wider">
-                      Active Privileges
-                    </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {user.authLevel?.startsWith('Tier 1') || user.role === 'super_admin' ? (
-                        <span className="px-2 py-0.5 rounded-lg bg-purple-950/50 text-[10px] font-bold text-purple-300 border border-purple-500/30 flex items-center gap-1">
-                          <Check className="w-3 h-3 text-purple-400" /> Full System Access
-                        </span>
-                      ) : null}
-                      {user.permissions?.canEditMaterials && (
-                        <span className="px-2 py-0.5 rounded-lg bg-slate-800/80 text-[10px] font-medium text-slate-300 border border-slate-700 flex items-center gap-1">
-                          <Check className="w-3 h-3 text-emerald-400" /> Edit Materials
-                        </span>
-                      )}
-                      {user.permissions?.canApproveOrders && (
-                        <span className="px-2 py-0.5 rounded-lg bg-slate-800/80 text-[10px] font-medium text-slate-300 border border-slate-700 flex items-center gap-1">
-                          <Check className="w-3 h-3 text-purple-400" /> Approve Orders
-                        </span>
-                      )}
-                      {user.permissions?.canOverrideLock && (
-                        <span className="px-2 py-0.5 rounded-lg bg-slate-800/80 text-[10px] font-medium text-slate-300 border border-slate-700 flex items-center gap-1">
-                          <Check className="w-3 h-3 text-amber-400" /> Override Locks
-                        </span>
-                      )}
-                      {user.permissions?.canManageUsers && (
-                        <span className="px-2 py-0.5 rounded-lg bg-slate-800/80 text-[10px] font-medium text-slate-300 border border-slate-700 flex items-center gap-1">
-                          <Check className="w-3 h-3 text-cyan-400" /> Manage Users
-                        </span>
-                      )}
-                      {user.permissions?.canExportReports && (
-                        <span className="px-2 py-0.5 rounded-lg bg-slate-800/80 text-[10px] font-medium text-slate-300 border border-slate-700 flex items-center gap-1">
-                          <Check className="w-3 h-3 text-blue-400" /> Export Reports
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Card Actions */}
-                <div className="flex items-center justify-between gap-2 pt-4 mt-4 border-t border-slate-800/80">
-                  <div className="flex items-center gap-1.5">
-                    {/* Emergency 1-Time Reset PIN */}
-                    <button
-                      type="button"
-                      onClick={() => handleIssueResetPin(user)}
-                      className="p-2 rounded-xl bg-slate-950/80 hover:bg-slate-800 text-amber-400 border border-slate-800 hover:border-amber-500/40 text-xs font-semibold transition-all cursor-pointer"
-                      title="Issue 1-Time Emergency Reset PIN"
-                    >
-                      <Key className="w-3.5 h-3.5" />
-                    </button>
-
-                    {/* Delete Account (disabled for root Amit) */}
-                    {!isRootAmit && (
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(user)}
-                        className="p-2 rounded-xl bg-slate-950/80 hover:bg-rose-950/60 text-rose-400 border border-slate-800 hover:border-rose-500/40 text-xs font-semibold transition-all cursor-pointer"
-                        title="Revoke User Access"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedDrawerUser(user)}
-                      className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white text-xs font-bold transition-all border border-slate-700 shadow-xs cursor-pointer"
-                    >
-                      View Profile
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleOpenEdit(user)}
-                      className="px-3 py-1.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 hover:text-purple-200 text-xs font-bold transition-all border border-purple-500/30 shadow-xs cursor-pointer flex items-center gap-1"
-                    >
-                      <Edit2 className="w-3 h-3" />
-                      <span>Manage Access</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 5. USER DIRECTORY: COMPACT IAM LIST (TABLE VIEW) */}
-      {/* ========================================================================= */}
-      {viewMode === 'list' && (
-        <div className="overflow-hidden rounded-3xl border border-slate-800/80 bg-slate-900/90 shadow-xl backdrop-blur-md">
+        {/* Members Table */}
+        <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/90 shadow-xl">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs text-slate-300">
-              <thead className="bg-slate-950/80 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800">
+              <thead className="bg-slate-850 text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800">
                 <tr>
-                  <th className="px-5 py-3.5">User Identity</th>
-                  <th className="px-5 py-3.5">Department</th>
-                  <th className="px-5 py-3.5">Role & Authorization Tier</th>
-                  <th className="px-5 py-3.5">Security Gate Permissions</th>
-                  <th className="px-5 py-3.5">Session Status</th>
-                  <th className="px-5 py-3.5 text-right">Actions</th>
+                  <th className="px-4 py-3">Member & Identity</th>
+                  <th className="px-4 py-3">Department</th>
+                  <th className="px-4 py-3">Authorization Tier</th>
+                  <th className="px-4 py-3">Access Gate Permissions</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3 text-right">Enterprise Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 font-medium">
                 {filteredUsers.map((user) => {
-                  const isOnline = user.id === currentUser.id || user.email === currentUser.email;
-                  const badge = getRoleBadge(user);
-                  const isRootAmit = user.name.toLowerCase().includes('amit') || user.email === 'amit@rsbequipments.com';
+                  const isRootAmit = user.name.toLowerCase().includes('amit') || user.email === 'amit@rsbequipments.com' || user.email === 'amit@rsb.com';
+                  const isSuperAdmin = user.authLevel?.startsWith('Tier 1') || user.role === 'super_admin';
+                  const isPlantHead = user.authLevel?.startsWith('Tier 2') || user.role === 'kaustubh' || user.role === 'admin';
+                  const isManager = user.authLevel?.startsWith('Tier 3');
+
+                  const roleBadgeLabel = isRootAmit
+                    ? 'ROOT ADMIN'
+                    : isSuperAdmin
+                    ? 'SUPER ADMIN'
+                    : isPlantHead
+                    ? 'PLANT HEAD'
+                    : isManager
+                    ? 'MANAGER'
+                    : 'OPERATOR';
+
+                  const roleBadgeColor = isSuperAdmin
+                    ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                    : isPlantHead
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                    : isManager
+                    ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                    : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40';
 
                   return (
-                    <tr key={user.id} className="hover:bg-slate-800/40 transition-colors group">
-                      <td className="px-5 py-3.5">
+                    <tr key={user.id} className="hover:bg-slate-800/50 transition-colors group">
+                      <td className="px-4 py-3.5">
                         <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center font-bold text-white text-xs shadow-md shrink-0">
+                          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center font-bold text-white shadow-md text-xs">
                             {user.name.slice(0, 2).toUpperCase()}
                           </div>
                           <div>
-                            <div className="font-extrabold text-white text-xs">{user.name}</div>
-                            <div className="text-[11px] text-slate-400 font-mono">{user.email}</div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-extrabold text-white text-sm">{user.name}</span>
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-bold uppercase tracking-wider border ${roleBadgeColor}`}>
+                                {roleBadgeLabel}
+                              </span>
+                            </div>
+                            <span className="text-[11px] text-slate-400 font-mono">{user.email}</span>
                           </div>
                         </div>
                       </td>
 
-                      <td className="px-5 py-3.5">
-                        <span className="text-slate-300">{user.department || 'Plant Operations'}</span>
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-1.5 text-slate-300">
+                          <Building2 className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                          <span>{user.department || 'Plant Operations'}</span>
+                        </div>
                       </td>
 
-                      <td className="px-5 py-3.5">
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase border ${badge.badgeClass}`}>
-                          {badge.label}
+                      <td className="px-4 py-3.5">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-extrabold border ${
+                            user.authLevel?.startsWith('Tier 1')
+                              ? 'bg-purple-950/60 text-purple-300 border-purple-600/50'
+                              : user.authLevel?.startsWith('Tier 2')
+                              ? 'bg-amber-950/60 text-amber-300 border-amber-600/50'
+                              : user.authLevel?.startsWith('Tier 3')
+                              ? 'bg-blue-950/60 text-blue-300 border-blue-600/50'
+                              : 'bg-slate-800 text-slate-300 border-slate-700'
+                          }`}
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                          {user.authLevel || 'Tier 4: Data Entry Operator'}
                         </span>
                       </td>
 
-                      <td className="px-5 py-3.5">
+                      <td className="px-4 py-3.5">
                         <div className="flex flex-wrap gap-1 max-w-xs">
                           {user.permissions?.canEditMaterials && (
-                            <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300 border border-slate-700">
+                            <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-emerald-400 border border-emerald-500/30">
                               Edit Materials
                             </span>
                           )}
                           {user.permissions?.canApproveOrders && (
-                            <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-purple-300 border border-purple-500/30">
+                            <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-purple-400 border border-purple-500/30">
                               Approve Orders
                             </span>
                           )}
                           {user.permissions?.canOverrideLock && (
-                            <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-amber-300 border border-amber-500/30">
-                              Override Locks
+                            <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-amber-400 border border-amber-500/30">
+                              Override Lock
+                            </span>
+                          )}
+                          {user.permissions?.canManageUsers && (
+                            <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-cyan-400 border border-cyan-500/30">
+                              Admin Access
                             </span>
                           )}
                         </div>
                       </td>
 
-                      <td className="px-5 py-3.5">
-                        {isOnline ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
+                      <td className="px-4 py-3.5">
+                        {user.id === currentUser.id || user.email === currentUser.email ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-xs shadow-emerald-500/20">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                             Online (Logged In)
+                          </span>
+                        ) : user.status === 'Suspended' ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/40">
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                            Suspended
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700">
                             <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
-                            Offline ({user.lastActive || '5m ago'})
+                            Offline ({user.lastActive || 'Logged Out'})
                           </span>
                         )}
                       </td>
 
-                      <td className="px-5 py-3.5 text-right">
+                      <td className="px-4 py-3.5 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          {/* Issue Emergency 1-Time Reset PIN */}
                           <button
-                            type="button"
-                            onClick={() => setSelectedDrawerUser(user)}
-                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
-                            title="View Profile Drawer"
+                            onClick={() => handleIssueResetPin(user)}
+                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 hover:border-amber-500/40 transition-colors"
+                            title="Issue 1-Time Emergency Reset PIN"
                           >
-                            <ExternalLink className="w-3.5 h-3.5" />
+                            <Key className="w-3.5 h-3.5" />
                           </button>
+
+                          {/* Edit / Alter Authorizations */}
                           <button
-                            type="button"
                             onClick={() => handleOpenEdit(user)}
-                            className="p-1.5 rounded-lg bg-purple-900/40 hover:bg-purple-900/60 text-purple-300 border border-purple-500/30"
-                            title="Manage Access"
+                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-purple-900/50 text-purple-300 border border-slate-700 hover:border-purple-500/40 transition-colors"
+                            title="Alter Authorization Tier & Permissions"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
+
+                          {/* Delete (disabled for Amit root) */}
                           {!isRootAmit && (
                             <button
-                              type="button"
                               onClick={() => handleDelete(user)}
-                              className="p-1.5 rounded-lg bg-rose-950/50 hover:bg-rose-950/80 text-rose-400 border border-rose-500/30"
-                              title="Revoke Access"
+                              className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-950/60 text-rose-400 border border-slate-700 hover:border-rose-500/40 transition-colors"
+                              title="Revoke Account"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -846,156 +611,15 @@ export const MemberAuthorizationManager: React.FC = () => {
             </table>
           </div>
         </div>
-      )}
+      </div>
 
-      {/* ========================================================================= */}
-      {/* 6. MEMBER PROFILE DRAWER (MODERN SLIDE-OVER PANEL) */}
-      {/* ========================================================================= */}
-      {selectedDrawerUser && (
-        <div className="fixed inset-0 z-50 overflow-hidden">
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs transition-opacity animate-fadeIn"
-            onClick={() => setSelectedDrawerUser(null)}
-          />
-
-          <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
-            <div className="w-screen max-w-md bg-slate-900 border-l border-slate-800 shadow-2xl p-6 flex flex-col justify-between overflow-y-auto animate-slideLeft">
-              <div className="space-y-6">
-                {/* Drawer Header */}
-                <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-                  <div className="flex items-center gap-2">
-                    <UserCheck className="w-4 h-4 text-purple-400" />
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-300 font-mono">
-                      Member Profile & IAM Summary
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedDrawerUser(null)}
-                    className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-
-                {/* Identity Hero */}
-                <div className="flex items-center gap-4 p-4 rounded-2xl bg-slate-950/80 border border-slate-800">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-purple-800 flex items-center justify-center font-black text-white text-lg shadow-xl shrink-0">
-                    {selectedDrawerUser.name.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div>
-                    <h2 className="text-base font-extrabold text-white">{selectedDrawerUser.name}</h2>
-                    <span className="text-xs text-slate-400 font-mono block mt-0.5">{selectedDrawerUser.email}</span>
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-bold uppercase border ${getRoleBadge(selectedDrawerUser).badgeClass}`}>
-                        {getRoleBadge(selectedDrawerUser).label}
-                      </span>
-                      <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                        {selectedDrawerUser.id === currentUser.id ? 'Active Session' : 'Enrolled'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Role & Department Information */}
-                <div className="space-y-3">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-mono">
-                    Enterprise IAM Attributes
-                  </h3>
-
-                  <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-3 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Department</span>
-                      <span className="font-bold text-white text-right">{selectedDrawerUser.department || 'Plant Operations'}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Security Clearance</span>
-                      <span className="font-bold text-purple-300">{selectedDrawerUser.authLevel || 'Tier 4: Data Entry Operator'}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Account Status</span>
-                      <span className="font-bold text-emerald-400">{selectedDrawerUser.status || 'Active'}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Last Active</span>
-                      <span className="font-mono text-slate-300">{selectedDrawerUser.lastActive || '5 minutes ago'}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Granted Security Gates (Permission Chips) */}
-                <div className="space-y-3">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-mono">
-                    Active Security Gates
-                  </h3>
-
-                  <div className="space-y-2">
-                    {[
-                      { label: 'Edit Materials & Entry Workstation', key: 'canEditMaterials', active: selectedDrawerUser.permissions?.canEditMaterials },
-                      { label: 'Sign-off & Approve Purchase Orders', key: 'canApproveOrders', active: selectedDrawerUser.permissions?.canApproveOrders },
-                      { label: 'Override Locked Terminals & Freeze', key: 'canOverrideLock', active: selectedDrawerUser.permissions?.canOverrideLock },
-                      { label: 'Full User & Role Governance Admin', key: 'canManageUsers', active: selectedDrawerUser.permissions?.canManageUsers },
-                      { label: 'Export Reports & Audit Data', key: 'canExportReports', active: selectedDrawerUser.permissions?.canExportReports },
-                      { label: 'Delete Records & Database Purge', key: 'canDeleteRecords', active: selectedDrawerUser.permissions?.canDeleteRecords },
-                    ].map((gate) => (
-                      <div
-                        key={gate.key}
-                        className={`p-3 rounded-xl border flex items-center justify-between text-xs font-semibold ${
-                          gate.active
-                            ? 'bg-purple-950/30 border-purple-500/30 text-purple-200'
-                            : 'bg-slate-950/40 border-slate-800/80 text-slate-500'
-                        }`}
-                      >
-                        <span>{gate.label}</span>
-                        {gate.active ? (
-                          <span className="w-5 h-5 rounded-md bg-purple-600/30 text-purple-300 flex items-center justify-center font-bold text-xs">✓</span>
-                        ) : (
-                          <span className="text-[10px] text-slate-600">Restricted</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Drawer Bottom Actions */}
-              <div className="pt-6 border-t border-slate-800 space-y-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleOpenEdit(selectedDrawerUser);
-                  }}
-                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-purple-900/30 flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                  <span>Alter Security Clearance</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleIssueResetPin(selectedDrawerUser)}
-                  className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-amber-300 font-bold text-xs border border-slate-700 flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <Key className="w-3.5 h-3.5" />
-                  <span>Generate Emergency Reset PIN</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 7. MODAL: REGISTER NEW MEMBER */}
-      {/* ========================================================================= */}
+      {/* MODAL 1: REGISTER NEW MEMBER */}
       {isAddModalOpen && (
         <Modal
           isOpen={isAddModalOpen}
           onClose={() => setIsAddModalOpen(false)}
-          title="Invite New Team Member"
-          subtitle="Provision identity, department, and role authorization tier"
+          title="Register New Factory Member"
+          subtitle="Assign member identity, department, and role authorization tier"
           maxWidth="2xl"
         >
           <form onSubmit={handleCreateMember} className="space-y-4 text-slate-200">
@@ -1009,8 +633,8 @@ export const MemberAuthorizationManager: React.FC = () => {
                   required
                   value={newMemberForm.name}
                   onChange={(e) => setNewMemberForm({ ...newMemberForm, name: e.target.value })}
-                  placeholder="e.g. Rahul Sharma"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
+                  placeholder="e.g. Ramesh Patil"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
                 />
               </div>
 
@@ -1023,8 +647,8 @@ export const MemberAuthorizationManager: React.FC = () => {
                   required
                   value={newMemberForm.email}
                   onChange={(e) => setNewMemberForm({ ...newMemberForm, email: e.target.value })}
-                  placeholder="e.g. rahul@rsbequipments.com"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
+                  placeholder="e.g. ramesh@rsb.com"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
                 />
               </div>
             </div>
@@ -1038,7 +662,7 @@ export const MemberAuthorizationManager: React.FC = () => {
                   type="text"
                   value={newMemberForm.department}
                   onChange={(e) => setNewMemberForm({ ...newMemberForm, department: e.target.value })}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
                 />
               </div>
 
@@ -1058,7 +682,7 @@ export const MemberAuthorizationManager: React.FC = () => {
                       department: matched ? matched.department : newMemberForm.department,
                     });
                   }}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
                 >
                   {ROLE_OPTIONS.map((opt) => (
                     <option key={opt.role} value={opt.role}>
@@ -1076,7 +700,7 @@ export const MemberAuthorizationManager: React.FC = () => {
               <select
                 value={newMemberForm.authLevel}
                 onChange={(e) => setNewMemberForm({ ...newMemberForm, authLevel: e.target.value as AuthLevel })}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
+                className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
               >
                 {ALL_AUTH_LEVELS.map((tier) => (
                   <option key={tier} value={tier}>
@@ -1087,12 +711,12 @@ export const MemberAuthorizationManager: React.FC = () => {
             </div>
 
             {/* Granular Permission Toggles */}
-            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
+            <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
               <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
                 Access Gate Permissions
               </span>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 text-xs">
-                <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg bg-slate-900 border border-slate-800">
+                <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={newMemberForm.permissions.canEditMaterials}
@@ -1107,7 +731,7 @@ export const MemberAuthorizationManager: React.FC = () => {
                   <span>Edit Materials</span>
                 </label>
 
-                <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg bg-slate-900 border border-slate-800">
+                <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={newMemberForm.permissions.canApproveOrders}
@@ -1122,7 +746,7 @@ export const MemberAuthorizationManager: React.FC = () => {
                   <span>Approve Orders</span>
                 </label>
 
-                <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg bg-slate-900 border border-slate-800">
+                <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={newMemberForm.permissions.canOverrideLock}
@@ -1139,29 +763,33 @@ export const MemberAuthorizationManager: React.FC = () => {
               </div>
             </div>
 
+            <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-500/30 text-[11px] text-purple-300 flex items-center gap-2">
+              <Key className="w-4 h-4 text-purple-400 shrink-0" />
+              <span>
+                A secure 1-time activation setup PIN will be generated upon registration. Passwords remain encrypted and private to the user.
+              </span>
+            </div>
+
             <div className="flex justify-end gap-3 pt-3">
               <button
                 type="button"
                 onClick={() => setIsAddModalOpen(false)}
-                className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-750 text-xs font-bold"
+                className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-bold"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-purple-900/30 flex items-center gap-2"
+                className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-600/30 transition-all"
               >
-                <Check className="w-4 h-4" />
-                <span>Register & Provision</span>
+                Enroll Member
               </button>
             </div>
           </form>
         </Modal>
       )}
 
-      {/* ========================================================================= */}
-      {/* 8. MODAL: ALTER AUTHORIZATION & ACCESS MANAGEMENT */}
-      {/* ========================================================================= */}
+      {/* MODAL 2: ALTER AUTHORIZATION & PERMISSIONS */}
       {editingUser && editForm && (
         <Modal
           isOpen={!!editingUser}
@@ -1169,8 +797,8 @@ export const MemberAuthorizationManager: React.FC = () => {
             setEditingUser(null);
             setEditForm(null);
           }}
-          title={`Manage Access: ${editForm.name}`}
-          subtitle="Configure enterprise security tier, gate permissions, and operational status"
+          title={`Alter Authorization: ${editForm.name}`}
+          subtitle="Configure security tier, access gates, and operational status"
           maxWidth="2xl"
         >
           <div className="space-y-4 text-slate-200">
@@ -1183,7 +811,7 @@ export const MemberAuthorizationManager: React.FC = () => {
                   type="text"
                   value={editForm.name}
                   onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
                 />
               </div>
 
@@ -1195,7 +823,7 @@ export const MemberAuthorizationManager: React.FC = () => {
                   type="text"
                   value={editForm.department}
                   onChange={(e) => setEditForm({ ...editForm, department: e.target.value })}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
                 />
               </div>
             </div>
@@ -1249,7 +877,7 @@ export const MemberAuthorizationManager: React.FC = () => {
                       permissions: autoPerms,
                     });
                   }}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
                 >
                   {ALL_AUTH_LEVELS.map((tier) => (
                     <option key={tier} value={tier}>
@@ -1266,7 +894,7 @@ export const MemberAuthorizationManager: React.FC = () => {
                 <select
                   value={editForm.status}
                   onChange={(e) => setEditForm({ ...editForm, status: e.target.value as any })}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
                 >
                   <option value="Active">Active (Full Privileges)</option>
                   <option value="Read Only">Read Only (Inspection View)</option>
@@ -1276,12 +904,12 @@ export const MemberAuthorizationManager: React.FC = () => {
             </div>
 
             {/* Granular Permissions Checkboxes */}
-            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2.5">
+            <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2.5">
               <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
                 Granular Security Gates
               </span>
               <div className="grid grid-cols-2 gap-2 text-xs">
-                <label className="flex items-center gap-2 cursor-pointer p-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700">
+                <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg bg-slate-800/60 hover:bg-slate-800">
                   <input
                     type="checkbox"
                     checked={editForm.permissions.canEditMaterials}
@@ -1291,12 +919,12 @@ export const MemberAuthorizationManager: React.FC = () => {
                         permissions: { ...editForm.permissions, canEditMaterials: e.target.checked },
                       })
                     }
-                    className="rounded bg-slate-800 text-purple-600"
+                    className="rounded bg-slate-700 text-purple-600"
                   />
                   <span>Can Edit Materials</span>
                 </label>
 
-                <label className="flex items-center gap-2 cursor-pointer p-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700">
+                <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg bg-slate-800/60 hover:bg-slate-800">
                   <input
                     type="checkbox"
                     checked={editForm.permissions.canApproveOrders}
@@ -1306,12 +934,12 @@ export const MemberAuthorizationManager: React.FC = () => {
                         permissions: { ...editForm.permissions, canApproveOrders: e.target.checked },
                       })
                     }
-                    className="rounded bg-slate-800 text-purple-600"
+                    className="rounded bg-slate-700 text-purple-600"
                   />
-                  <span>Can Approve Orders</span>
+                  <span>Can Sign-Off / Approve Orders</span>
                 </label>
 
-                <label className="flex items-center gap-2 cursor-pointer p-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700">
+                <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg bg-slate-800/60 hover:bg-slate-800">
                   <input
                     type="checkbox"
                     checked={editForm.permissions.canOverrideLock}
@@ -1321,12 +949,12 @@ export const MemberAuthorizationManager: React.FC = () => {
                         permissions: { ...editForm.permissions, canOverrideLock: e.target.checked },
                       })
                     }
-                    className="rounded bg-slate-800 text-purple-600"
+                    className="rounded bg-slate-700 text-purple-600"
                   />
-                  <span>Can Override Security Locks</span>
+                  <span>Can Override Freeze Locks</span>
                 </label>
 
-                <label className="flex items-center gap-2 cursor-pointer p-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700">
+                <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg bg-slate-800/60 hover:bg-slate-800">
                   <input
                     type="checkbox"
                     checked={editForm.permissions.canExportReports}
@@ -1336,20 +964,20 @@ export const MemberAuthorizationManager: React.FC = () => {
                         permissions: { ...editForm.permissions, canExportReports: e.target.checked },
                       })
                     }
-                    className="rounded bg-slate-800 text-purple-600"
+                    className="rounded bg-slate-700 text-purple-600"
                   />
-                  <span>Can Export Reports</span>
+                  <span>Can Export Data & PDF Reports</span>
                 </label>
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-3">
+            <div className="flex items-center justify-between pt-2">
               <button
                 type="button"
                 onClick={() => handleIssueResetPin(editingUser)}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition-all cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition-all"
               >
-                <Key className="w-3.5 h-3.5" /> Issue Reset PIN
+                <Key className="w-3.5 h-3.5" /> Issue 1-Time Reset PIN
               </button>
 
               <div className="flex gap-2">
@@ -1359,16 +987,16 @@ export const MemberAuthorizationManager: React.FC = () => {
                     setEditingUser(null);
                     setEditForm(null);
                   }}
-                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-bold cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-bold"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={handleSaveEdit}
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-purple-900/30 flex items-center gap-1.5 cursor-pointer"
+                  className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-600/30 transition-all"
                 >
-                  <Check className="w-3.5 h-3.5" /> Save Access Matrix
+                  Save Authorizations
                 </button>
               </div>
             </div>
@@ -1376,66 +1004,49 @@ export const MemberAuthorizationManager: React.FC = () => {
         </Modal>
       )}
 
-      {/* ========================================================================= */}
-      {/* 9. MODAL: EMERGENCY 1-TIME RESET PIN POPUP */}
-      {/* ========================================================================= */}
+      {/* MODAL 3: ONE-TIME RESET PIN DISPLAY */}
       {generatedResetPin && (
         <Modal
           isOpen={!!generatedResetPin}
           onClose={() => setGeneratedResetPin(null)}
-          title="🔑 One-Time Activation / Reset PIN"
-          subtitle={`Deliver this temporary PIN securely to ${generatedResetPin.user.name}`}
+          title="Emergency One-Time Reset PIN Issued"
+          subtitle={`Temporary authorization passcode for ${generatedResetPin.user.name}`}
           maxWidth="md"
         >
-          <div className="space-y-4 text-center">
-            <div className="p-4 rounded-2xl bg-amber-950/30 border border-amber-500/40 text-left space-y-2">
-              <div className="flex items-center gap-2 text-amber-300 font-bold text-xs">
-                <Key className="w-4 h-4" />
-                <span>Zero-Knowledge Architecture</span>
-              </div>
-              <p className="text-slate-300 text-xs leading-relaxed">
-                Employee passwords are encrypted end-to-end. This temporary setup PIN allows the user to securely set or reset their login credentials upon next sign-in.
-              </p>
+          <div className="space-y-4 text-slate-200 text-center py-2">
+            <div className="w-16 h-16 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/40 mx-auto flex items-center justify-center">
+              <Key className="w-8 h-8" />
             </div>
 
-            <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
-              <span className="text-[10px] uppercase font-mono font-bold text-slate-400">Temporary Access PIN</span>
-              <div className="text-3xl font-black font-mono tracking-widest text-purple-300 select-all">
+            <div>
+              <div className="text-xs text-slate-400 font-medium">Temporary 15-Minute Activation PIN:</div>
+              <div className="text-3xl font-black text-amber-400 font-mono tracking-widest my-2 select-all p-2 rounded-xl bg-slate-900 border border-amber-500/40">
                 {generatedResetPin.pin}
               </div>
-              <span className="text-[11px] text-slate-500 font-mono block">Expires at {generatedResetPin.expiresAt}</span>
+              <div className="text-[11px] text-slate-400">
+                Expires at: <strong className="text-white">{generatedResetPin.expiresAt}</strong>
+              </div>
             </div>
 
-            <div className="flex items-center justify-center gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(generatedResetPin.pin);
-                  setCopiedPin(true);
-                  setTimeout(() => setCopiedPin(false), 2000);
-                }}
-                className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-md flex items-center gap-1.5 cursor-pointer"
-              >
-                {copiedPin ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedPin ? 'Copied to Clipboard' : 'Copy PIN'}</span>
-              </button>
+            <p className="text-xs text-slate-400 text-left bg-slate-850 p-3 rounded-xl border border-slate-800">
+              Provide this code to <strong>{generatedResetPin.user.name}</strong> so they can securely initialize or reset their credentials on their device. Passwords remain private and unviewable.
+            </p>
 
-              <button
-                type="button"
-                onClick={() => setGeneratedResetPin(null)}
-                className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-bold cursor-pointer"
-              >
-                Done
-              </button>
-            </div>
+            <button
+              onClick={() => setGeneratedResetPin(null)}
+              className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all"
+            >
+              Done & Dismiss
+            </button>
           </div>
         </Modal>
       )}
 
-      {/* Supabase Connect Modal */}
-      {isSupabaseModalOpen && (
-        <SupabaseConnectModal isOpen={isSupabaseModalOpen} onClose={() => setIsSupabaseModalOpen(false)} />
-      )}
+      {/* Supabase Integration Modal */}
+      <SupabaseConnectModal
+        isOpen={isSupabaseModalOpen}
+        onClose={() => setIsSupabaseModalOpen(false)}
+      />
     </div>
   );
 };
