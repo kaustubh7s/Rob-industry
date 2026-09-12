@@ -24,6 +24,7 @@ export interface UserPermissions {
   canManageUsers: boolean;
   canExportReports: boolean;
   canOverrideLock: boolean;
+  canVerifyInward?: boolean; // Can Verify & Tick Physical Raw Material Inward Receipts
 }
 
 export interface User {

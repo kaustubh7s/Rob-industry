@@ -39,6 +39,7 @@ export const INITIAL_USERS: User[] = [
       canManageUsers: true,
       canExportReports: true,
       canOverrideLock: true,
+      canVerifyInward: true,
     },
   },
   {
@@ -58,6 +59,7 @@ export const INITIAL_USERS: User[] = [
       canManageUsers: false,
       canExportReports: true,
       canOverrideLock: true,
+      canVerifyInward: true,
     },
   },
   {
@@ -77,6 +79,7 @@ export const INITIAL_USERS: User[] = [
       canManageUsers: false,
       canExportReports: true,
       canOverrideLock: false,
+      canVerifyInward: false,
     },
   },
   {
@@ -96,6 +99,7 @@ export const INITIAL_USERS: User[] = [
       canManageUsers: false,
       canExportReports: true,
       canOverrideLock: false,
+      canVerifyInward: true,
     },
   },
 ];

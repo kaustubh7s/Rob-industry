@@ -32,6 +32,8 @@ import {
   Download,
   Database,
   Cloud,
+  Truck,
+  PackageCheck,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 import { User, UserRole, AuthLevel, UserPermissions } from '../../types/erp';
@@ -100,6 +102,7 @@ export const MemberAuthorizationManager: React.FC = () => {
       canManageUsers: false,
       canExportReports: true,
       canOverrideLock: false,
+      canVerifyInward: false,
     },
   });
 
@@ -157,6 +160,7 @@ export const MemberAuthorizationManager: React.FC = () => {
         canManageUsers: user.role === 'super_admin',
         canExportReports: true,
         canOverrideLock: user.role === 'super_admin' || user.role === 'kaustubh',
+        canVerifyInward: user.role === 'store_incharge' || user.role === 'super_admin' || user.role === 'kaustubh' || user.role === 'admin' || user.id === 'usr-ramesh',
       },
     });
   };
@@ -194,6 +198,11 @@ export const MemberAuthorizationManager: React.FC = () => {
       if (!derivedDept || derivedDept === 'Material Data Entry Floor') {
         derivedDept = 'Plant Administration & Engineering';
       }
+    } else if (editForm.authLevel === 'Tier 3: Department Manager') {
+      if (editForm.role === 'store_incharge' || editForm.name.toLowerCase().includes('ramesh')) {
+        derivedRole = 'store_incharge';
+        derivedDept = 'Stores & Material Inward Receiving';
+      }
     } else if (editForm.authLevel === 'Tier 4: Data Entry Operator') {
       derivedRole = 'operator';
       if (!derivedDept || derivedDept === 'Super Admin & Executive Management') {
@@ -203,12 +212,15 @@ export const MemberAuthorizationManager: React.FC = () => {
 
     const updatedPermissions: UserPermissions = {
       ...editForm.permissions,
-      canEditMaterials: true,
+      canEditMaterials: editForm.permissions.canEditMaterials,
       canApproveOrders: editForm.authLevel === 'Tier 1: Super Admin' || editForm.authLevel === 'Tier 2: Plant Head / Admin' ? true : editForm.permissions.canApproveOrders,
       canOverrideLock: editForm.authLevel === 'Tier 1: Super Admin' || editForm.authLevel === 'Tier 2: Plant Head / Admin' ? true : editForm.permissions.canOverrideLock,
       canManageUsers: editForm.authLevel === 'Tier 1: Super Admin' ? true : (editForm.permissions.canManageUsers || false),
       canDeleteRecords: editForm.authLevel === 'Tier 1: Super Admin' ? true : (editForm.permissions.canDeleteRecords || false),
       canExportReports: true,
+      canVerifyInward: editForm.permissions.canVerifyInward !== undefined 
+        ? editForm.permissions.canVerifyInward 
+        : (derivedRole === 'store_incharge' || editForm.authLevel === 'Tier 1: Super Admin' || editForm.authLevel === 'Tier 2: Plant Head / Admin'),
     };
 
     updateUser(editForm.id, {
@@ -277,6 +289,7 @@ export const MemberAuthorizationManager: React.FC = () => {
         canManageUsers: false,
         canExportReports: true,
         canOverrideLock: false,
+        canVerifyInward: false,
       },
     });
   };
@@ -564,9 +577,10 @@ export const MemberAuthorizationManager: React.FC = () => {
                               Admin Access
                             </span>
                           )}
-                          {isStoreIncharge && (
-                            <span className="px-1.5 py-0.5 rounded bg-emerald-950/80 text-[10px] text-emerald-300 border border-emerald-500/40 font-bold">
-                              Inward Inspector (Arrivals Tick)
+                          {(user.permissions?.canVerifyInward || isStoreIncharge || user.authLevel?.startsWith('Tier 1') || user.authLevel?.startsWith('Tier 2') || user.role === 'admin' || user.role === 'super_admin' || user.role === 'kaustubh') && (
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-950/80 text-[10px] text-emerald-300 border border-emerald-500/40 font-bold flex items-center gap-1">
+                              <PackageCheck className="w-3 h-3 text-emerald-400 shrink-0" />
+                              Stores Inward (Arrivals Tick)
                             </span>
                           )}
                         </div>
@@ -779,6 +793,24 @@ export const MemberAuthorizationManager: React.FC = () => {
                   />
                   <span>Override Lock</span>
                 </label>
+
+                <label className="flex items-center gap-2 cursor-pointer col-span-2 sm:col-span-3 text-emerald-400 font-medium">
+                  <input
+                    type="checkbox"
+                    checked={newMemberForm.permissions.canVerifyInward}
+                    onChange={(e) =>
+                      setNewMemberForm({
+                        ...newMemberForm,
+                        permissions: { ...newMemberForm.permissions, canVerifyInward: e.target.checked },
+                      })
+                    }
+                    className="rounded bg-slate-800 border-slate-700 text-emerald-500 focus:ring-emerald-500"
+                  />
+                  <span className="flex items-center gap-1.5">
+                    <Truck className="w-3.5 h-3.5 text-emerald-400" />
+                    Stores Inward Verification (Can Tick Raw Material Arrivals / आवक)
+                  </span>
+                </label>
               </div>
             </div>
 
@@ -816,7 +848,7 @@ export const MemberAuthorizationManager: React.FC = () => {
             setEditingUser(null);
             setEditForm(null);
           }}
-          title={`Alter Authorization: ${editForm.name}`}
+          title={`Alter Authorization: ${editingUser.name}`}
           subtitle="Configure security tier, access gates, and operational status"
           maxWidth="2xl"
         >
@@ -867,6 +899,7 @@ export const MemberAuthorizationManager: React.FC = () => {
                         canManageUsers: true,
                         canExportReports: true,
                         canOverrideLock: true,
+                        canVerifyInward: true,
                       };
                     } else if (newTier === 'Tier 2: Plant Head / Admin') {
                       autoDept = 'Plant Administration & Engineering';
@@ -877,16 +910,27 @@ export const MemberAuthorizationManager: React.FC = () => {
                         canManageUsers: false,
                         canExportReports: true,
                         canOverrideLock: true,
+                        canVerifyInward: true,
                       };
-                    } else if (newTier === 'Tier 4: Data Entry Operator') {
-                      autoDept = 'Material Data Entry Floor';
+                    } else if (newTier === 'Tier 3: Department Manager') {
                       autoPerms = {
                         canEditMaterials: true,
-                        canApproveOrders: false,
+                        canApproveOrders: true,
                         canDeleteRecords: false,
                         canManageUsers: false,
                         canExportReports: true,
                         canOverrideLock: false,
+                        canVerifyInward: editForm.department?.toLowerCase().includes('store') || editForm.role === 'store_incharge',
+                      };
+                    } else {
+                      autoPerms = {
+                        canEditMaterials: false,
+                        canApproveOrders: false,
+                        canDeleteRecords: false,
+                        canManageUsers: false,
+                        canExportReports: false,
+                        canOverrideLock: false,
+                        canVerifyInward: false,
                       };
                     }
                     setEditForm({
@@ -925,7 +969,7 @@ export const MemberAuthorizationManager: React.FC = () => {
             {/* Granular Permissions Checkboxes */}
             <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2.5">
               <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-                Granular Security Gates
+                Granular Security Gates & Store Functions
               </span>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg bg-slate-800/60 hover:bg-slate-800">
@@ -986,6 +1030,30 @@ export const MemberAuthorizationManager: React.FC = () => {
                     className="rounded bg-slate-700 text-purple-600"
                   />
                   <span>Can Export Data & PDF Reports</span>
+                </label>
+
+                {/* Stores & Admin Inward Gate Checkbox */}
+                <label className="flex items-start gap-2.5 cursor-pointer p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/40 hover:bg-emerald-950/60 col-span-2 transition-all">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(editForm.permissions.canVerifyInward ?? (editForm.role === 'store_incharge' || editForm.authLevel.startsWith('Tier 1') || editForm.authLevel.startsWith('Tier 2')))}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        permissions: { ...editForm.permissions, canVerifyInward: e.target.checked },
+                      })
+                    }
+                    className="mt-0.5 rounded bg-slate-800 text-emerald-500 focus:ring-emerald-500"
+                  />
+                  <div>
+                    <span className="font-bold text-emerald-300 text-xs flex items-center gap-1.5">
+                      <Truck className="w-3.5 h-3.5 text-emerald-400" />
+                      Stores & Admin Inward Function (Can Tick Raw Material Receipts / आवक)
+                    </span>
+                    <span className="text-[11px] text-slate-300 block mt-1 leading-relaxed">
+                      Enables physical arrival checkmarking for raw materials (आवक). <strong>Super Admin (Amit)</strong>, <strong>Plant Head (Kaustubh)</strong>, and <strong>Stores Inspector (Ramesh Patel)</strong> can all inspect and tick materials.
+                    </span>
+                  </div>
                 </label>
               </div>
             </div>
