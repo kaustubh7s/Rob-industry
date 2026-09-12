@@ -68,7 +68,7 @@ import { getSupabaseClient } from '../lib/supabaseClient';
 interface ERPContextType {
   // Authentication & Role
   currentUser: User;
-  setCurrentUserRole: (role: UserRole) => void;
+  setCurrentUserRole: (role: UserRole | string) => void;
   users: User[];
   activeVendorId: string;
   setActiveVendorId: (vendorId: string) => void;
@@ -233,9 +233,13 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const parsed: User[] = JSON.parse(saved);
         const filtered = parsed.filter(
-          (u) => u.name !== 'Sanjay Sharma' && u.email !== 'sanjay.sharma@rsbmetal.com' && u.id !== 'usr-1'
+          (u) =>
+            u.name !== 'Sanjay Sharma' &&
+            u.email !== 'sanjay.sharma@rsbmetal.com' &&
+            u.id !== 'usr-1' &&
+            !['usr-2', 'usr-3', 'usr-4', 'usr-5', 'usr-6', 'usr-7', 'usr-8'].includes(u.id)
         );
-        return filtered;
+        if (filtered.length > 0) return filtered;
       } catch (e) {
         console.error(e);
       }
@@ -801,14 +805,23 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setNotifications((prev) => [newNotif, ...prev]);
   };
 
-  const setCurrentUserRole = (role: UserRole) => {
-    const matched = users.find((u) => u.role === role);
+  const setCurrentUserRole = (role: UserRole | string) => {
+    const matched = users.find((u) => u.role === role || u.id === role);
     if (matched) {
       setCurrentUser(matched);
       if (matched.vendorId) {
         setActiveVendorId(matched.vendorId);
       }
-      logAudit('Role Switched', 'Authentication', `Switched active role to ${role}`);
+      setUsers((prev) => {
+        const next = prev.map((u) =>
+          u.id === matched.id
+            ? { ...u, lastActive: 'Active Now', status: 'Active' as const }
+            : { ...u, lastActive: u.lastActive === 'Active Now' ? 'Just now' : u.lastActive }
+        );
+        localStorage.setItem(LOCAL_STORAGE_KEY + '_users', JSON.stringify(next));
+        return next;
+      });
+      logAudit('Role Switched', 'Authentication', `Switched active session to ${matched.name} (${matched.authLevel || matched.role})`);
     }
   };
 
@@ -1642,6 +1655,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem(LOCAL_STORAGE_KEY + '_users', JSON.stringify(next));
       return next;
     });
+    setCurrentUser((prev) => (prev.id === id ? { ...prev, ...updates } : prev));
     logAudit('Member Updated', 'User Authorization', `Updated user ID ${id}`);
   };
 
@@ -1674,6 +1688,16 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem(LOCAL_STORAGE_KEY + '_users', JSON.stringify(next));
       return next;
     });
+    setCurrentUser((prev) =>
+      prev.id === userId
+        ? {
+            ...prev,
+            authLevel,
+            permissions,
+            status: status || prev.status || 'Active',
+          }
+        : prev
+    );
     logAudit('Authorization Altered', 'Super Admin Security', `Altered authorization level for user ID ${userId} to ${authLevel}`);
   };
 

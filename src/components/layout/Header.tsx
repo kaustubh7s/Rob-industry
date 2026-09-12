@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Search,
   FileSpreadsheet,
@@ -30,7 +30,7 @@ import {
   Cloud,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
-import { UserRole } from '../../types/erp';
+import { UserRole, User } from '../../types/erp';
 import { Modal } from '../common/Modal';
 import { LiveWorldSSRatesModal } from '../rates/LiveWorldSSRatesModal';
 import { SupabaseConnectModal } from '../admin/SupabaseConnectModal';
@@ -67,7 +67,7 @@ export const Header: React.FC<HeaderProps> = ({
   const [isSupabaseOpen, setIsSupabaseOpen] = useState(false);
 
   // Security Auth State
-  const [pendingRole, setPendingRole] = useState<UserRole | null>(null);
+  const [pendingUser, setPendingUser] = useState<User | null>(null);
   const [authPassword, setAuthPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -77,27 +77,28 @@ export const Header: React.FC<HeaderProps> = ({
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const roleOptions: { role: UserRole; title: string; subtitle: string }[] = [
-    { role: 'super_admin', title: 'Amit (Super Admin)', subtitle: 'Projects, Details & Material Entry' },
-    { role: 'kaustubh', title: 'Kaustubh (Admin)', subtitle: 'Plant Administration & Operations' },
-    { role: 'operator', title: 'Rahul (Data Entry)', subtitle: 'Fast Material Entry Floor' },
-    { role: 'admin', title: 'Plant Head / Admin', subtitle: 'Operations & Planning' },
-    { role: 'purchase_manager', title: 'Purchase Manager', subtitle: 'Vendors, RFQ & Inward' },
-    { role: 'production_manager', title: 'Production Manager', subtitle: 'Shop Floor & Job Cards' },
-    { role: 'store_manager', title: 'Store Manager', subtitle: 'Stock & Outward' },
-    { role: 'accounts', title: 'Accounts & Finance', subtitle: 'Invoices & P&L' },
-    { role: 'vendor', title: 'Supplier (Vendor Portal)', subtitle: 'Bid RFQs & Upload Docs' },
-  ];
+  const roleOptions = useMemo(() => {
+    return users.map((u) => {
+      const tierTitle = u.authLevel ? u.authLevel.replace(/^Tier \d+:\s*/i, '') : u.role.replace('_', ' ');
+      return {
+        id: u.id,
+        user: u,
+        role: u.role,
+        title: `${u.name} (${tierTitle})`,
+        subtitle: u.department || 'Plant Engineering & Operations',
+      };
+    });
+  }, [users]);
 
   const isKaustubhRole = currentUser.role === 'kaustubh';
 
   // Role Switch Initiator
-  const handleSelectRole = (targetRole: UserRole) => {
+  const handleSelectRole = (targetUser: User) => {
     setIsRoleDropdownOpen(false);
-    if (targetRole === currentUser.role) return;
+    if (targetUser.id === currentUser.id) return;
 
     // Prompt for password
-    setPendingRole(targetRole);
+    setPendingUser(targetUser);
     setAuthPassword('');
     setAuthError(null);
   };
@@ -105,11 +106,16 @@ export const Header: React.FC<HeaderProps> = ({
   // Verify Role Unlock Password
   const handleVerifyRolePassword = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!pendingRole) return;
+    if (!pendingUser) return;
 
     const trimmed = authPassword.trim();
-    const targetUser = users.find((u) => u.role === pendingRole);
-    const expectedPassword = targetUser?.password || (pendingRole === 'super_admin' ? 'Admin@amit' : pendingRole === 'kaustubh' ? 'admin@123' : 'rahul@123');
+    const expectedPassword =
+      pendingUser.password ||
+      (pendingUser.role === 'super_admin'
+        ? 'Admin@amit'
+        : pendingUser.role === 'kaustubh'
+        ? 'admin@123'
+        : 'rahul@123');
 
     // Accept target user password or master password
     if (
@@ -119,8 +125,8 @@ export const Header: React.FC<HeaderProps> = ({
       trimmed === 'rahul@123' ||
       trimmed === '7276kakakakaka'
     ) {
-      setCurrentUserRole(pendingRole);
-      setPendingRole(null);
+      setCurrentUserRole(pendingUser.id || pendingUser.role);
+      setPendingUser(null);
       setAuthPassword('');
       setAuthError(null);
     } else {
@@ -300,18 +306,20 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={() => setIsRoleDropdownOpen(!isRoleDropdownOpen)}
               className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-200 text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
             >
-              <div className="w-5 h-5 rounded-md bg-blue-600/30 border border-blue-400/40 text-blue-300 flex items-center justify-center font-bold text-[10px]">
+              <div className="w-5 h-5 rounded-md bg-purple-600/30 border border-purple-400/40 text-purple-300 flex items-center justify-center font-bold text-[10px]">
                 {currentUser.name ? currentUser.name[0].toUpperCase() : 'U'}
               </div>
               <span className="capitalize font-bold text-white">{currentUser.name || currentUser.role.replace('_', ' ')}</span>
               <span className={`hidden sm:inline px-1.5 py-0.2 rounded text-[9px] font-mono font-bold uppercase tracking-wider border ${
-                currentUser.role === 'super_admin'
+                currentUser.authLevel?.startsWith('Tier 1') || currentUser.role === 'super_admin'
                   ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
-                  : currentUser.role === 'kaustubh'
+                  : currentUser.authLevel?.startsWith('Tier 2') || currentUser.role === 'kaustubh' || currentUser.role === 'admin'
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                  : currentUser.authLevel?.startsWith('Tier 3')
                   ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
                   : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
               }`}>
-                {currentUser.role === 'super_admin' ? 'Super Admin' : currentUser.role === 'kaustubh' ? 'Admin' : currentUser.role}
+                {currentUser.authLevel ? currentUser.authLevel.replace(/^Tier \d+:\s*/i, '') : currentUser.role === 'super_admin' ? 'Super Admin' : currentUser.role === 'kaustubh' ? 'Plant Head' : currentUser.role}
               </span>
               <Lock className="w-3 h-3 text-amber-400 ml-0.5" />
             </button>
@@ -319,28 +327,28 @@ export const Header: React.FC<HeaderProps> = ({
             {isRoleDropdownOpen && (
               <div className="absolute right-0 mt-2 w-72 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl p-2 space-y-1 z-50 animate-fadeIn">
                 <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-slate-800 border-b flex items-center justify-between">
-                  <span>Switch User / Role (Protected)</span>
+                  <span>Switch User / Role ({roleOptions.length} Enrolled)</span>
                   <KeyRound className="w-3 h-3 text-amber-500" />
                 </div>
                 {roleOptions.map((opt) => {
-                  const isSelected = currentUser.role === opt.role;
+                  const isSelected = currentUser.id === opt.user.id || currentUser.email === opt.user.email;
                   return (
                     <button
-                      key={opt.role}
-                      onClick={() => handleSelectRole(opt.role)}
-                      className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors ${
+                      key={opt.user.id}
+                      onClick={() => handleSelectRole(opt.user)}
+                      className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between transition-colors ${
                         isSelected
-                          ? isKaustubhRole ? 'bg-slate-100 text-slate-900 font-bold border border-slate-200' : 'bg-blue-600/20 text-blue-300 border border-blue-500/30 font-bold'
-                          : isKaustubhRole ? 'text-slate-700 hover:bg-slate-50' : 'text-slate-300 hover:bg-slate-800'
+                          ? 'bg-purple-600/20 text-purple-200 border border-purple-500/30 font-bold'
+                          : 'text-slate-300 hover:bg-slate-800'
                       }`}
                     >
                       <div>
-                        <span className="block">{opt.title}</span>
-                        <span className="text-[10px] text-slate-500 font-normal">{opt.subtitle}</span>
+                        <span className="block font-semibold text-white">{opt.title}</span>
+                        <span className="text-[10px] text-slate-400 font-normal">{opt.subtitle}</span>
                       </div>
                       <div className="flex items-center gap-1">
                         {!isSelected && <Lock className="w-3 h-3 text-slate-400" />}
-                        {isSelected && <Check className="w-4 h-4 text-emerald-600 shrink-0" />}
+                        {isSelected && <Check className="w-4 h-4 text-emerald-400 shrink-0" />}
                       </div>
                     </button>
                   );
@@ -355,15 +363,15 @@ export const Header: React.FC<HeaderProps> = ({
       {/* MODAL: ADMIN ROLE PASSWORD VERIFICATION */}
       {/* ========================================================================= */}
       <Modal
-        isOpen={pendingRole !== null}
+        isOpen={pendingUser !== null}
         onClose={() => {
-          setPendingRole(null);
+          setPendingUser(null);
           setAuthPassword('');
           setAuthError(null);
         }}
         title="🔒 Admin Level Authentication"
         subtitle={`Enter administrative password to switch to ${
-          pendingRole ? roleOptions.find((r) => r.role === pendingRole)?.title : 'role'
+          pendingUser ? `${pendingUser.name} (${pendingUser.authLevel || pendingUser.role})` : 'user'
         }`}
         maxWidth="md"
       >
@@ -413,7 +421,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={() => {
-                setPendingRole(null);
+                setPendingUser(null);
                 setAuthPassword('');
                 setAuthError(null);
               }}
