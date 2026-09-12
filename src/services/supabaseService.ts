@@ -511,55 +511,74 @@ export const pullAllDataFromSupabase = async (): Promise<{
     const { data: reqData, error: reqErr } = await supabase.from('project_material_requirements').select('*').order('timestamp', { ascending: false });
     if (reqErr) throw reqErr;
 
-    const parsedRequirements: ProjectMaterialRequirementItem[] = (reqData || []).map((r: any) => ({
-      id: r.id,
-      srNo: r.sr_no,
-      description: r.description,
-      materialType: r.material_type,
-      materialGrade: r.material_grade,
-      sizeSpecs: r.size_specs,
-      quantity: Number(r.quantity || 0),
-      unit: r.unit,
-      weightKg: Number(r.weight_kg || 0),
-      projectName: r.project_name,
-      customerName: r.customer_name,
-      poNumber: r.po_number,
-      poDate: r.po_date,
-      machineType: r.machine_type,
-      orderSource: r.order_source,
-      deliveryDate: r.delivery_date,
-      vendor: r.vendor,
-      bomRef: r.bom_ref,
-      lastPurchaseRate: Number(r.last_purchase_rate || 0),
-      lastPurchaseDate: r.last_purchase_date,
-      vendorRating: Number(r.vendor_rating || 5),
-      vendorReliability: Number(r.vendor_reliability || 100),
-      stockStatus: r.stock_status,
-      availableStock: Number(r.available_stock || 0),
-      shortageQty: Number(r.shortage_qty || 0),
-      productionStatus: r.production_status,
-      qcStatus: r.qc_status,
-      dispatchStatus: r.dispatch_status,
-      jobCardNo: r.job_card_no,
-      assignedOperator: r.assigned_operator,
-      assignedMachine: r.assignedMachine,
-      productionStage: r.production_stage,
-      materialCost: Number(r.material_cost || 0),
-      laborCost: Number(r.labor_cost || 0),
-      machineCost: Number(r.machine_cost || 0),
-      outsourcingCost: Number(r.outsourcing_cost || 0),
-      totalCost: Number(r.total_cost || 0),
-      sellingPriceAllocated: Number(r.selling_price_allocated || 0),
-      notes: r.notes,
-      orderedBy: r.ordered_by,
-      isReceived: Boolean(r.is_received || r.isReceived || (r.notes && r.notes.includes('[INWARD_VERIFIED]'))),
-      receivedAt: r.received_at || r.receivedAt || (r.is_received ? (r.timestamp || new Date().toISOString()) : undefined),
-      receivedBy: r.received_by || r.receivedBy || (r.is_received ? 'Chandramani' : undefined),
-      receivedByInitials: r.received_by_initials || r.receivedByInitials || (r.is_received ? 'CP' : undefined),
-      receivedByRole: r.received_by_role || r.receivedByRole || (r.is_received ? 'Stores Incharge' : undefined),
-      receivedNotes: r.received_notes || r.receivedNotes || undefined,
-      timestamp: r.timestamp,
-    }));
+    const parsedRequirements: ProjectMaterialRequirementItem[] = (reqData || []).map((r: any) => {
+      const notesStr = String(r.notes || '');
+      let tagReceived = false;
+      let tagBy: string | undefined = undefined;
+      let tagAt: string | undefined = undefined;
+      let tagInitials: string | undefined = undefined;
+      if (notesStr.includes('[INWARD_VERIFIED')) {
+        tagReceived = true;
+        const match = notesStr.match(/\[INWARD_VERIFIED:([^:]*):([^:]*):([^\]]*)\]/);
+        if (match) {
+          tagBy = match[1] || undefined;
+          tagAt = match[2] || undefined;
+          tagInitials = match[3] || undefined;
+        }
+      }
+
+      const isReceived = Boolean(r.is_received || r.isReceived || tagReceived);
+
+      return {
+        id: r.id,
+        srNo: r.sr_no,
+        description: r.description,
+        materialType: r.material_type,
+        materialGrade: r.material_grade,
+        sizeSpecs: r.size_specs,
+        quantity: Number(r.quantity || 0),
+        unit: r.unit,
+        weightKg: Number(r.weight_kg || 0),
+        projectName: r.project_name,
+        customerName: r.customer_name,
+        poNumber: r.po_number,
+        poDate: r.po_date,
+        machineType: r.machine_type,
+        orderSource: r.order_source,
+        deliveryDate: r.delivery_date,
+        vendor: r.vendor,
+        bomRef: r.bom_ref,
+        lastPurchaseRate: Number(r.last_purchase_rate || 0),
+        lastPurchaseDate: r.last_purchase_date,
+        vendorRating: Number(r.vendor_rating || 5),
+        vendorReliability: Number(r.vendor_reliability || 100),
+        stockStatus: r.stock_status,
+        availableStock: Number(r.available_stock || 0),
+        shortageQty: Number(r.shortage_qty || 0),
+        productionStatus: r.production_status,
+        qcStatus: r.qc_status,
+        dispatchStatus: r.dispatch_status,
+        jobCardNo: r.job_card_no,
+        assignedOperator: r.assigned_operator,
+        assignedMachine: r.assignedMachine,
+        productionStage: r.production_stage,
+        materialCost: Number(r.material_cost || 0),
+        laborCost: Number(r.labor_cost || 0),
+        machineCost: Number(r.machine_cost || 0),
+        outsourcingCost: Number(r.outsourcing_cost || 0),
+        totalCost: Number(r.total_cost || 0),
+        sellingPriceAllocated: Number(r.selling_price_allocated || 0),
+        notes: notesStr.replace(/\[INWARD_VERIFIED:[^\]]*\]/g, '').trim(),
+        orderedBy: r.ordered_by,
+        isReceived,
+        receivedAt: r.received_at || tagAt || r.receivedAt || (isReceived ? (r.timestamp || new Date().toISOString()) : undefined),
+        receivedBy: r.received_by || tagBy || r.receivedBy || (isReceived ? 'Chandramani' : undefined),
+        receivedByInitials: r.received_by_initials || tagInitials || r.receivedByInitials || (isReceived ? 'CP' : undefined),
+        receivedByRole: r.received_by_role || r.receivedByRole || (isReceived ? 'Stores Incharge' : undefined),
+        receivedNotes: r.received_notes || r.receivedNotes || undefined,
+        timestamp: r.timestamp,
+      };
+    });
 
     // 3. Fetch Materials
     const { data: matData } = await supabase.from('materials').select('*');
@@ -769,7 +788,7 @@ export const dbUpsertRequirement = async (req: ProjectMaterialRequirementItem) =
   if (!supabase) return;
 
   try {
-    await supabase.from('project_material_requirements').upsert({
+    const payload = {
       id: req.id,
       sr_no: req.srNo,
       description: req.description,
@@ -804,7 +823,9 @@ export const dbUpsertRequirement = async (req: ProjectMaterialRequirementItem) =
       outsourcing_cost: req.outsourcingCost,
       total_cost: req.totalCost,
       selling_price_allocated: req.sellingPriceAllocated,
-      notes: req.notes,
+      notes: req.isReceived
+        ? `${(req.notes || '').replace(/\[INWARD_VERIFIED:[^\]]*\]/g, '').trim()} [INWARD_VERIFIED:${req.receivedBy || 'Chandramani'}:${req.receivedAt || new Date().toISOString()}:${req.receivedByInitials || 'CP'}]`.trim()
+        : (req.notes || '').replace(/\[INWARD_VERIFIED:[^\]]*\]/g, '').trim(),
       ordered_by: req.orderedBy,
       is_received: Boolean(req.isReceived),
       received_at: req.receivedAt || null,
@@ -813,7 +834,20 @@ export const dbUpsertRequirement = async (req: ProjectMaterialRequirementItem) =
       received_by_role: req.receivedByRole || null,
       received_notes: req.receivedNotes || null,
       timestamp: (req as any).timestamp || req.date || new Date().toISOString(),
-    });
+    };
+
+    const { error } = await supabase.from('project_material_requirements').upsert(payload, { onConflict: 'id' });
+    if (error) {
+      // Fallback without new columns if remote table has legacy schema
+      const legacyPayload = { ...payload };
+      delete (legacyPayload as any).is_received;
+      delete (legacyPayload as any).received_at;
+      delete (legacyPayload as any).received_by;
+      delete (legacyPayload as any).received_by_initials;
+      delete (legacyPayload as any).received_by_role;
+      delete (legacyPayload as any).received_notes;
+      await supabase.from('project_material_requirements').upsert(legacyPayload, { onConflict: 'id' });
+    }
   } catch (e) {
     console.warn('Supabase requirement upsert failed:', e);
   }
@@ -872,7 +906,9 @@ export const dbBulkUpsertRequirements = async (
       outsourcing_cost: r.outsourcingCost,
       total_cost: r.totalCost,
       selling_price_allocated: r.sellingPriceAllocated,
-      notes: r.notes,
+      notes: r.isReceived
+        ? `${(r.notes || '').replace(/\[INWARD_VERIFIED:[^\]]*\]/g, '').trim()} [INWARD_VERIFIED:${r.receivedBy || 'Chandramani'}:${r.receivedAt || new Date().toISOString()}:${r.receivedByInitials || 'CP'}]`.trim()
+        : (r.notes || '').replace(/\[INWARD_VERIFIED:[^\]]*\]/g, '').trim(),
       ordered_by: r.orderedBy,
       is_received: Boolean(r.isReceived),
       received_at: r.receivedAt || null,
@@ -885,8 +921,22 @@ export const dbBulkUpsertRequirements = async (
 
     const { error } = await supabase.from('project_material_requirements').upsert(mapped, { onConflict: 'id' });
     if (error) {
-      console.warn('Supabase bulk requirements upsert warning:', error);
-      return { success: false, count: 0, message: error.message };
+      // Fallback for legacy database schema without new columns
+      const legacyMapped = mapped.map((m) => {
+        const item = { ...m };
+        delete (item as any).is_received;
+        delete (item as any).received_at;
+        delete (item as any).received_by;
+        delete (item as any).received_by_initials;
+        delete (item as any).received_by_role;
+        delete (item as any).received_notes;
+        return item;
+      });
+      const { error: legacyErr } = await supabase.from('project_material_requirements').upsert(legacyMapped, { onConflict: 'id' });
+      if (legacyErr) {
+        console.warn('Supabase bulk requirements upsert warning:', legacyErr);
+        return { success: false, count: 0, message: legacyErr.message };
+      }
     }
 
     return { success: true, count: mapped.length };

@@ -27,6 +27,7 @@ export const MobileStoreInwardApp: React.FC = () => {
     currentUser,
     projects,
     projectRequirements,
+    setProjectRequirements,
     orders,
     toggleMaterialReceived,
     logout,
@@ -104,11 +105,21 @@ export const MobileStoreInwardApp: React.FC = () => {
     setSaveToast(null);
 
     try {
-      const currentReqs = projectRequirements.filter(
-        (r) => (r.projectName || '').trim().toLowerCase() === activeProject.name.trim().toLowerCase()
-      );
-      if (currentReqs.length > 0) {
-        await dbBulkUpsertRequirements(currentReqs);
+      if (projectMaterials.length > 0) {
+        setProjectRequirements((prev) => {
+          const matIds = new Set(projectMaterials.map((m) => m.id));
+          const otherReqs = prev.filter(
+            (r) => !matIds.has(r.id) &&
+                   (r.projectName || '').trim().toLowerCase() !== (activeProject.name || '').trim().toLowerCase()
+          );
+          const merged = [...projectMaterials, ...otherReqs];
+          try {
+            localStorage.setItem('rsb_erp_production_v2.0_requirements', JSON.stringify(merged));
+          } catch (e) {}
+          return merged;
+        });
+
+        await dbBulkUpsertRequirements(projectMaterials);
       }
 
       logAudit?.(
@@ -116,6 +127,13 @@ export const MobileStoreInwardApp: React.FC = () => {
         'Stores Inward',
         `${currentUser?.name || 'Chandramani'} verified & saved arrival receipts (${arrivedCount}/${totalCount} Arrived) to DB for Project ${activeProject.name}`
       );
+
+      // Broadcast update across tabs
+      try {
+        const bc = new BroadcastChannel('rsb_erp_live_sync');
+        bc.postMessage({ type: 'PROJECTS_UPDATED', projectName: activeProject.name });
+        bc.close();
+      } catch (e) {}
 
       // Trigger celebratory confetti on 100% arrival
       if (progressPct === 100 && totalCount > 0) {

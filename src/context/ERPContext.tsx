@@ -712,19 +712,27 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const remoteReqs = pullRes.data.requirements;
             setProjectRequirements((prev) => {
               const localMap = new Map(prev.map((r) => [r.id, r]));
-              return remoteReqs.map((remoteReq: ProjectMaterialRequirementItem) => {
+              const updatedFromRemote = remoteReqs.map((remoteReq: ProjectMaterialRequirementItem) => {
                 const local = localMap.get(remoteReq.id);
-                const isArrived = remoteReq.isReceived ?? local?.isReceived ?? false;
+                const isArrived = Boolean(remoteReq.isReceived || local?.isReceived);
                 return {
                   ...remoteReq,
                   isReceived: isArrived,
-                  receivedAt: remoteReq.receivedAt || (isArrived ? local?.receivedAt : undefined),
-                  receivedBy: remoteReq.receivedBy || (isArrived ? local?.receivedBy : undefined),
-                  receivedByInitials: remoteReq.receivedByInitials || (isArrived ? local?.receivedByInitials : undefined),
-                  receivedByRole: remoteReq.receivedByRole || (isArrived ? local?.receivedByRole : undefined),
-                  receivedNotes: remoteReq.receivedNotes || (isArrived ? local?.receivedNotes : undefined),
+                  receivedAt: (remoteReq.isReceived ? remoteReq.receivedAt : undefined) || local?.receivedAt || (isArrived ? (remoteReq.receivedAt || new Date().toISOString()) : undefined),
+                  receivedBy: (remoteReq.isReceived ? remoteReq.receivedBy : undefined) || local?.receivedBy || (isArrived ? (local?.receivedBy || 'Kaustubh') : undefined),
+                  receivedByInitials: (remoteReq.isReceived ? remoteReq.receivedByInitials : undefined) || local?.receivedByInitials || (isArrived ? (local?.receivedByInitials || 'K') : undefined),
+                  receivedByRole: (remoteReq.isReceived ? remoteReq.receivedByRole : undefined) || local?.receivedByRole || (isArrived ? (local?.receivedByRole || 'Admin') : undefined),
+                  receivedNotes: remoteReq.receivedNotes || local?.receivedNotes || undefined,
                 };
               });
+
+              const remoteIdSet = new Set(remoteReqs.map((r) => r.id));
+              const localOnly = prev.filter((r) => !remoteIdSet.has(r.id));
+              const merged = [...updatedFromRemote, ...localOnly];
+              try {
+                localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(merged));
+              } catch (e) {}
+              return merged;
             });
           }
           if (pullRes.data.materials && pullRes.data.materials.length > 0) {
@@ -902,19 +910,26 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               const remoteReqs = pullRes.data.requirements;
               setProjectRequirements((prev) => {
                 const localMap = new Map(prev.map((r) => [r.id, r]));
-                return remoteReqs.map((remoteReq: ProjectMaterialRequirementItem) => {
+                const updatedFromRemote = remoteReqs.map((remoteReq: ProjectMaterialRequirementItem) => {
                   const local = localMap.get(remoteReq.id);
-                  const isArrived = remoteReq.isReceived ?? local?.isReceived ?? false;
+                  const isArrived = Boolean(remoteReq.isReceived || local?.isReceived);
                   return {
                     ...remoteReq,
                     isReceived: isArrived,
-                    receivedAt: remoteReq.receivedAt || (isArrived ? local?.receivedAt : undefined),
-                    receivedBy: remoteReq.receivedBy || (isArrived ? local?.receivedBy : undefined),
-                    receivedByInitials: remoteReq.receivedByInitials || (isArrived ? local?.receivedByInitials : undefined),
-                    receivedByRole: remoteReq.receivedByRole || (isArrived ? local?.receivedByRole : undefined),
-                    receivedNotes: remoteReq.receivedNotes || (isArrived ? local?.receivedNotes : undefined),
+                    receivedAt: (remoteReq.isReceived ? remoteReq.receivedAt : undefined) || local?.receivedAt || (isArrived ? (remoteReq.receivedAt || new Date().toISOString()) : undefined),
+                    receivedBy: (remoteReq.isReceived ? remoteReq.receivedBy : undefined) || local?.receivedBy || (isArrived ? (local?.receivedBy || 'Kaustubh') : undefined),
+                    receivedByInitials: (remoteReq.isReceived ? remoteReq.receivedByInitials : undefined) || local?.receivedByInitials || (isArrived ? (local?.receivedByInitials || 'K') : undefined),
+                    receivedByRole: (remoteReq.isReceived ? remoteReq.receivedByRole : undefined) || local?.receivedByRole || (isArrived ? (local?.receivedByRole || 'Admin') : undefined),
+                    receivedNotes: remoteReq.receivedNotes || local?.receivedNotes || undefined,
                   };
                 });
+                const remoteIdSet = new Set(remoteReqs.map((r) => r.id));
+                const localOnly = prev.filter((r) => !remoteIdSet.has(r.id));
+                const merged = [...updatedFromRemote, ...localOnly];
+                try {
+                  localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(merged));
+                } catch (e) {}
+                return merged;
               });
             }
           }
@@ -935,19 +950,26 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const remoteReqs = pullRes.data.requirements;
             setProjectRequirements((prev) => {
               const localMap = new Map(prev.map((r) => [r.id, r]));
-              return remoteReqs.map((remoteReq: ProjectMaterialRequirementItem) => {
+              const updatedFromRemote = remoteReqs.map((remoteReq: ProjectMaterialRequirementItem) => {
                 const local = localMap.get(remoteReq.id);
-                const isArrived = remoteReq.isReceived ?? local?.isReceived ?? false;
+                const isArrived = Boolean(remoteReq.isReceived || local?.isReceived);
                 return {
                   ...remoteReq,
                   isReceived: isArrived,
-                  receivedAt: remoteReq.receivedAt || (isArrived ? local?.receivedAt : undefined),
-                  receivedBy: remoteReq.receivedBy || (isArrived ? local?.receivedBy : undefined),
-                  receivedByInitials: remoteReq.receivedByInitials || (isArrived ? local?.receivedByInitials : undefined),
-                  receivedByRole: remoteReq.receivedByRole || (isArrived ? local?.receivedByRole : undefined),
-                  receivedNotes: remoteReq.receivedNotes || (isArrived ? local?.receivedNotes : undefined),
+                  receivedAt: (remoteReq.isReceived ? remoteReq.receivedAt : undefined) || local?.receivedAt || (isArrived ? (remoteReq.receivedAt || new Date().toISOString()) : undefined),
+                  receivedBy: (remoteReq.isReceived ? remoteReq.receivedBy : undefined) || local?.receivedBy || (isArrived ? (local?.receivedBy || 'Kaustubh') : undefined),
+                  receivedByInitials: (remoteReq.isReceived ? remoteReq.receivedByInitials : undefined) || local?.receivedByInitials || (isArrived ? (local?.receivedByInitials || 'K') : undefined),
+                  receivedByRole: (remoteReq.isReceived ? remoteReq.receivedByRole : undefined) || local?.receivedByRole || (isArrived ? (local?.receivedByRole || 'Admin') : undefined),
+                  receivedNotes: remoteReq.receivedNotes || local?.receivedNotes || undefined,
                 };
               });
+              const remoteIdSet = new Set(remoteReqs.map((r) => r.id));
+              const localOnly = prev.filter((r) => !remoteIdSet.has(r.id));
+              const merged = [...updatedFromRemote, ...localOnly];
+              try {
+                localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(merged));
+              } catch (e) {}
+              return merged;
             });
           }
         }

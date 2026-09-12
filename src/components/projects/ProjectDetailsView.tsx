@@ -79,6 +79,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 }) => {
   const {
     projectRequirements,
+    setProjectRequirements,
     addProjectRequirement,
     updateProjectRequirement,
     deleteProjectRequirement,
@@ -312,17 +313,38 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     setIsSavingToDb(true);
     setSaveSuccessMessage(null);
     try {
-      const currentReqs = projectRequirements.filter(
-        (r) => (r.projectName || '').toLowerCase() === project.name.toLowerCase()
-      );
-      if (currentReqs.length > 0) {
-        await dbBulkUpsertRequirements(currentReqs);
+      if (displayMaterials.length > 0) {
+        // 1. Ensure all displayed project materials are persisted to state and localStorage
+        setProjectRequirements((prev) => {
+          const displayIds = new Set(displayMaterials.map((m) => m.id));
+          const otherReqs = prev.filter(
+            (r) => !displayIds.has(r.id) &&
+                   (r.projectName || '').trim().toLowerCase() !== (project.name || '').trim().toLowerCase()
+          );
+          const merged = [...displayMaterials, ...otherReqs];
+          try {
+            localStorage.setItem('rsb_erp_production_v2.0_requirements', JSON.stringify(merged));
+          } catch (e) {}
+          return merged;
+        });
+
+        // 2. Upsert all materials for this project to database
+        await dbBulkUpsertRequirements(displayMaterials);
       }
+
       logAudit?.(
         'Material Inward Status Verified & Saved',
         'Stores & Inward',
         `${currentUser?.name || 'Stores Inspector'} (${currentUser?.role}) verified & saved arrival receipts (${receivedMaterialsCount}/${displayMaterials.length} Arrived) to database for Project: ${project.name}`
       );
+
+      // 3. Broadcast update across tabs
+      try {
+        const bc = new BroadcastChannel('rsb_erp_live_sync');
+        bc.postMessage({ type: 'PROJECTS_UPDATED', projectName: project.name });
+        bc.close();
+      } catch (e) {}
+
       const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       setLastSavedTime(timeStr);
       setSaveSuccessMessage(`Arrival verification successfully saved to database at ${timeStr}`);
