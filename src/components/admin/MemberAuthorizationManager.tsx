@@ -1033,7 +1033,7 @@ export const MemberAuthorizationManager: React.FC = () => {
                 </label>
 
                 {/* Stores & Admin Inward Gate Checkbox */}
-                <label className="flex items-start gap-2.5 cursor-pointer p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/40 hover:bg-emerald-950/60 col-span-2 transition-all">
+                <label className="flex items-center gap-2 cursor-pointer p-2.5 rounded-lg bg-emerald-950/40 border border-emerald-500/40 hover:bg-emerald-950/60 col-span-2 transition-all">
                   <input
                     type="checkbox"
                     checked={Boolean(editForm.permissions.canVerifyInward ?? (editForm.role === 'store_incharge' || editForm.authLevel.startsWith('Tier 1') || editForm.authLevel.startsWith('Tier 2')))}
@@ -1043,17 +1043,12 @@ export const MemberAuthorizationManager: React.FC = () => {
                         permissions: { ...editForm.permissions, canVerifyInward: e.target.checked },
                       })
                     }
-                    className="mt-0.5 rounded bg-slate-800 text-emerald-500 focus:ring-emerald-500"
+                    className="rounded bg-slate-800 text-emerald-500 focus:ring-emerald-500"
                   />
-                  <div>
-                    <span className="font-bold text-emerald-300 text-xs flex items-center gap-1.5">
-                      <Truck className="w-3.5 h-3.5 text-emerald-400" />
-                      Stores & Admin Inward Function (Can Tick Raw Material Receipts / आवक)
-                    </span>
-                    <span className="text-[11px] text-slate-300 block mt-1 leading-relaxed">
-                      Enables physical arrival checkmarking for raw materials (आवक). <strong>Super Admin (Amit)</strong>, <strong>Plant Head (Kaustubh)</strong>, and <strong>Stores Inspector (Ramesh Patel)</strong> can all inspect and tick materials.
-                    </span>
-                  </div>
+                  <span className="font-bold text-emerald-300 text-xs flex items-center gap-1.5">
+                    <Truck className="w-3.5 h-3.5 text-emerald-400" />
+                    Stores & Admin Inward Function (Can Tick Raw Material Receipts / आवक)
+                  </span>
                 </label>
               </div>
             </div>
