@@ -386,6 +386,60 @@ export const pushAllDataToSupabase = async (erpState: {
       else totalCount += mappedMats.length;
     }
 
+    // 4. Vendors
+    if (erpState.vendors.length > 0) {
+      const mappedVendors = erpState.vendors.map((v) => ({
+        id: v.id,
+        name: v.name,
+        contact_person: v.contactPerson || null,
+        mobile: v.mobile || null,
+        email: v.email || null,
+        gstin: v.gstin || null,
+        address: v.address || null,
+        material_supplied: v.materialSupplied || null,
+        rating: v.rating || 5.0,
+        payment_terms: v.paymentTerms || null,
+      }));
+
+      const { error } = await supabase.from('vendors').upsert(mappedVendors, { onConflict: 'id' });
+      if (error) details.push(`Vendors sync warning: ${error.message}`);
+      else totalCount += mappedVendors.length;
+    }
+
+    // 5. Customers
+    if (erpState.customers.length > 0) {
+      const mappedCustomers = erpState.customers.map((c) => ({
+        id: c.id,
+        name: c.name,
+        contact_person: c.contactPerson || null,
+        mobile: c.mobile || null,
+        email: c.email || null,
+        gstin: c.gstin || null,
+        city: (c as any).city || (c.address ? c.address.split(',').pop()?.trim() : null),
+      }));
+
+      const { error } = await supabase.from('customers').upsert(mappedCustomers, { onConflict: 'id' });
+      if (error) details.push(`Customers sync warning: ${error.message}`);
+      else totalCount += mappedCustomers.length;
+    }
+
+    // 6. Users
+    if (erpState.users.length > 0) {
+      const mappedUsers = erpState.users.map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        department: u.department || null,
+        status: u.status || 'Active',
+        auth_level: u.authLevel || null,
+      }));
+
+      const { error } = await supabase.from('erp_users').upsert(mappedUsers, { onConflict: 'id' });
+      if (error) details.push(`Users sync warning: ${error.message}`);
+      else totalCount += mappedUsers.length;
+    }
+
     return {
       success: true,
       count: totalCount,
@@ -400,15 +454,16 @@ export const pushAllDataToSupabase = async (erpState: {
       details,
     };
   }
-};
-
-// Pull remote data from Supabase into local ERP
+};// Pull remote data from Supabase into local ERP
 export const pullAllDataFromSupabase = async (): Promise<{
   success: boolean;
   data?: {
     projects?: ProjectItem[];
     requirements?: ProjectMaterialRequirementItem[];
     materials?: MaterialItem[];
+    vendors?: VendorItem[];
+    customers?: CustomerItem[];
+    users?: User[];
   };
   message: string;
 }> => {
@@ -475,7 +530,7 @@ export const pullAllDataFromSupabase = async (): Promise<{
       dispatchStatus: r.dispatch_status,
       jobCardNo: r.job_card_no,
       assignedOperator: r.assigned_operator,
-      assignedMachine: r.assigned_machine,
+      assignedMachine: r.assignedMachine,
       productionStage: r.production_stage,
       materialCost: Number(r.material_cost || 0),
       laborCost: Number(r.labor_cost || 0),
@@ -488,13 +543,102 @@ export const pullAllDataFromSupabase = async (): Promise<{
       timestamp: r.timestamp,
     }));
 
+    // 3. Fetch Materials
+    const { data: matData } = await supabase.from('materials').select('*');
+    const parsedMaterials: MaterialItem[] = (matData || []).map((m: any) => ({
+      id: m.id,
+      code: m.code,
+      name: m.name,
+      type: m.type,
+      grade: m.grade,
+      thickness: m.thickness,
+      sizeSpecs: m.size_specs,
+      unit: m.unit,
+      unitWeightKg: m.unit_weight_kg,
+      currentStock: m.current_stock,
+      reservedStock: m.reserved_stock,
+      minStock: m.min_stock,
+      reorderLevel: m.reorder_level,
+      unitCost: m.unit_cost,
+      vendor: m.vendor,
+      notes: m.notes,
+    }));
+
+    // 4. Fetch Vendors
+    const { data: vndData } = await supabase.from('vendors').select('*');
+    const parsedVendors: VendorItem[] = (vndData || []).map((v: any) => ({
+      id: v.id,
+      name: v.name,
+      contactPerson: v.contact_person || '',
+      mobile: v.mobile || '',
+      email: v.email || '',
+      gstin: v.gstin || '',
+      address: v.address || '',
+      materialSupplied: v.material_supplied || '',
+      rating: Number(v.rating || 5),
+      paymentTerms: v.payment_terms || '30 Days Net',
+      totalOrders: 0,
+      totalPurchaseValue: 0,
+      onTimeDeliveries: 0,
+      delayedDeliveries: 0,
+      averageDeliveryDays: 3,
+      rejectionRate: 0,
+      qualityRating: 99,
+      costCompetitiveness: 9,
+      reliabilityScore: 98,
+      rank: 1,
+    }));
+
+    // 5. Fetch Customers
+    const { data: custData } = await supabase.from('customers').select('*');
+    const parsedCustomers: CustomerItem[] = (custData || []).map((c: any) => ({
+      id: c.id,
+      name: c.name,
+      contactPerson: c.contact_person || '',
+      mobile: c.mobile || '',
+      email: c.email || '',
+      gstin: c.gstin || '',
+      address: c.city || '',
+      segment: 'Pharma Packaging & Engineering',
+      paymentTerms: '30 Days',
+      totalOrders: 0,
+      totalRevenue: 0,
+      rating: 5,
+    }));
+
+    // 6. Fetch Users
+    const { data: usrData } = await supabase.from('erp_users').select('*');
+    const parsedUsers: User[] = (usrData || []).map((u: any) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      password: u.role === 'super_admin' ? 'Admin@amit' : u.role === 'kaustubh' ? 'admin@123' : 'rahul@123',
+      department: u.department || 'Operations',
+      authLevel: u.auth_level || 'Tier 3',
+      status: u.status || 'Active',
+      lastActive: 'Just now',
+      permissions: {
+        canEditMaterials: true,
+        canApproveOrders: u.role !== 'operator',
+        canDeleteRecords: u.role === 'super_admin',
+        canManageUsers: u.role === 'super_admin',
+        canExportReports: true,
+        canOverrideLock: u.role !== 'operator',
+      },
+    }));
+
     return {
       success: true,
       data: {
         projects: parsedProjects,
         requirements: parsedRequirements,
+        materials: parsedMaterials,
+        vendors: parsedVendors,
+        customers: parsedCustomers,
+        users: parsedUsers,
       },
-      message: `Pulled ${parsedProjects.length} projects and ${parsedRequirements.length} requirements from Supabase.`,
+      message: `Pulled ${parsedProjects.length} projects, ${parsedRequirements.length} requirements, ${parsedVendors.length} vendors, ${parsedCustomers.length} customers from Supabase.`,
     };
   } catch (err: any) {
     return {
@@ -671,6 +815,134 @@ export const dbBulkUpsertRequirements = async (
   } catch (e: any) {
     console.warn('Supabase bulk requirements upsert error:', e);
     return { success: false, count: 0, message: e?.message };
+  }
+};
+
+// Vendor Supabase Helpers
+export const dbUpsertVendor = async (vendor: VendorItem) => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+  try {
+    await supabase.from('vendors').upsert({
+      id: vendor.id,
+      name: vendor.name,
+      contact_person: vendor.contactPerson || null,
+      mobile: vendor.mobile || null,
+      email: vendor.email || null,
+      gstin: vendor.gstin || null,
+      address: vendor.address || null,
+      material_supplied: vendor.materialSupplied || null,
+      rating: vendor.rating || 5.0,
+      payment_terms: vendor.paymentTerms || null,
+    });
+  } catch (e) {
+    console.warn('Supabase vendor upsert failed:', e);
+  }
+};
+
+export const dbDeleteVendor = async (vendorId: string) => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+  try {
+    await supabase.from('vendors').delete().eq('id', vendorId);
+  } catch (e) {
+    console.warn('Supabase vendor delete failed:', e);
+  }
+};
+
+// Customer Supabase Helpers
+export const dbUpsertCustomer = async (customer: CustomerItem) => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+  try {
+    await supabase.from('customers').upsert({
+      id: customer.id,
+      name: customer.name,
+      contact_person: customer.contactPerson || null,
+      mobile: customer.mobile || null,
+      email: customer.email || null,
+      gstin: customer.gstin || null,
+      city: (customer as any).city || (customer.address ? customer.address.split(',').pop()?.trim() : null),
+    });
+  } catch (e) {
+    console.warn('Supabase customer upsert failed:', e);
+  }
+};
+
+export const dbDeleteCustomer = async (customerId: string) => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+  try {
+    await supabase.from('customers').delete().eq('id', customerId);
+  } catch (e) {
+    console.warn('Supabase customer delete failed:', e);
+  }
+};
+
+// Material Supabase Helpers
+export const dbUpsertMaterial = async (material: MaterialItem) => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+  try {
+    await supabase.from('materials').upsert({
+      id: material.id,
+      code: material.code,
+      name: material.name,
+      type: material.type,
+      grade: material.grade,
+      thickness: material.thickness,
+      size_specs: material.sizeSpecs,
+      unit: material.unit,
+      unit_weight_kg: material.unitWeightKg,
+      current_stock: material.currentStock,
+      reserved_stock: material.reservedStock,
+      min_stock: material.minStock,
+      reorder_level: material.reorderLevel,
+      unit_cost: material.unitCost,
+      vendor: material.vendor,
+      notes: material.notes,
+    });
+  } catch (e) {
+    console.warn('Supabase material upsert failed:', e);
+  }
+};
+
+export const dbDeleteMaterial = async (materialId: string) => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+  try {
+    await supabase.from('materials').delete().eq('id', materialId);
+  } catch (e) {
+    console.warn('Supabase material delete failed:', e);
+  }
+};
+
+// User Supabase Helpers
+export const dbUpsertUser = async (user: User) => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+  try {
+    await supabase.from('erp_users').upsert({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      department: user.department || null,
+      status: user.status || 'Active',
+      auth_level: user.authLevel || null,
+    });
+  } catch (e) {
+    console.warn('Supabase user upsert failed:', e);
+  }
+};
+
+export const dbDeleteUser = async (userId: string) => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+  try {
+    await supabase.from('erp_users').delete().eq('id', userId);
+  } catch (e) {
+    console.warn('Supabase user delete failed:', e);
   }
 };
 

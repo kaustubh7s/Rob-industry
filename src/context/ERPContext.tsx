@@ -62,6 +62,15 @@ import {
   dbDeleteRequirement,
   dbBulkUpsertRequirements,
   pullAllDataFromSupabase,
+  pushAllDataToSupabase,
+  dbUpsertVendor,
+  dbDeleteVendor,
+  dbUpsertCustomer,
+  dbDeleteCustomer,
+  dbUpsertMaterial,
+  dbDeleteMaterial,
+  dbUpsertUser,
+  dbDeleteUser,
 } from '../services/supabaseService';
 import { getSupabaseClient } from '../lib/supabaseClient';
 
@@ -640,6 +649,34 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               const remoteIds = new Set(pullRes.data!.requirements!.map((r) => r.id));
               const localUnsynced = prev.filter((r) => !remoteIds.has(r.id));
               return [...pullRes.data!.requirements!, ...localUnsynced];
+            });
+          }
+          if (pullRes.data.materials && pullRes.data.materials.length > 0) {
+            setMaterials((prev) => {
+              const remoteIds = new Set(pullRes.data!.materials!.map((m) => m.id));
+              const localUnsynced = prev.filter((m) => !remoteIds.has(m.id));
+              return [...pullRes.data!.materials!, ...localUnsynced];
+            });
+          }
+          if (pullRes.data.vendors && pullRes.data.vendors.length > 0) {
+            setVendors((prev) => {
+              const remoteIds = new Set(pullRes.data!.vendors!.map((v) => v.id));
+              const localUnsynced = prev.filter((v) => !remoteIds.has(v.id));
+              return [...pullRes.data!.vendors!, ...localUnsynced];
+            });
+          }
+          if (pullRes.data.customers && pullRes.data.customers.length > 0) {
+            setCustomers((prev) => {
+              const remoteIds = new Set(pullRes.data!.customers!.map((c) => c.id));
+              const localUnsynced = prev.filter((c) => !remoteIds.has(c.id));
+              return [...pullRes.data!.customers!, ...localUnsynced];
+            });
+          }
+          if (pullRes.data.users && pullRes.data.users.length > 0) {
+            setUsers((prev) => {
+              const remoteIds = new Set(pullRes.data!.users!.map((u) => u.id));
+              const localUnsynced = prev.filter((u) => !remoteIds.has(u.id));
+              return [...pullRes.data!.users!, ...localUnsynced];
             });
           }
         }
@@ -1232,15 +1269,26 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setMaterials((prev) => [newMat, ...prev]);
     logAudit('Material Created', 'Materials Master', `Created material ${newMat.name} (${newMat.code})`);
     addNotification('Material Added', `Added ${newMat.name} to inventory catalog`, 'success', 'materials');
+    dbUpsertMaterial(newMat);
   };
 
   const updateMaterial = (id: string, updates: Partial<MaterialItem>) => {
-    setMaterials((prev) => prev.map((m) => (m.id === id ? { ...m, ...updates } : m)));
+    setMaterials((prev) =>
+      prev.map((m) => {
+        if (m.id === id) {
+          const merged = { ...m, ...updates };
+          dbUpsertMaterial(merged);
+          return merged;
+        }
+        return m;
+      })
+    );
     logAudit('Material Updated', 'Materials Master', `Updated material ID ${id}`);
   };
 
   const deleteMaterial = (id: string) => {
     setMaterials((prev) => prev.filter((m) => m.id !== id));
+    dbDeleteMaterial(id);
     logAudit('Material Deleted', 'Materials Master', `Deleted material ID ${id}`);
   };
 
@@ -1620,16 +1668,27 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: 'vnd-' + (vendors.length + 1) + '-' + Date.now().toString().slice(-4),
     };
     setVendors((prev) => [newVendor, ...prev]);
+    dbUpsertVendor(newVendor);
     logAudit('Vendor Created', 'Vendor Management', `Added vendor ${newVendor.name}`);
   };
 
   const updateVendor = (id: string, updates: Partial<VendorItem>) => {
-    setVendors((prev) => prev.map((v) => (v.id === id ? { ...v, ...updates } : v)));
+    setVendors((prev) =>
+      prev.map((v) => {
+        if (v.id === id) {
+          const merged = { ...v, ...updates };
+          dbUpsertVendor(merged);
+          return merged;
+        }
+        return v;
+      })
+    );
     logAudit('Vendor Updated', 'Vendor Management', `Updated vendor ID ${id}`);
   };
 
   const deleteVendor = (id: string) => {
     setVendors((prev) => prev.filter((v) => v.id !== id));
+    dbDeleteVendor(id);
     logAudit('Vendor Deleted', 'Vendor Management', `Deleted vendor ID ${id}`);
   };
 
@@ -1646,12 +1705,20 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem(LOCAL_STORAGE_KEY + '_users', JSON.stringify(next));
       return next;
     });
+    dbUpsertUser(newUser);
     logAudit('Member Created', 'User Authorization', `Added member ${newUser.name} (${newUser.role})`);
   };
 
   const updateUser = (id: string, updates: Partial<User>) => {
     setUsers((prev) => {
-      const next = prev.map((u) => (u.id === id ? { ...u, ...updates } : u));
+      const next = prev.map((u) => {
+        if (u.id === id) {
+          const merged = { ...u, ...updates };
+          dbUpsertUser(merged);
+          return merged;
+        }
+        return u;
+      });
       localStorage.setItem(LOCAL_STORAGE_KEY + '_users', JSON.stringify(next));
       return next;
     });
@@ -1665,6 +1732,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem(LOCAL_STORAGE_KEY + '_users', JSON.stringify(next));
       return next;
     });
+    dbDeleteUser(id);
     logAudit('Member Deleted', 'User Authorization', `Deleted user ID ${id}`);
   };
 
@@ -1675,16 +1743,19 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     status?: 'Active' | 'Suspended' | 'Read Only'
   ) => {
     setUsers((prev) => {
-      const next = prev.map((u) =>
-        u.id === userId
-          ? {
-              ...u,
-              authLevel,
-              permissions,
-              status: status || u.status || 'Active',
-            }
-          : u
-      );
+      const next = prev.map((u) => {
+        if (u.id === userId) {
+          const merged: User = {
+            ...u,
+            authLevel,
+            permissions,
+            status: status || u.status || 'Active',
+          };
+          dbUpsertUser(merged);
+          return merged;
+        }
+        return u;
+      });
       localStorage.setItem(LOCAL_STORAGE_KEY + '_users', JSON.stringify(next));
       return next;
     });
@@ -1707,16 +1778,27 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: 'cust-' + (customers.length + 1) + '-' + Date.now().toString().slice(-4),
     };
     setCustomers((prev) => [newCust, ...prev]);
+    dbUpsertCustomer(newCust);
     logAudit('Customer Created', 'Customer Management', `Added customer ${newCust.name}`);
   };
 
   const updateCustomer = (id: string, updates: Partial<CustomerItem>) => {
-    setCustomers((prev) => prev.map((c) => (c.id === id ? { ...c, ...updates } : c)));
+    setCustomers((prev) =>
+      prev.map((c) => {
+        if (c.id === id) {
+          const merged = { ...c, ...updates };
+          dbUpsertCustomer(merged);
+          return merged;
+        }
+        return c;
+      })
+    );
     logAudit('Customer Updated', 'Customer Management', `Updated customer ID ${id}`);
   };
 
   const deleteCustomer = (id: string) => {
     setCustomers((prev) => prev.filter((c) => c.id !== id));
+    dbDeleteCustomer(id);
     logAudit('Customer Deleted', 'Customer Management', `Deleted customer ID ${id}`);
   };
 
