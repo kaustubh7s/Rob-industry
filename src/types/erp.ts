@@ -5,6 +5,7 @@ export type UserRole =
   | 'purchase_manager'
   | 'production_manager'
   | 'store_manager'
+  | 'store_incharge'
   | 'accounts'
   | 'operator'
   | 'vendor';
@@ -155,6 +156,8 @@ export interface ProjectItem {
   projectNumber: string; // e.g. PRJ-2026-081
   name: string;
   customer: string;
+  clientName?: string;
+  clientNumber?: string;
   orderSource: string; // Customer PO, Tender, Direct Inquiry
   machineType: MachineCategory;
   startDate: string;
@@ -166,6 +169,7 @@ export interface ProjectItem {
   vendor?: string;
   machineName?: string;
   date?: string;
+  targetDate?: string;
   poNo?: string;
   vendorName?: string;
   orderedBy?: string;
@@ -177,6 +181,9 @@ export interface ProjectItem {
   notes?: string;
   attachmentsCount?: number;
   progressPct: number;
+  machineTypes?: string[];
+  receivedMaterials?: number;
+  arrivalPct?: number;
 }
 
 export interface TrashItem {
@@ -273,10 +280,18 @@ export interface ProjectMaterialRequirementItem {
   totalCost: number;
   sellingPriceAllocated?: number;
 
-  // Inventory Flow
+  // Inventory Flow & Material Inward Verification
   stockIssued?: boolean;
   scrapQty?: number;
   notes?: string;
+
+  // Material Inward / Arrival Tracking
+  isReceived?: boolean;
+  receivedAt?: string;
+  receivedBy?: string;
+  receivedByInitials?: string;
+  receivedByRole?: string;
+  receivedNotes?: string;
 }
 
 // Main Production & Traceability Master Row (Legacy / Summary alias)

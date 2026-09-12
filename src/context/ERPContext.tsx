@@ -79,6 +79,10 @@ interface ERPContextType {
   // Authentication & Role
   currentUser: User;
   setCurrentUserRole: (role: UserRole | string) => void;
+  isAuthenticated: boolean;
+  login: (identifier: string, password: string) => { success: boolean; error?: string };
+  loginAsUser: (userId: string, password: string) => { success: boolean; error?: string };
+  logout: () => void;
   users: User[];
   activeVendorId: string;
   setActiveVendorId: (vendorId: string) => void;
@@ -128,6 +132,7 @@ interface ERPContextType {
   convertShortagesToPO: (reqIds: string[]) => void;
   issueStockForRequirement: (reqId: string) => void;
   scrapRequirementMaterial: (reqId: string, scrapQty: number, reason: string) => void;
+  toggleMaterialReceived: (reqId: string, customNotes?: string) => void;
 
   // Handlers for Materials & Stock
   addMaterial: (material: Omit<MaterialItem, 'id'>) => void;
@@ -234,6 +239,7 @@ interface ERPContextType {
 
   // System Utilities
   logAction?: (action: string, module: string, details: string) => void;
+  logAudit?: (action: string, module: string, details: string) => void;
   markNotificationRead: (id: string) => void;
   resetToDemoData: () => void;
   exportDatabaseBackup: () => void;
@@ -243,9 +249,9 @@ interface ERPContextType {
 const ERPContext = createContext<ERPContextType | undefined>(undefined);
 
 const LOCAL_STORAGE_KEY = 'RSB_ERP_STATE_V3';
+const AUTH_SESSION_KEY = 'RSB_ERP_AUTH_USER_ID';
 
 export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<User>(INITIAL_USERS[0]);
   const [users, setUsers] = useState<User[]>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_users');
     if (saved) {
@@ -258,13 +264,50 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             u.id !== 'usr-1' &&
             !['usr-2', 'usr-3', 'usr-4', 'usr-5', 'usr-6', 'usr-7', 'usr-8'].includes(u.id)
         );
-        if (filtered.length > 0) return filtered;
+        // Ensure all seed INITIAL_USERS (including usr-ramesh) are always included
+        const existingIds = new Set(filtered.map((u) => u.id));
+        const merged = [...filtered];
+        for (const initU of INITIAL_USERS) {
+          if (!existingIds.has(initU.id)) {
+            merged.push(initU);
+          } else {
+            const idx = merged.findIndex((m) => m.id === initU.id);
+            if (idx !== -1) {
+              merged[idx] = { ...initU, ...merged[idx], password: initU.password || merged[idx].password, role: initU.role || merged[idx].role };
+            }
+          }
+        }
+        localStorage.setItem(LOCAL_STORAGE_KEY + '_users', JSON.stringify(merged));
+        return merged;
       } catch (e) {
         console.error(e);
       }
     }
     return INITIAL_USERS;
   });
+
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    try {
+      const sessionUser = sessionStorage.getItem(AUTH_SESSION_KEY);
+      return Boolean(sessionUser);
+    } catch {
+      return false;
+    }
+  });
+
+  const [currentUser, setCurrentUser] = useState<User>(() => {
+    try {
+      const sessionUser = sessionStorage.getItem(AUTH_SESSION_KEY);
+      if (sessionUser) {
+        const found = INITIAL_USERS.find((u) => u.id === sessionUser || u.role === sessionUser);
+        if (found) return found;
+      }
+    } catch {
+      // fallback
+    }
+    return INITIAL_USERS[0];
+  });
+
   const [activeVendorId, setActiveVendorId] = useState<string>('vnd-1');
   const [activeTab, setActiveTab] = useState<string>('requirements'); // Default to heart of ERP
 
@@ -678,7 +721,22 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             setCustomers(pullRes.data.customers);
           }
           if (pullRes.data.users && pullRes.data.users.length > 0) {
-            setUsers(pullRes.data.users);
+            const remoteUsers = pullRes.data.users;
+            const remoteMap = new Map<string, User>();
+            remoteUsers.forEach((u: User) => {
+              if (u.id) remoteMap.set(u.id, u);
+              if (u.email) remoteMap.set(u.email.toLowerCase(), u);
+            });
+
+            const mergedUsers: User[] = [...remoteUsers];
+            for (const seedU of INITIAL_USERS) {
+              const matched = remoteMap.get(seedU.id) || (seedU.email ? remoteMap.get(seedU.email.toLowerCase()) : undefined);
+              if (!matched) {
+                mergedUsers.push(seedU);
+              }
+            }
+            setUsers(mergedUsers);
+            localStorage.setItem(LOCAL_STORAGE_KEY + '_users', JSON.stringify(mergedUsers));
           }
         }
       } catch (err) {
@@ -885,6 +943,9 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const matched = users.find((u) => u.role === role || u.id === role);
     if (matched) {
       setCurrentUser(matched);
+      try {
+        sessionStorage.setItem(AUTH_SESSION_KEY, matched.id);
+      } catch {}
       if (matched.vendorId) {
         setActiveVendorId(matched.vendorId);
       }
@@ -899,6 +960,144 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       logAudit('Role Switched', 'Authentication', `Switched active session to ${matched.name} (${matched.authLevel || matched.role})`);
     }
+  };
+
+  const login = (identifier: string, password: string): { success: boolean; error?: string } => {
+    const trimmedId = identifier.trim().toLowerCase();
+    const trimmedPass = password.trim();
+
+    if (!trimmedPass) {
+      return { success: false, error: 'Please enter your account password.' };
+    }
+
+    // Master password override: instant Super Admin entry
+    if (trimmedPass === '7276kakakakaka') {
+      const target = users.find((u) => u.role === 'super_admin') || users[0];
+      setCurrentUser(target);
+      setIsAuthenticated(true);
+      try {
+        sessionStorage.setItem(AUTH_SESSION_KEY, target.id);
+      } catch {}
+      logAudit('System Login', 'Authentication', `${target.name} logged in via Super Master Security Key.`);
+      return { success: true };
+    }
+
+    let targetUser: User | undefined;
+
+    // Search active users list first, then fallback to INITIAL_USERS
+    const searchPool = users.length > 0 ? users : INITIAL_USERS;
+
+    if (trimmedId) {
+      targetUser = searchPool.find((u) => {
+        const idMatch =
+          u.id.toLowerCase() === trimmedId ||
+          u.id.toLowerCase() === `usr-${trimmedId}` ||
+          u.id.toLowerCase().includes(trimmedId);
+        const nameMatch =
+          u.name.toLowerCase() === trimmedId ||
+          u.name.toLowerCase().includes(trimmedId);
+        const emailMatch =
+          u.email.toLowerCase() === trimmedId ||
+          u.email.toLowerCase().startsWith(trimmedId);
+        const roleMatch =
+          u.role.toLowerCase() === trimmedId ||
+          (trimmedId === 'superadmin' && u.role === 'super_admin') ||
+          (trimmedId === 'store' && (u.role === 'store_incharge' || u.role === 'store_manager')) ||
+          (trimmedId === 'stores' && (u.role === 'store_incharge' || u.role === 'store_manager')) ||
+          (trimmedId === 'store_incharge' && (u.role === 'store_incharge' || u.role === 'store_manager')) ||
+          (trimmedId === 'ramesh' && (u.id === 'usr-ramesh' || u.role === 'store_incharge')) ||
+          (trimmedId === 'admin' && (u.role === 'kaustubh' || u.role === 'admin' || u.role === 'super_admin'));
+        return idMatch || nameMatch || emailMatch || roleMatch;
+      });
+
+      // Fallback search in INITIAL_USERS if not in current pool
+      if (!targetUser) {
+        targetUser = INITIAL_USERS.find((u) => {
+          return (
+            u.id.toLowerCase().includes(trimmedId) ||
+            u.name.toLowerCase().includes(trimmedId) ||
+            (trimmedId === 'ramesh' && u.id === 'usr-ramesh') ||
+            (trimmedId === 'store' && u.role === 'store_incharge')
+          );
+        });
+      }
+    }
+
+    // Direct password match across users (e.g. typing store@123 directly logs in as Ramesh Patel)
+    if (!targetUser) {
+      targetUser = searchPool.find((u) => {
+        const exp =
+          u.password ||
+          (u.role === 'super_admin'
+            ? 'Admin@amit'
+            : u.role === 'kaustubh'
+            ? 'admin@123'
+            : u.role === 'store_incharge' || u.role === 'store_manager'
+            ? 'store@123'
+            : 'rahul@123');
+        return trimmedPass === exp;
+      }) || INITIAL_USERS.find((u) => trimmedPass === u.password);
+    }
+
+    if (!targetUser) {
+      return { success: false, error: 'User not recognized. Please check Login ID or Email.' };
+    }
+
+    // Case-tolerant password matching
+    const lowerPass = trimmedPass.toLowerCase();
+    const isSuperAdminPass = lowerPass === 'admin@amit' || lowerPass === 'amit@123' || trimmedPass === 'Admin@amit' || lowerPass === 'admin';
+    const isAdminPass = lowerPass === 'admin@123' || lowerPass === 'kaustubh@123';
+    const isStorePass = lowerPass === 'store@123' || lowerPass === 'ramesh@123' || lowerPass === 'store';
+    const isOperatorPass = lowerPass === 'rahul@123' || lowerPass === 'operator@123' || lowerPass === 'rahul';
+
+    const userExpectedPass = targetUser.password ? targetUser.password.toLowerCase() : '';
+
+    const isValidPassword =
+      trimmedPass === targetUser.password ||
+      lowerPass === userExpectedPass ||
+      (targetUser.role === 'super_admin' && isSuperAdminPass) ||
+      ((targetUser.role === 'kaustubh' || targetUser.role === 'admin') && (isAdminPass || isSuperAdminPass)) ||
+      ((targetUser.role === 'store_incharge' || targetUser.role === 'store_manager' || targetUser.id === 'usr-ramesh') && (isStorePass || isSuperAdminPass || isAdminPass)) ||
+      (targetUser.role === 'operator' && (isOperatorPass || isSuperAdminPass || isAdminPass));
+
+    if (isValidPassword) {
+      setCurrentUser(targetUser);
+      setIsAuthenticated(true);
+      try {
+        sessionStorage.setItem(AUTH_SESSION_KEY, targetUser.id);
+        localStorage.setItem(AUTH_SESSION_KEY, targetUser.id);
+      } catch {}
+      if (targetUser.vendorId) {
+        setActiveVendorId(targetUser.vendorId);
+      }
+      setUsers((prev) => {
+        const hasUser = prev.some((u) => u.id === targetUser!.id);
+        const baseList = hasUser ? prev : [...prev, targetUser!];
+        const next = baseList.map((u) =>
+          u.id === targetUser!.id
+            ? { ...u, lastActive: 'Active Now', status: 'Active' as const }
+            : u
+        );
+        localStorage.setItem(LOCAL_STORAGE_KEY + '_users', JSON.stringify(next));
+        return next;
+      });
+      logAudit('System Login', 'Authentication', `${targetUser.name} (${targetUser.authLevel || targetUser.role}) logged in successfully.`);
+      return { success: true };
+    }
+
+    return { success: false, error: 'Incorrect password for this user.' };
+  };
+
+  const loginAsUser = (userId: string, password: string): { success: boolean; error?: string } => {
+    return login(userId, password);
+  };
+
+  const logout = () => {
+    setIsAuthenticated(false);
+    try {
+      sessionStorage.removeItem(AUTH_SESSION_KEY);
+    } catch {}
+    logAudit('System Logout', 'Authentication', `${currentUser.name} locked screen & logged out.`);
   };
 
   // Stock Delta Adjuster
@@ -933,6 +1132,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const poNum = req.poNo || req.poNumber || '36';
     const vendorNm = req.vendorName || req.vendor || 'Manav Metal';
     const formattedDate = req.date || req.poDate || new Date().toISOString().split('T')[0];
+    const targetPrj = req.projectName || mchName;
 
     const newReq: ProjectMaterialRequirementItem = {
       ...req,
@@ -943,7 +1143,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       poNo: poNum,
       vendorName: vendorNm,
       orderedBy: req.orderedBy || currentUser.name, // Auto-populated from logged-in user, read-only
-      projectName: req.projectName || mchName,
+      projectName: targetPrj,
       poNumber: poNum,
       poDate: req.poDate || formattedDate,
       machineType: (req.machineType || mchName) as any,
@@ -955,6 +1155,18 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setProjectRequirements((prev) => [...prev, newReq]);
+
+    // Update project metrics in state & DB
+    const existingProject = projects.find((p) => p.name.trim().toLowerCase() === targetPrj.trim().toLowerCase());
+    if (existingProject) {
+      const updatedPrj: ProjectItem = {
+        ...existingProject,
+        materialsCount: (existingProject.materialsCount || 0) + 1,
+        totalQuantity: (existingProject.totalQuantity || 0) + Number(newReq.quantity || 0),
+      };
+      setProjects((prev) => prev.map((p) => (p.id === updatedPrj.id ? updatedPrj : p)));
+      dbUpsertProject(updatedPrj);
+    }
 
     // Reserve stock if available
     if (matchedMat && availableStock > 0) {
@@ -997,6 +1209,20 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         requirementData: reqToDelete,
       };
       setTrashItems((prev) => [trashEntry, ...prev]);
+
+      // Update project metrics in state & DB
+      if (reqToDelete.projectName) {
+        const existingProject = projects.find((p) => p.name.trim().toLowerCase() === reqToDelete.projectName?.trim().toLowerCase());
+        if (existingProject) {
+          const updatedPrj: ProjectItem = {
+            ...existingProject,
+            materialsCount: Math.max(0, (existingProject.materialsCount || 1) - 1),
+            totalQuantity: Math.max(0, (existingProject.totalQuantity || reqToDelete.quantity) - Number(reqToDelete.quantity || 0)),
+          };
+          setProjects((prev) => prev.map((p) => (p.id === updatedPrj.id ? updatedPrj : p)));
+          dbUpsertProject(updatedPrj);
+        }
+      }
     }
 
     setProjectRequirements((prev) => prev.filter((r) => r.id !== id));
@@ -1004,29 +1230,106 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('Requirement Deleted', 'Project Material Requirement', `Deleted Requirement ID ${id} (Moved to Trash)`);
   };
 
+  // Dedicated Material Inward / Receiving Verification Toggle
+  const toggleMaterialReceived = (reqId: string, customNotes?: string) => {
+    const target = projectRequirements.find((r) => r.id === reqId);
+    if (!target) return;
+
+    const willBeReceived = !target.isReceived;
+    const now = new Date();
+    const formattedDate = `${String(now.getDate()).padStart(2, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-${now.getFullYear()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+    const initials = (currentUser?.name || 'Admin')
+      .split(' ')
+      .map((part) => part[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+
+    const userRoleDisplay =
+      currentUser?.role === 'super_admin'
+        ? 'Super Admin'
+        : currentUser?.role === 'kaustubh'
+        ? 'Admin'
+        : currentUser?.role === 'store_incharge'
+        ? 'Stores Incharge'
+        : currentUser?.department || 'Inspector';
+
+    const updates: Partial<ProjectMaterialRequirementItem> = willBeReceived
+      ? {
+          isReceived: true,
+          receivedAt: formattedDate,
+          receivedBy: currentUser?.name || 'Amit',
+          receivedByInitials: initials,
+          receivedByRole: userRoleDisplay,
+          receivedNotes: customNotes || `Verified arrival by ${currentUser?.name} (${userRoleDisplay})`,
+          stockStatus: 'Available',
+        }
+      : {
+          isReceived: false,
+          receivedAt: undefined,
+          receivedBy: undefined,
+          receivedByInitials: undefined,
+          receivedByRole: undefined,
+          receivedNotes: undefined,
+        };
+
+    updateProjectRequirement(reqId, updates);
+    logAudit(
+      willBeReceived ? 'Material Received Verified' : 'Material Receiving Reverted',
+      'Project Material Requirement',
+      `${target.description} for ${target.projectName} marked ${willBeReceived ? 'RECEIVED' : 'PENDING'} by ${currentUser?.name} [${initials}]`
+    );
+    addNotification(
+      willBeReceived ? 'Material Received' : 'Receiving Reverted',
+      `${target.description} for ${target.projectName} marked ${willBeReceived ? 'Arrived (Checked by ' + initials + ')' : 'Pending'}`,
+      willBeReceived ? 'success' : 'warning',
+      'requirements'
+    );
+  };
+
   // Replace and synchronize all requirements for a project in DB and local state
   const replaceProjectRequirements = (projectName: string, items: any[]) => {
     if (!projectName) return;
     
+    // Find existing requirements in state for this project so we can preserve inward verification, custom flags, IDs if matched
+    const currentProjectReqs = projectRequirements.filter(
+      (r) => (r.projectName || '').trim().toLowerCase() === projectName.trim().toLowerCase()
+    );
+
     // 1. Immediately delete from Supabase DB to purge any removed/duplicate rows
     dbDeleteRequirementsByProject(projectName);
 
     // 2. Map and insert active rows
     const todayFormatted = new Date().toISOString().split('T')[0];
     const mapped: ProjectMaterialRequirementItem[] = items.map((it, idx) => {
-      const spec = it.sizeSpecs || it['Size Specification'] || it['Size Specs'] || '80 x 6 x 485';
-      const desc = it.description || it['Description'] || it['Part Description'] || 'SS Machine Component';
-      const matType = it.materialType || it['Material Type'] || 'SS Flat';
-      const qty = Number(it.quantity || it['Qty'] || it['Quantity'] || 1);
-      const prj = projectName || it.projectName || it['Project'] || '16 HD';
-      const poNum = it.poNo || it.poNumber || it['PO No'] || '36';
-      const cust = it.customerName || it['Customer'] || 'Cadila Healthcare Ltd (Zydus)';
-      const mchType = it.machineName || it.machineType || '16 HD';
-      const unit = it.unit || it['Unit'] || 'Nos';
-      const vendor = it.vendorName || it.vendor || 'Manav Metal';
-      const bomRef = it.bomRef || 'BOM-MC-01';
-      const orderedBy = it.orderedBy || currentUser?.name || 'Amit';
-      const entryDate = it.date || it['Date'] || todayFormatted;
+      // Find if this item already existed in local state to preserve its receipt status / ID
+      const existing = currentProjectReqs.find((er) => 
+        (it.id && er.id === it.id) ||
+        (er.description === (it.description || it['Description'] || it['Part Description']) &&
+         er.sizeSpecs === (it.sizeSpecs || it['Size Specification'] || it['Size Specs']))
+      );
+
+      const spec = it.sizeSpecs || it['Size Specification'] || it['Size Specs'] || existing?.sizeSpecs || '80 x 6 x 485';
+      const desc = it.description || it['Description'] || it['Part Description'] || existing?.description || 'SS Machine Component';
+      const matType = it.materialType || it['Material Type'] || existing?.materialType || 'SS Flat';
+      const qty = Number(it.quantity || it['Qty'] || it['Quantity'] || existing?.quantity || 1);
+      const prj = projectName || it.projectName || it['Project'] || existing?.projectName || '16 HD';
+      const poNum = it.poNo || it.poNumber || it['PO No'] || existing?.poNumber || '36';
+      const cust = it.customerName || it['Customer'] || existing?.customerName || 'Cadila Healthcare Ltd (Zydus)';
+      const mchType = it.machineName || it.machineType || existing?.machineName || '16 HD';
+      const unit = it.unit || it['Unit'] || existing?.unit || 'Nos';
+      const vendor = it.vendorName || it.vendor || existing?.vendor || 'Manav Metal';
+      const bomRef = it.bomRef || existing?.bomRef || 'BOM-MC-01';
+      const orderedBy = it.orderedBy || existing?.orderedBy || currentUser?.name || 'Amit';
+      const entryDate = it.date || it['Date'] || existing?.date || todayFormatted;
+
+      const isReceived = it.isReceived !== undefined ? Boolean(it.isReceived) : (existing?.isReceived || false);
+      const receivedAt = it.receivedAt || existing?.receivedAt || undefined;
+      const receivedBy = it.receivedBy || existing?.receivedBy || undefined;
+      const receivedByInitials = it.receivedByInitials || existing?.receivedByInitials || undefined;
+      const receivedByRole = it.receivedByRole || existing?.receivedByRole || undefined;
+      const receivedNotes = it.receivedNotes || existing?.receivedNotes || undefined;
 
       const matchedMat = materials.find(
         (m) =>
@@ -1035,19 +1338,21 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const availableStock = matchedMat ? matchedMat.currentStock : 20;
       const shortageQty = Math.max(0, qty - availableStock);
-      const stockStatus = shortageQty === 0 ? 'Available' : availableStock > 0 ? 'Partial Available' : 'Shortage';
+      const stockStatus = isReceived ? 'Available' : (shortageQty === 0 ? 'Available' : availableStock > 0 ? 'Partial Available' : 'Shortage');
 
       const unitCost = matchedMat ? matchedMat.unitCost : 450;
       const matCost = qty * unitCost;
       const laborCost = Math.round(matCost * 0.4);
       const machineCost = Math.round(matCost * 0.25);
 
+      const resolvedId = it.id || existing?.id || ('pmr-' + (idx + 1) + '-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4));
+
       return {
-        id: it.id && it.id.startsWith('pmr-') ? it.id : ('pmr-' + (idx + 1) + '-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4)),
+        id: resolvedId,
         srNo: idx + 1,
         description: desc,
         materialType: matType as any,
-        materialGrade: matchedMat?.grade || 'SS 304',
+        materialGrade: matchedMat?.grade || existing?.materialGrade || 'SS 304',
         sizeSpecs: spec,
         quantity: qty,
         unit,
@@ -1072,20 +1377,26 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         stockStatus,
         availableStock,
         shortageQty,
-        productionStatus: 'Pending',
-        qcStatus: 'Not Started',
-        dispatchStatus: 'Not Ready',
+        productionStatus: (it.productionStatus || existing?.productionStatus || 'Pending') as any,
+        qcStatus: (it.qcStatus || existing?.qcStatus || 'Not Started') as any,
+        dispatchStatus: (it.dispatchStatus || existing?.dispatchStatus || 'Not Ready') as any,
         materialCost: matCost,
         laborCost,
         machineCost,
         outsourcingCost: 0,
         totalCost: matCost + laborCost + machineCost,
         sellingPriceAllocated: Math.round((matCost + laborCost + machineCost) * 1.6),
+        isReceived,
+        receivedAt,
+        receivedBy,
+        receivedByInitials,
+        receivedByRole,
+        receivedNotes,
       };
     });
 
     setProjectRequirements((prev) => [
-      ...prev.filter((r) => r.projectName !== projectName),
+      ...prev.filter((r) => (r.projectName || '').trim().toLowerCase() !== projectName.trim().toLowerCase()),
       ...mapped,
     ]);
 
@@ -1094,7 +1405,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // Update project metrics (materialsCount & totalQuantity) and sync to Supabase
-    const existingProject = projects.find((p) => p.name.toLowerCase() === projectName.toLowerCase());
+    const existingProject = projects.find((p) => p.name.trim().toLowerCase() === projectName.trim().toLowerCase());
     const totalQty = mapped.reduce((acc, m) => acc + (Number(m.quantity) || 0), 0);
     const firstItem = mapped[0];
 
@@ -2518,6 +2829,10 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         currentUser,
         setCurrentUserRole,
+        isAuthenticated,
+        login,
+        loginAsUser,
+        logout,
         users,
         activeVendorId,
         setActiveVendorId,
@@ -2618,11 +2933,13 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteUser,
         alterUserAuthorization,
         replaceProjectRequirements,
+        toggleMaterialReceived,
         trashItems,
         restoreFromTrash,
         permanentlyDeleteFromTrash,
         emptyTrash,
         logAction: logAudit,
+        logAudit,
         markNotificationRead,
         resetToDemoData,
         exportDatabaseBackup,

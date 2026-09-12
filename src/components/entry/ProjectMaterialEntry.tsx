@@ -209,10 +209,22 @@ export const ProjectMaterialEntry: React.FC = () => {
     emptyTrash,
     currentUser,
     vendors,
+    logAudit,
   } = useERP();
 
+  const isStoreIncharge = currentUser?.role === 'store_incharge';
+
   // Mode View State: 'entry' | 'projects' | 'details' | 'members'
-  const [activeViewMode, setActiveViewMode] = useState<'entry' | 'projects' | 'details' | 'members'>('entry');
+  const [activeViewMode, setActiveViewMode] = useState<'entry' | 'projects' | 'details' | 'members'>(() => {
+    return currentUser?.role === 'store_incharge' ? 'projects' : 'entry';
+  });
+
+  useEffect(() => {
+    if (isStoreIncharge && activeViewMode === 'entry') {
+      setActiveViewMode('projects');
+    }
+  }, [isStoreIncharge, activeViewMode]);
+
   const [selectedDetailProject, setSelectedDetailProject] = useState<ProjectItem | null>(null);
 
   // Machine Name & Header Workflow Fields (Machine Name is primary entity)
@@ -250,15 +262,13 @@ export const ProjectMaterialEntry: React.FC = () => {
   const [customDescInput, setCustomDescInput] = useState('');
   const [customSizeInput, setCustomSizeInput] = useState('');
 
-  // New Project Form State
+  // New Project Form State: Project Name, Client Name, Client Number, Start Date, Target Date
   const [newProjectForm, setNewProjectForm] = useState({
-    name: '24 HD Automation',
-    machineName: '24 HD',
-    poNo: '48',
-    date: '10-09-2026',
-    vendorName: 'Manav Metal',
-    customerName: 'Cadila Healthcare Ltd',
-    description: 'High-speed automated packaging line',
+    name: '',
+    clientName: '',
+    clientNumber: '',
+    startDate: new Date().toISOString().split('T')[0],
+    targetDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
   });
 
   // Quick Material Addition Row (Step 4)
@@ -316,6 +326,7 @@ export const ProjectMaterialEntry: React.FC = () => {
   const quickDescInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isUserManuallyEditingRef = useRef<boolean>(false);
+  const lastSelectedProjectRef = useRef<string>('');
 
   // Auto-save draft to localStorage (only save if there are real items)
   useEffect(() => {
@@ -344,46 +355,37 @@ export const ProjectMaterialEntry: React.FC = () => {
   // REAL-TIME LIVE WORKSTATION SYNC: Automatically synchronize rows & order header with live Supabase DB & other workstations
   useEffect(() => {
     if (!selectedProjectName) return;
-    const currentProject = projects.find((p) => p.name.toLowerCase() === selectedProjectName.toLowerCase());
+    const currentProject = projects.find((p) => p.name.trim().toLowerCase() === selectedProjectName.trim().toLowerCase());
     if (!currentProject) return;
 
     // Load actual material requirements for this project from live state
     const projectMats = getMaterialsForProject(currentProject, projectRequirements);
+    const isProjectSwitch = lastSelectedProjectRef.current.trim().toLowerCase() !== selectedProjectName.trim().toLowerCase();
 
-    if (projectMats.length > 0) {
-      const mappedRows: EntryRow[] = projectMats.map((m, idx) => ({
-        id: m.id,
-        machineName: m.machineName || m.machineType || currentProject.machineName || currentProject.machineType || machineName,
-        date: m.poDate || m.date || currentProject.startDate || entryDate,
-        poNo: m.poNumber || m.poNo || currentProject.poNo || currentProject.poNumber || poNo,
-        srNo: idx + 1,
-        materialType: (m.materialType || 'SS Flat') as MaterialType,
-        sizeSpecs: m.sizeSpecs || '80 x 6 x 485',
-        quantity: Number(m.quantity) || 1,
-        unit: m.unit || 'Nos',
-        vendorName: m.vendor || m.vendorName || currentProject.vendorName || currentProject.vendor || vendorName,
-        description: m.description || 'Component',
-        orderedBy: m.orderedBy || activeOrderedBy,
-        projectName: currentProject.name,
-      }));
+    const mappedRows: EntryRow[] = projectMats.map((m, idx) => ({
+      id: m.id,
+      machineName: m.machineName || m.machineType || currentProject.machineName || currentProject.machineType || machineName,
+      date: m.poDate || m.date || currentProject.startDate || entryDate,
+      poNo: m.poNumber || m.poNo || currentProject.poNo || currentProject.poNumber || poNo,
+      srNo: idx + 1,
+      materialType: (m.materialType || 'SS Flat') as MaterialType,
+      sizeSpecs: m.sizeSpecs || '80 x 6 x 485',
+      quantity: Number(m.quantity) || 1,
+      unit: m.unit || 'Nos',
+      vendorName: m.vendor || m.vendorName || currentProject.vendorName || currentProject.vendor || vendorName,
+      description: m.description || 'Component',
+      orderedBy: m.orderedBy || activeOrderedBy,
+      projectName: currentProject.name,
+    }));
 
-      setRows((prev) => {
-        // If current rows are empty or only contain placeholder blank rows, immediately populate from DB
-        const isPlaceholderOnly = prev.length === 0 || prev.every((r) => !r.description || r.description === 'New Component' || !r.sizeSpecs);
-        if (isPlaceholderOnly) {
-          return mappedRows;
-        }
-
-        // If not actively typing and requirements changed from cloud or another workstation, sync rows
-        if (!isUserManuallyEditingRef.current) {
-          const prevKey = prev.map((r) => `${r.id}_${r.quantity}_${r.description}_${r.sizeSpecs}`).join('|');
-          const nextKey = mappedRows.map((r) => `${r.id}_${r.quantity}_${r.description}_${r.sizeSpecs}`).join('|');
-          if (prevKey !== nextKey) {
-            return mappedRows;
-          }
-        }
-        return prev;
-      });
+    if (isProjectSwitch) {
+      // Switched to a new project: update reference and load DB rows or empty array
+      lastSelectedProjectRef.current = selectedProjectName;
+      isUserManuallyEditingRef.current = false;
+      setRows(mappedRows);
+      if (mappedRows.length === 0) {
+        localStorage.removeItem(DRAFT_STORAGE_KEY);
+      }
 
       // Update header fields to match project
       if (currentProject.machineName || currentProject.machineType) {
@@ -399,19 +401,25 @@ export const ProjectMaterialEntry: React.FC = () => {
         setEntryDate(currentProject.date || currentProject.startDate || '01-09-2026');
       }
     } else {
-      // If project has 0 materials in state/database, clear rows to empty state (0 items)
-      if (!isUserManuallyEditingRef.current) {
-        setRows([]);
-        localStorage.removeItem(DRAFT_STORAGE_KEY);
-      } else {
+      // Still on the same project: only sync if external updates happened and user is not actively editing
+      if (projectMats.length > 0) {
         setRows((prev) => {
-          const hasOtherProject = prev.some((r) => r.projectName && r.projectName.toLowerCase() !== selectedProjectName.toLowerCase());
-          if (hasOtherProject) {
-            return [];
+          // If current rows are empty or placeholder only, populate
+          const isPlaceholderOnly = prev.length === 0 || prev.every((r) => !r.description || r.description === 'New Component' || !r.sizeSpecs);
+          if (isPlaceholderOnly) {
+            return mappedRows;
+          }
+          if (!isUserManuallyEditingRef.current) {
+            const prevKey = prev.map((r) => `${r.id}_${r.quantity}_${r.description}_${r.sizeSpecs}`).join('|');
+            const nextKey = mappedRows.map((r) => `${r.id}_${r.quantity}_${r.description}_${r.sizeSpecs}`).join('|');
+            if (prevKey !== nextKey) {
+              return mappedRows;
+            }
           }
           return prev;
         });
       }
+      // If projectMats.length === 0 on the same project, do NOT wipe local draft rows!
     }
   }, [selectedProjectName, projectRequirements, projects]);
 
@@ -663,39 +671,50 @@ export const ProjectMaterialEntry: React.FC = () => {
     if (e) e.preventDefault();
     if (!newProjectForm.name.trim()) return;
 
+    const formattedStartDate = newProjectForm.startDate || '01-09-2026';
+    const formattedTargetDate = newProjectForm.targetDate || '30-10-2026';
+    const clientNameVal = newProjectForm.clientName.trim() || 'Cadila Healthcare Ltd';
+    const clientNumVal = newProjectForm.clientNumber.trim();
+    const customerDisplay = clientNumVal ? `${clientNameVal} (${clientNumVal})` : clientNameVal;
+
     const newPrj: Omit<ProjectItem, 'id'> = {
       name: newProjectForm.name.trim(),
       projectNumber: `PRJ-${String(projects.length + 1).padStart(3, '0')}`,
-      customer: newProjectForm.customerName || 'Cadila Healthcare Ltd (Zydus)',
+      customer: customerDisplay,
+      clientName: clientNameVal,
+      clientNumber: clientNumVal,
       orderSource: 'Customer PO',
-      machineType: (newProjectForm.machineName || '16 HD') as MachineCategory,
-      machineName: newProjectForm.machineName || '16 HD',
-      poNumber: newProjectForm.poNo || '36',
-      poNo: newProjectForm.poNo || '36',
-      date: newProjectForm.date || '01-09-2026',
-      createdDate: newProjectForm.date || '01-09-2026',
-      lastUpdatedDate: newProjectForm.date || '01-09-2026',
-      startDate: newProjectForm.date || '01-09-2026',
-      targetCompletionDate: '30-10-2026',
+      machineType: (machineName || '16 HD') as MachineCategory,
+      machineName: machineName || '16 HD',
+      poNumber: poNo || `PO-2026-${projects.length + 1}`,
+      poNo: poNo || `PO-2026-${projects.length + 1}`,
+      date: formattedStartDate,
+      createdDate: formattedStartDate,
+      lastUpdatedDate: formattedStartDate,
+      startDate: formattedStartDate,
+      targetCompletionDate: formattedTargetDate,
       priority: 'high',
       projectValue: 450000,
-      vendor: newProjectForm.vendorName || 'Manav Metal',
-      vendorName: newProjectForm.vendorName || 'Manav Metal',
+      vendor: vendorName || 'Manav Metal',
+      vendorName: vendorName || 'Manav Metal',
       orderedBy: activeOrderedBy,
       materialsCount: 0,
       totalQuantity: 0,
       status: 'Material Procurement',
       progressPct: 10,
-      notes: newProjectForm.description || `Machine Project ${newProjectForm.name}`,
+      notes: `Project ${newProjectForm.name.trim()} - Client: ${clientNameVal} | Phone: ${clientNumVal || 'N/A'}`,
     };
 
     addProject(newPrj);
     setSelectedProjectName(newPrj.name);
-    setMachineName(newPrj.machineName || '16 HD');
-    setVendorName(newPrj.vendorName || 'Manav Metal');
-    setPoNo(newPrj.poNo || '36');
-    setEntryDate(newPrj.date || '01-09-2026');
     setIsAddProjectModalOpen(false);
+    setNewProjectForm({
+      name: '',
+      clientName: '',
+      clientNumber: '',
+      startDate: new Date().toISOString().split('T')[0],
+      targetDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    });
 
     confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
     setSaveToast(`✨ Created Project "${newPrj.name}"! You can now add material requirements to it.`);
@@ -1101,38 +1120,89 @@ export const ProjectMaterialEntry: React.FC = () => {
   }, [rows, searchTerm, filterMaterialType, filterVendor]);
 
   // View Mode Switcher
-  if (activeViewMode === 'projects') {
+  if (activeViewMode === 'projects' || isStoreIncharge) {
     return (
       <div className="space-y-4">
-        <div className="flex items-center gap-2 pb-2 border-b border-slate-200">
-          <button
-            type="button"
-            onClick={() => setActiveViewMode('entry')}
-            className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
-          >
-            <Zap className="w-3.5 h-3.5 text-amber-500" />
-            <span>Fast Material Entry</span>
-          </button>
-          <button
-            type="button"
-            className="px-3.5 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
-          >
-            <FolderKanban className="w-3.5 h-3.5 text-blue-400" />
-            <span>Projects Directory ({projects.length})</span>
-          </button>
+        <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+          <div className="flex items-center gap-2">
+            {!isStoreIncharge && (
+              <button
+                type="button"
+                onClick={() => setActiveViewMode('entry')}
+                className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <Zap className="w-3.5 h-3.5 text-amber-500" />
+                <span>Fast Material Entry</span>
+              </button>
+            )}
+            <button
+              type="button"
+              className="px-3.5 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
+            >
+              <FolderKanban className="w-3.5 h-3.5 text-blue-400" />
+              <span>Projects Directory ({projects.length})</span>
+            </button>
+          </div>
+
+          {isStoreIncharge && (
+            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-semibold">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Stores Inspector Mode • Vendor Material Arrival Verification</span>
+            </div>
+          )}
         </div>
 
-        <ProjectsDirectory
-          onSelectProject={(prj) => {
-            setSelectedDetailProject(prj);
-            setActiveViewMode('details');
-          }}
-          onOpenEntrySheetWithProject={(pName) => {
-            const found = projects.find((p) => p.name === pName);
-            if (found) handleUsePreviousOrder(found);
-            setActiveViewMode('entry');
-          }}
-        />
+        {activeViewMode === 'details' && selectedDetailProject ? (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 pb-2 border-b border-slate-200">
+              <button
+                type="button"
+                onClick={() => setActiveViewMode('projects')}
+                className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <FolderKanban className="w-3.5 h-3.5 text-blue-600" />
+                <span>← Back to All Projects</span>
+              </button>
+              <button
+                type="button"
+                className="px-3.5 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
+              >
+                <Layers className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Project: {selectedDetailProject.name}</span>
+              </button>
+            </div>
+
+            <ProjectDetailsView
+              project={selectedDetailProject}
+              onBack={() => setActiveViewMode('projects')}
+              onOpenInEntrySheet={
+                !isStoreIncharge
+                  ? (pName) => {
+                      const found = projects.find((p) => p.name === pName);
+                      if (found) handleUsePreviousOrder(found);
+                      setActiveViewMode('entry');
+                    }
+                  : undefined
+              }
+            />
+          </div>
+        ) : (
+          <ProjectsDirectory
+            onSelectProject={(prj) => {
+              setSelectedDetailProject(prj);
+              setActiveViewMode('details');
+            }}
+            onOpenEntrySheetWithProject={
+              !isStoreIncharge
+                ? (pName) => {
+                    const found = projects.find((p) => p.name === pName);
+                    if (found) handleUsePreviousOrder(found);
+                    setActiveViewMode('entry');
+                  }
+                : undefined
+            }
+          />
+        )}
       </div>
     );
   }
@@ -1266,12 +1336,15 @@ export const ProjectMaterialEntry: React.FC = () => {
             <Cpu className="w-5 h-5 text-amber-300" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-lg font-black text-slate-900 tracking-tight">
                 RSB Machine Material Entry Workstation
               </h1>
-              <span className="px-2.5 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200 text-xs font-bold font-mono">
-                {machineName}
+              <span className="px-2.5 py-0.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 text-xs font-black">
+                📁 {selectedProjectName}
+              </span>
+              <span className="px-2.5 py-0.5 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold font-mono">
+                ⚙️ {machineName}
               </span>
             </div>
             <p className="text-xs text-slate-500 font-medium">
@@ -1373,6 +1446,64 @@ export const ProjectMaterialEntry: React.FC = () => {
       {/* 2. UNIFIED FACTORY ORDER & MATERIAL ENTRY WORKFLOW (TOGETHER) */}
       {/* ========================================================================= */}
       <div className="bg-gradient-to-br from-slate-900 via-slate-850 to-blue-950 text-white rounded-2xl p-5 shadow-lg border border-slate-800 space-y-4">
+        {/* ======================================================================= */}
+        {/* ======================================================================= */}
+        {/* TOP LEVEL: SELECT PROJECT */}
+        {/* ======================================================================= */}
+        <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950/90 rounded-2xl p-4 sm:p-5 border border-indigo-500/40 shadow-xl space-y-3">
+          {/* Header Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2.5">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/30">
+                <FolderKanban className="w-4 h-4" />
+              </div>
+              <div>
+                <label className="text-xs sm:text-sm font-black tracking-wider text-indigo-200 uppercase block">
+                  Select Project
+                </label>
+                <span className="text-[11px] font-medium text-slate-400 block">
+                  Auto-configures 4-step order workflow & synchronizes material list
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsAddProjectModalOpen(true)}
+              className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-md shadow-blue-500/20 active:scale-95 border border-blue-400/30"
+              title="Create New Machine Project"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ New Project</span>
+            </button>
+          </div>
+
+          {/* Full-Width Styled Project Dropdown */}
+          <div className="relative">
+            <select
+              value={selectedProjectName}
+              onChange={(e) => {
+                if (e.target.value === '__NEW__') {
+                  setIsAddProjectModalOpen(true);
+                } else {
+                  handleSelectExistingProject(e.target.value);
+                }
+              }}
+              className="w-full bg-slate-900 border-2 border-indigo-500/50 hover:border-indigo-400 focus:border-blue-400 rounded-xl px-4 py-3 text-sm sm:text-base font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-400/40 shadow-lg transition-all cursor-pointer appearance-none pr-10"
+            >
+              {projects.map((p) => (
+                <option key={p.id} value={p.name} className="bg-slate-900 text-white py-2 text-sm font-semibold">
+                  📁 {p.name} (PO: {p.poNo || p.poNumber || 'N/A'}) — {p.machineName || p.machineType || 'Machine'}
+                </option>
+              ))}
+              <option value="__NEW__" className="bg-indigo-950 text-amber-300 font-bold py-2">
+                + Create New Machine Project...
+              </option>
+            </select>
+            <ChevronDown className="w-5 h-5 text-indigo-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
+        </div>
+
         {/* TOP PART: 4-STEP FACTORY ORDER WORKFLOW */}
         <div>
           <div className="flex items-center justify-between pb-3 mb-3.5 border-b border-slate-800/80">
@@ -1509,49 +1640,13 @@ export const ProjectMaterialEntry: React.FC = () => {
               </h3>
             </div>
             <span className="text-[11px] text-slate-400 font-medium">
-              Select project, type description or size, then click Add
+              Type description or size, then click Add
             </span>
           </div>
 
           <form onSubmit={handleAddMaterialRow} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 items-end">
-            {/* 1. Project Selector */}
-            <div className="lg:col-span-2 space-y-1">
-              <div className="flex items-center justify-between">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-300 block">
-                  Select Project
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setIsAddProjectModalOpen(true)}
-                  className="text-[10px] font-bold text-blue-400 hover:text-blue-300 flex items-center gap-0.5 cursor-pointer"
-                  title="Create New Machine Project"
-                >
-                  <Plus className="w-3 h-3" />
-                  <span>New</span>
-                </button>
-              </div>
-              <select
-                value={selectedProjectName}
-                onChange={(e) => {
-                  if (e.target.value === '__NEW__') {
-                    setIsAddProjectModalOpen(true);
-                  } else {
-                    handleSelectExistingProject(e.target.value);
-                  }
-                }}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs font-bold text-white focus:bg-slate-900 focus:outline-none focus:border-blue-500 shadow-2xs font-mono"
-              >
-                {projects.map((p) => (
-                  <option key={p.id} value={p.name}>
-                    {p.name} ({p.poNo || p.poNumber || 'PO'})
-                  </option>
-                ))}
-                <option value="__NEW__">+ Create New Project...</option>
-              </select>
-            </div>
-
-            {/* 2. Description (Type-Ahead & Custom) */}
-            <div className="lg:col-span-3 space-y-1">
+            {/* 1. Description (Type-Ahead & Custom) */}
+            <div className="lg:col-span-4 space-y-1">
               <div className="flex items-center justify-between">
                 <label className="text-[10px] font-bold uppercase tracking-wider text-slate-300 block">
                   Description (Type-Ahead)
@@ -1575,7 +1670,7 @@ export const ProjectMaterialEntry: React.FC = () => {
               />
             </div>
 
-            {/* 3. Material Type */}
+            {/* 2. Material Type */}
             <div className="lg:col-span-2 space-y-1">
               <div className="flex items-center justify-between">
                 <label className="text-[10px] font-bold uppercase tracking-wider text-slate-300 block">
@@ -1609,8 +1704,8 @@ export const ProjectMaterialEntry: React.FC = () => {
               </select>
             </div>
 
-            {/* 4. Size Specification (Auto-Suggest & Custom) */}
-            <div className="lg:col-span-2 space-y-1">
+            {/* 3. Size Specification (Auto-Suggest & Custom) */}
+            <div className="lg:col-span-3 space-y-1">
               <div className="flex items-center justify-between">
                 <label className="text-[10px] font-bold uppercase tracking-wider text-slate-300 block">
                   Size Specification (Auto-Suggest)
@@ -1633,7 +1728,7 @@ export const ProjectMaterialEntry: React.FC = () => {
               />
             </div>
 
-            {/* 5. Qty & Unit Together (Compound Input Group) */}
+            {/* 4. Qty & Unit Together (Compound Input Group) */}
             <div className="lg:col-span-2 space-y-1">
               <label className="text-[10px] font-bold uppercase tracking-wider text-slate-300 block">
                 Qty & Unit
@@ -1670,7 +1765,7 @@ export const ProjectMaterialEntry: React.FC = () => {
               </div>
             </div>
 
-            {/* 6. Submit Button */}
+            {/* 5. Submit Button */}
             <div className="lg:col-span-1">
               <button
                 type="submit"
@@ -2179,128 +2274,101 @@ export const ProjectMaterialEntry: React.FC = () => {
       <Modal
         isOpen={isAddProjectModalOpen}
         onClose={() => setIsAddProjectModalOpen(false)}
-        title="✨ Create New Machine Project"
-        subtitle="Register project entity and immediately link material requirements"
-        maxWidth="lg"
+        title="Create New Project"
+        subtitle="Establish dedicated project with client details and project timeline"
+        maxWidth="md"
       >
         <form onSubmit={handleCreateProject} className="space-y-4 text-xs font-sans">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-[11px] font-bold text-slate-700 block">
-                Project / Order Name *
-              </label>
-              <input
-                type="text"
-                required
-                value={newProjectForm.name}
-                onChange={(e) => setNewProjectForm({ ...newProjectForm, name: e.target.value })}
-                placeholder="e.g. 24 HD High Speed Line"
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-bold focus:bg-white focus:border-blue-600 outline-none"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[11px] font-bold text-slate-700 block">
-                Machine Name / Type *
-              </label>
-              <input
-                type="text"
-                list="machine-suggestions"
-                required
-                value={newProjectForm.machineName}
-                onChange={(e) => setNewProjectForm({ ...newProjectForm, machineName: e.target.value })}
-                placeholder="e.g. 24 HD, 30 HD, Washing Unit"
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-bold focus:bg-white focus:border-blue-600 outline-none font-mono"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[11px] font-bold text-slate-700 block">
-                PO Number *
-              </label>
-              <input
-                type="text"
-                required
-                value={newProjectForm.poNo}
-                onChange={(e) => setNewProjectForm({ ...newProjectForm, poNo: e.target.value })}
-                placeholder="e.g. 48"
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-mono font-bold focus:bg-white focus:border-blue-600 outline-none"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[11px] font-bold text-slate-700 block">
-                Order Date
-              </label>
-              <input
-                type="text"
-                value={newProjectForm.date}
-                onChange={(e) => setNewProjectForm({ ...newProjectForm, date: e.target.value })}
-                placeholder="DD-MM-YYYY"
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-mono focus:bg-white focus:border-blue-600 outline-none"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[11px] font-bold text-slate-700 block">
-                Vendor Name
-              </label>
-              <input
-                type="text"
-                list="vendor-suggestions"
-                value={newProjectForm.vendorName}
-                onChange={(e) => setNewProjectForm({ ...newProjectForm, vendorName: e.target.value })}
-                placeholder="e.g. Manav Metal"
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-medium focus:bg-white focus:border-blue-600 outline-none"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[11px] font-bold text-slate-700 block">
-                Customer / Client
-              </label>
-              <input
-                type="text"
-                value={newProjectForm.customerName}
-                onChange={(e) => setNewProjectForm({ ...newProjectForm, customerName: e.target.value })}
-                placeholder="e.g. Cadila Healthcare Ltd"
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-medium focus:bg-white focus:border-blue-600 outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-[11px] font-bold text-slate-700 block">
-              Project Description / Technical Notes
+          {/* 1. Project Name */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+              Project Name *
             </label>
-            <textarea
-              rows={2}
-              value={newProjectForm.description}
-              onChange={(e) => setNewProjectForm({ ...newProjectForm, description: e.target.value })}
-              placeholder="Enter machine specifications, batch numbers or special instructions..."
-              className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-medium focus:bg-white focus:border-blue-600 outline-none resize-none"
+            <input
+              type="text"
+              required
+              value={newProjectForm.name}
+              onChange={(e) => setNewProjectForm({ ...newProjectForm, name: e.target.value })}
+              placeholder="e.g. Mahalaxmi 2, FOHA, 24 HD Automation"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-bold focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm"
+              autoFocus
             />
           </div>
 
-          <div className="flex items-center justify-between pt-3 border-t border-slate-200">
-            <div className="text-[11px] text-slate-500 font-mono">
-              Ordered By: <strong className="text-emerald-700">{activeOrderedBy}</strong>
+          {/* 2. Client Name & 3. Client Number (Separate Inputs) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+                Client Name *
+              </label>
+              <input
+                type="text"
+                required
+                value={newProjectForm.clientName}
+                onChange={(e) => setNewProjectForm({ ...newProjectForm, clientName: e.target.value })}
+                placeholder="e.g. Cadila Healthcare Ltd"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-semibold focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm"
+              />
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setIsAddProjectModalOpen(false)}
-                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs cursor-pointer active:scale-95"
-              >
-                Create Project & Select
-              </button>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+                Client Number *
+              </label>
+              <input
+                type="text"
+                required
+                value={newProjectForm.clientNumber}
+                onChange={(e) => setNewProjectForm({ ...newProjectForm, clientNumber: e.target.value })}
+                placeholder="e.g. +91 98765 43210"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-semibold focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm font-mono"
+              />
             </div>
+          </div>
+
+          {/* 3. Start Date & 4. Target Date */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+                Start Date *
+              </label>
+              <input
+                type="date"
+                required
+                value={newProjectForm.startDate}
+                onChange={(e) => setNewProjectForm({ ...newProjectForm, startDate: e.target.value })}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-bold focus:bg-white focus:border-blue-600 outline-none font-mono text-sm"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+                Target Date *
+              </label>
+              <input
+                type="date"
+                required
+                value={newProjectForm.targetDate}
+                onChange={(e) => setNewProjectForm({ ...newProjectForm, targetDate: e.target.value })}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-bold focus:bg-white focus:border-blue-600 outline-none font-mono text-sm"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-200">
+            <button
+              type="button"
+              onClick={() => setIsAddProjectModalOpen(false)}
+              className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer transition-all active:scale-95"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-6 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold shadow-md shadow-blue-500/20 cursor-pointer active:scale-95 transition-all"
+            >
+              Create Project & Select
+            </button>
           </div>
         </form>
       </Modal>

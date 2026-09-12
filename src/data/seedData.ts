@@ -79,6 +79,25 @@ export const INITIAL_USERS: User[] = [
       canOverrideLock: false,
     },
   },
+  {
+    id: 'usr-ramesh',
+    name: 'Ramesh Patel',
+    email: 'ramesh.stores@rsbequipments.com',
+    role: 'store_incharge',
+    password: 'store@123',
+    department: 'Stores & Material Inward Receiving',
+    authLevel: 'Tier 3: Department Manager',
+    status: 'Active',
+    lastActive: 'Active Now',
+    permissions: {
+      canEditMaterials: false,
+      canApproveOrders: false,
+      canDeleteRecords: false,
+      canManageUsers: false,
+      canExportReports: true,
+      canOverrideLock: false,
+    },
+  },
 ];
 
 export const INITIAL_MATERIALS: MaterialItem[] = [

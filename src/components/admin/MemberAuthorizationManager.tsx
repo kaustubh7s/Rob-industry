@@ -48,9 +48,10 @@ const ALL_AUTH_LEVELS: AuthLevel[] = [
 ];
 
 const ROLE_OPTIONS: { role: UserRole; title: string; defaultLevel: AuthLevel; department: string }[] = [
-  { role: 'super_admin', title: 'Super Admin', defaultLevel: 'Tier 1: Super Admin', department: 'Executive Management' },
+  { role: 'super_admin', title: 'Super Admin', defaultLevel: 'Tier 1: Super Admin', department: 'Super Admin & Executive Management' },
   { role: 'kaustubh', title: 'Plant Admin (Kaustubh)', defaultLevel: 'Tier 2: Plant Head / Admin', department: 'Plant Administration & Engineering' },
   { role: 'admin', title: 'Plant Operations Admin', defaultLevel: 'Tier 2: Plant Head / Admin', department: 'Plant Operations' },
+  { role: 'store_incharge', title: 'Stores & Inward Inspector (Ramesh Patel)', defaultLevel: 'Tier 3: Department Manager', department: 'Stores & Material Inward Receiving' },
   { role: 'purchase_manager', title: 'Purchase Manager', defaultLevel: 'Tier 3: Department Manager', department: 'Procurement & Vendor Mgmt' },
   { role: 'production_manager', title: 'Production Manager', defaultLevel: 'Tier 3: Department Manager', department: 'Shop Floor & Tooling' },
   { role: 'store_manager', title: 'Store & Inventory Manager', defaultLevel: 'Tier 3: Department Manager', department: 'Warehouse & Stores' },
@@ -465,7 +466,8 @@ export const MemberAuthorizationManager: React.FC = () => {
                   const isRootAmit = user.name.toLowerCase().includes('amit') || user.email === 'amit@rsbequipments.com' || user.email === 'amit@rsb.com';
                   const isSuperAdmin = user.authLevel?.startsWith('Tier 1') || user.role === 'super_admin';
                   const isPlantHead = user.authLevel?.startsWith('Tier 2') || user.role === 'kaustubh' || user.role === 'admin';
-                  const isManager = user.authLevel?.startsWith('Tier 3');
+                  const isStoreIncharge = user.role === 'store_incharge' || user.id === 'usr-ramesh' || user.name.toLowerCase().includes('ramesh');
+                  const isManager = user.authLevel?.startsWith('Tier 3') || isStoreIncharge;
 
                   const roleBadgeLabel = isRootAmit
                     ? 'ROOT ADMIN'
@@ -473,11 +475,15 @@ export const MemberAuthorizationManager: React.FC = () => {
                     ? 'SUPER ADMIN'
                     : isPlantHead
                     ? 'PLANT HEAD'
+                    : isStoreIncharge
+                    ? 'STORES & INWARD'
                     : isManager
                     ? 'MANAGER'
                     : 'OPERATOR';
 
-                  const roleBadgeColor = isSuperAdmin
+                  const roleBadgeColor = isStoreIncharge
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                    : isSuperAdmin
                     ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
                     : isPlantHead
                     ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
@@ -489,7 +495,15 @@ export const MemberAuthorizationManager: React.FC = () => {
                     <tr key={user.id} className="hover:bg-slate-800/50 transition-colors group">
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center font-bold text-white shadow-md text-xs">
+                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-white shadow-md text-xs ${
+                            isStoreIncharge
+                              ? 'bg-gradient-to-tr from-emerald-600 to-teal-600'
+                              : isSuperAdmin
+                              ? 'bg-gradient-to-tr from-purple-600 to-indigo-600'
+                              : isPlantHead
+                              ? 'bg-gradient-to-tr from-amber-600 to-orange-600'
+                              : 'bg-gradient-to-tr from-slate-600 to-slate-800'
+                          }`}>
                             {user.name.slice(0, 2).toUpperCase()}
                           </div>
                           <div>
@@ -518,7 +532,7 @@ export const MemberAuthorizationManager: React.FC = () => {
                               ? 'bg-purple-950/60 text-purple-300 border-purple-600/50'
                               : user.authLevel?.startsWith('Tier 2')
                               ? 'bg-amber-950/60 text-amber-300 border-amber-600/50'
-                              : user.authLevel?.startsWith('Tier 3')
+                              : isStoreIncharge || user.authLevel?.startsWith('Tier 3')
                               ? 'bg-blue-950/60 text-blue-300 border-blue-600/50'
                               : 'bg-slate-800 text-slate-300 border-slate-700'
                           }`}
@@ -548,6 +562,11 @@ export const MemberAuthorizationManager: React.FC = () => {
                           {user.permissions?.canManageUsers && (
                             <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-cyan-400 border border-cyan-500/30">
                               Admin Access
+                            </span>
+                          )}
+                          {isStoreIncharge && (
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-950/80 text-[10px] text-emerald-300 border border-emerald-500/40 font-bold">
+                              Inward Inspector (Arrivals Tick)
                             </span>
                           )}
                         </div>

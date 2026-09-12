@@ -24,6 +24,8 @@ import {
   Database,
   Cloud,
   RotateCcw,
+  CheckCircle2,
+  Truck,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 import { ProjectItem, ProjectStatus, MachineCategory } from '../../types/erp';
@@ -91,6 +93,7 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
 
   const isSuperAdmin =
     currentUser?.role === 'super_admin' || currentUser?.name?.toLowerCase().includes('amit');
+  const isStoreIncharge = currentUser?.role === 'store_incharge';
 
   // Search & Filter state
   const [searchTerm, setSearchTerm] = useState('');
@@ -108,20 +111,13 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
   const [newProjectForm, setNewProjectForm] = useState({
     name: '',
-    customer: 'Cadila Healthcare Ltd (Zydus)',
-    orderSource: 'Customer PO',
-    machineType: '16 HD' as MachineCategory,
-    vendor: 'Manav Metal',
-    poNumber: 'PO-2026-50',
+    clientName: '',
+    clientNumber: '',
     startDate: new Date().toISOString().split('T')[0],
-    targetCompletionDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
-    priority: 'high' as 'high' | 'medium' | 'low',
-    status: 'Production' as ProjectStatus,
-    projectValue: 1850000,
-    notes: 'Precision manufactured high-speed unit with sanitary contact parts.',
+    targetDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
   });
 
-  // Calculate live dynamic material counts and quantities per project
+  // Calculate live dynamic material counts, quantities and all machine categories per project
   const enrichedProjects = useMemo(() => {
     return projects.map((p) => {
       const mats = getMaterialsForProject(p, projectRequirements, orders);
@@ -131,6 +127,22 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
       const createdDate = p.createdDate || p.startDate || '2026-08-10';
       const lastUpdatedDate = p.lastUpdatedDate || 'Today';
 
+      // Aggregate all unique machine types from project and all its material requirements
+      const machineSet = new Set<string>();
+      if (p.machineName) machineSet.add(p.machineName);
+      if (p.machineType) machineSet.add(p.machineType);
+      mats.forEach((m) => {
+        if (m.machineName) machineSet.add(m.machineName);
+        if (m.machineType) machineSet.add(m.machineType);
+      });
+      const machineTypes = Array.from(machineSet).filter(Boolean);
+      if (machineTypes.length === 0) {
+        machineTypes.push('16 HD');
+      }
+
+      const receivedMaterials = mats.filter((m) => m.isReceived).length;
+      const arrivalPct = totalMaterials > 0 ? Math.round((receivedMaterials / totalMaterials) * 100) : 0;
+
       return {
         ...p,
         totalMaterials,
@@ -138,6 +150,9 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
         vendor,
         createdDate,
         lastUpdatedDate,
+        machineTypes,
+        receivedMaterials,
+        arrivalPct,
       };
     });
   }, [projects, projectRequirements, orders]);
@@ -152,9 +167,13 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
         p.customer.toLowerCase().includes(searchTerm.toLowerCase()) ||
         p.poNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (p.vendor && p.vendor.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        p.machineType.toLowerCase().includes(searchTerm.toLowerCase());
+        p.machineType.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        p.machineTypes.some((m) => m.toLowerCase().includes(searchTerm.toLowerCase()));
 
-      const matchesMachine = filterMachine === 'ALL' || p.machineType === filterMachine;
+      const matchesMachine =
+        filterMachine === 'ALL' ||
+        p.machineType === filterMachine ||
+        p.machineTypes.includes(filterMachine);
       const matchesVendor = filterVendor === 'ALL' || p.vendor === filterVendor;
       const matchesOrderSource = filterOrderSource === 'ALL' || p.orderSource === filterOrderSource;
       const matchesDate = !filterDate || p.startDate === filterDate || p.createdDate === filterDate;
@@ -181,22 +200,52 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
   // Handle New Project Creation
   const handleCreateProject = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newProjectForm.name.trim()) return;
+
     const count = String(projects.length + 10).padStart(3, '0');
     const projectNumber = `PRJ-2026-${count}`;
+    const clientNameVal = newProjectForm.clientName.trim() || 'Cadila Healthcare Ltd';
+    const clientNumVal = newProjectForm.clientNumber.trim();
+    const customerDisplay = clientNumVal ? `${clientNameVal} (${clientNumVal})` : clientNameVal;
+
     const newPrj: ProjectItem = {
-      ...newProjectForm,
       id: `prj-${Date.now()}`,
+      name: newProjectForm.name.trim(),
+      customer: customerDisplay,
+      clientName: clientNameVal,
+      clientNumber: clientNumVal,
       projectNumber,
-      progressPct: newProjectForm.status === 'Completed' ? 100 : newProjectForm.status === 'Production' ? 50 : 15,
+      orderSource: 'Customer PO',
+      machineType: '16 HD',
+      machineName: '16 HD',
+      vendor: 'Manav Metal',
+      vendorName: 'Manav Metal',
+      poNumber: `PO-2026-${projects.length + 1}`,
+      poNo: `PO-2026-${projects.length + 1}`,
+      startDate: newProjectForm.startDate,
+      date: newProjectForm.startDate,
+      targetCompletionDate: newProjectForm.targetDate,
+      priority: 'high',
+      status: 'Production',
+      projectValue: 500000,
+      progressPct: 15,
       createdDate: newProjectForm.startDate,
       lastUpdatedDate: 'Just now',
       materialsCount: 0,
       totalQuantity: 0,
+      notes: `Project: ${newProjectForm.name} - Client: ${clientNameVal} | Phone: ${clientNumVal || 'N/A'}`,
     };
 
     addProject(newPrj);
     setIsNewProjectModalOpen(false);
     onSelectProject(newPrj);
+    setNewProjectForm({
+      name: '',
+      clientName: '',
+      clientNumber: '',
+      startDate: new Date().toISOString().split('T')[0],
+      targetDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+    });
   };
 
   // Export Projects Directory Excel
@@ -301,38 +350,42 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
               </button>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setIsNewProjectModalOpen(true)}
-              className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>New Project</span>
-            </button>
+            {!isStoreIncharge && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setIsNewProjectModalOpen(true)}
+                  className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>New Project</span>
+                </button>
 
-            <button
-              type="button"
-              onClick={() => setIsSupabaseModalOpen(true)}
-              className="px-3 py-2 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-500/40 text-emerald-300 hover:text-emerald-200 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
-              title="Cloud Backup Settings"
-            >
-              <Cloud className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Cloud Backup</span>
-            </button>
+                <button
+                  type="button"
+                  onClick={() => setIsSupabaseModalOpen(true)}
+                  className="px-3 py-2 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-500/40 text-emerald-300 hover:text-emerald-200 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+                  title="Cloud Backup Settings"
+                >
+                  <Cloud className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Cloud Backup</span>
+                </button>
 
-            <button
-              type="button"
-              onClick={() => setIsTrashModalOpen(true)}
-              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 border ${
-                trashItems.length > 0
-                  ? 'bg-rose-50 text-rose-750 border-rose-300 hover:bg-rose-100 shadow-2xs'
-                  : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
-              }`}
-              title="Open Trash Bin to restore deleted projects or materials"
-            >
-              <Trash2 className={`w-3.5 h-3.5 ${trashItems.length > 0 ? 'text-rose-600 animate-bounce' : 'text-slate-500'}`} />
-              <span>Trash Bin ({trashItems.length})</span>
-            </button>
+                <button
+                  type="button"
+                  onClick={() => setIsTrashModalOpen(true)}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 border ${
+                    trashItems.length > 0
+                      ? 'bg-rose-50 text-rose-750 border-rose-300 hover:bg-rose-100 shadow-2xs'
+                      : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                  }`}
+                  title="Open Trash Bin to restore deleted projects or materials"
+                >
+                  <Trash2 className={`w-3.5 h-3.5 ${trashItems.length > 0 ? 'text-rose-600 animate-bounce' : 'text-slate-500'}`} />
+                  <span>Trash Bin ({trashItems.length})</span>
+                </button>
+              </>
+            )}
 
             <button
               type="button"
@@ -514,12 +567,14 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
       ) : viewMode === 'cards' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {filteredProjects.map((prj) => {
-            const mchName = prj.machineName || prj.machineType || '16 HD';
-            const vName = prj.vendorName || prj.vendor || 'Manav Metal';
-            const poNum = prj.poNo || prj.poNumber || '36';
-            const prjDate = prj.date || prj.createdDate || '01-09-2026';
+            const prjDate = prj.startDate || prj.date || prj.createdDate || '01-09-2026';
+            const deliveryDate = prj.targetCompletionDate || prj.targetDate || '30-10-2026';
+            const clientName = prj.customer || prj.clientName || 'Cadila Healthcare Ltd';
             const matCount = prj.totalMaterials ?? prj.materialsCount ?? 0;
             const ordBy = prj.orderedBy || 'Amit';
+            const machineList = prj.machineTypes && prj.machineTypes.length > 0
+              ? prj.machineTypes
+              : [prj.machineName || prj.machineType || '16 HD'];
 
             return (
               <div
@@ -527,18 +582,23 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
                 className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs hover:shadow-md hover:border-blue-400 transition-all space-y-4 group flex flex-col justify-between"
               >
                 <div className="space-y-3">
-                  {/* Header: Machine Name */}
-                  <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-black text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-lg border border-purple-200">
-                          {mchName}
-                        </span>
+                  {/* Header: Machine Names & Project Title */}
+                  <div className="flex items-start justify-between gap-2 pb-3 border-b border-slate-100">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {machineList.map((mch: string) => (
+                          <span
+                            key={mch}
+                            className="font-mono text-xs font-black text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-lg border border-purple-200"
+                          >
+                            {mch}
+                          </span>
+                        ))}
                         <span className="font-mono text-[10px] font-bold text-slate-400">
                           {prj.projectNumber}
                         </span>
                       </div>
-                      <h3 className="text-base font-black text-slate-900 group-hover:text-blue-600 transition-colors mt-1.5 leading-snug">
+                      <h3 className="text-base font-black text-slate-900 group-hover:text-blue-600 transition-colors leading-snug">
                         {prj.name}
                       </h3>
                     </div>
@@ -547,40 +607,70 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
 
                   {/* Specification Table Box */}
                   <div className="space-y-2 text-xs font-mono">
+                    {/* Client */}
                     <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100">
                       <span className="text-slate-500 font-sans font-medium flex items-center gap-1.5">
-                        <Building2 className="w-3.5 h-3.5 text-amber-600" />
-                        Vendor:
+                        <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                        Client:
                       </span>
-                      <strong className="text-amber-800 truncate">{vName}</strong>
+                      <strong className="text-slate-800 truncate font-sans text-xs">{clientName}</strong>
                     </div>
 
-                    <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100">
-                      <span className="text-slate-500 font-sans font-medium flex items-center gap-1.5">
-                        <Tag className="w-3.5 h-3.5 text-indigo-600" />
-                        PO No:
-                      </span>
-                      <strong className="text-indigo-700">{poNum}</strong>
-                    </div>
-
+                    {/* Start Date */}
                     <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100">
                       <span className="text-slate-500 font-sans font-medium flex items-center gap-1.5">
                         <Calendar className="w-3.5 h-3.5 text-slate-600" />
-                        Date:
+                        Start Date:
                       </span>
                       <strong className="text-slate-800">{prjDate}</strong>
                     </div>
 
+                    {/* Delivery Date */}
+                    <div className="flex items-center justify-between p-2 rounded-xl bg-amber-50/70 border border-amber-200">
+                      <span className="text-amber-900 font-sans font-bold flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-amber-600" />
+                        Delivery Date:
+                      </span>
+                      <strong className="text-amber-900 font-bold">{deliveryDate}</strong>
+                    </div>
+
+                    {/* Materials */}
                     <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100">
                       <span className="text-slate-500 font-sans font-medium flex items-center gap-1.5">
                         <Boxes className="w-3.5 h-3.5 text-blue-600" />
                         Materials:
                       </span>
                       <strong className="text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
-                        {matCount}
+                        {matCount} Items ({prj.totalQuantity} Units)
                       </strong>
                     </div>
 
+                    {/* Material Inward Progress */}
+                    <div className="space-y-1.5 p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                      <div className="flex items-center justify-between text-xs font-semibold">
+                        <span className="text-slate-600 font-sans flex items-center gap-1.5">
+                          <Truck className="w-3.5 h-3.5 text-emerald-600" />
+                          Material Inward:
+                        </span>
+                        <strong className="font-mono text-slate-900 font-bold">
+                          {prj.receivedMaterials || 0}/{matCount} ({prj.arrivalPct || 0}%)
+                        </strong>
+                      </div>
+                      <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-500 rounded-full ${
+                            prj.arrivalPct === 100
+                              ? 'bg-emerald-500'
+                              : (prj.arrivalPct || 0) > 0
+                              ? 'bg-blue-600'
+                              : 'bg-slate-300'
+                          }`}
+                          style={{ width: `${prj.arrivalPct || 0}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Ordered By */}
                     <div className="flex items-center justify-between p-2 rounded-xl bg-emerald-50/70 border border-emerald-200">
                       <span className="text-emerald-900 font-sans font-bold flex items-center gap-1.5">
                         <Lock className="w-3.5 h-3.5 text-emerald-600" />
@@ -626,100 +716,138 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
               <thead>
                 <tr className="bg-slate-100/80 text-slate-700 font-bold border-b border-slate-200 text-[11px] uppercase tracking-wider">
                   <th className="p-3.5 min-w-[200px] whitespace-nowrap">Project Name</th>
-                  <th className="p-3.5 min-w-[140px] whitespace-nowrap">Machine Type</th>
-                  <th className="p-3.5 min-w-[140px] whitespace-nowrap">Vendor</th>
-                  <th className="p-3.5 min-w-[130px] text-center whitespace-nowrap">Total Materials</th>
-                  <th className="p-3.5 min-w-[130px] text-center whitespace-nowrap">Total Quantity</th>
-                  <th className="p-3.5 min-w-[110px] whitespace-nowrap">Created Date</th>
-                  <th className="p-3.5 min-w-[110px] whitespace-nowrap">Last Updated</th>
+                  <th className="p-3.5 min-w-[160px] whitespace-nowrap">Machine Categories</th>
+                  <th className="p-3.5 min-w-[140px] whitespace-nowrap">Client</th>
+                  <th className="p-3.5 min-w-[120px] whitespace-nowrap">Delivery Date</th>
+                  <th className="p-3.5 min-w-[130px] whitespace-nowrap">Material Inward</th>
+                  <th className="p-3.5 min-w-[120px] text-center whitespace-nowrap">Total Materials</th>
+                  <th className="p-3.5 min-w-[110px] text-center whitespace-nowrap">Total Quantity</th>
+                  <th className="p-3.5 min-w-[100px] whitespace-nowrap">Start Date</th>
                   <th className="p-3.5 min-w-[100px] text-center whitespace-nowrap">Status</th>
                   <th className="p-3.5 w-32 text-center whitespace-nowrap">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 font-medium">
-                {filteredProjects.map((prj) => (
-                  <tr key={prj.id} className="hover:bg-blue-50/40 transition-colors">
-                    {/* Project Name & Number */}
-                    <td className="p-3.5 whitespace-nowrap">
-                      <div>
-                        <span className="font-bold text-slate-900 text-sm">{prj.name}</span>
-                        <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
-                          <span className="font-mono font-semibold text-blue-600">{prj.projectNumber}</span>
-                          <span>•</span>
-                          <span className="truncate max-w-[150px]">{prj.customer}</span>
+                {filteredProjects.map((prj) => {
+                  const clientName = prj.customer || prj.clientName || 'Cadila Healthcare Ltd';
+                  const deliveryDate = prj.targetCompletionDate || prj.targetDate || '30-10-2026';
+                  const machineList = prj.machineTypes && prj.machineTypes.length > 0
+                    ? prj.machineTypes
+                    : [prj.machineName || prj.machineType || '16 HD'];
+
+                  return (
+                    <tr key={prj.id} className="hover:bg-blue-50/40 transition-colors">
+                      {/* Project Name & Number */}
+                      <td className="p-3.5 whitespace-nowrap">
+                        <div>
+                          <span className="font-bold text-slate-900 text-sm">{prj.name}</span>
+                          <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
+                            <span className="font-mono font-semibold text-blue-600">{prj.projectNumber}</span>
+                          </div>
                         </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* Machine Type */}
-                    <td className="p-3.5 whitespace-nowrap">
-                      <span className="px-2.5 py-1 rounded-md bg-purple-50 text-purple-700 border border-purple-200 font-bold text-xs">
-                        {prj.machineType}
-                      </span>
-                    </td>
+                      {/* Machine Categories */}
+                      <td className="p-3.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {machineList.map((mch: string) => (
+                            <span
+                              key={mch}
+                              className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200 font-bold text-[11px] whitespace-nowrap"
+                            >
+                              {mch}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
 
-                    {/* Vendor */}
-                    <td className="p-3.5 font-semibold text-amber-700 whitespace-nowrap">
-                      {prj.vendor}
-                    </td>
+                      {/* Client */}
+                      <td className="p-3.5 font-semibold text-slate-800 whitespace-nowrap">
+                        <span className="truncate max-w-[160px] block">{clientName}</span>
+                      </td>
 
-                    {/* Total Materials */}
-                    <td className="p-3.5 text-center whitespace-nowrap">
-                      <span className="inline-flex items-center justify-center min-w-[80px] font-extrabold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200">
-                        {prj.totalMaterials} Items
-                      </span>
-                    </td>
+                      {/* Delivery Date */}
+                      <td className="p-3.5 whitespace-nowrap">
+                        <span className="px-2 py-1 rounded-md bg-amber-50 text-amber-900 border border-amber-200 font-bold text-xs">
+                          {deliveryDate}
+                        </span>
+                      </td>
 
-                    {/* Total Quantity */}
-                    <td className="p-3.5 text-center whitespace-nowrap">
-                      <span className="inline-flex items-center justify-center min-w-[80px] font-extrabold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200">
-                        {prj.totalQuantity} Units
-                      </span>
-                    </td>
+                      {/* Material Inward Progress */}
+                      <td className="p-3.5 whitespace-nowrap">
+                        <div className="w-28 space-y-1">
+                          <div className="flex items-center justify-between text-[11px] font-mono font-bold">
+                            <span className="text-slate-700">{prj.receivedMaterials || 0}/{prj.totalMaterials}</span>
+                            <span className={prj.arrivalPct === 100 ? 'text-emerald-700 font-black' : 'text-blue-700 font-bold'}>{prj.arrivalPct || 0}%</span>
+                          </div>
+                          <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className={`h-full transition-all duration-500 rounded-full ${
+                                prj.arrivalPct === 100
+                                  ? 'bg-emerald-500'
+                                  : (prj.arrivalPct || 0) > 0
+                                  ? 'bg-blue-600'
+                                  : 'bg-slate-300'
+                              }`}
+                              style={{ width: `${prj.arrivalPct || 0}%` }}
+                            />
+                          </div>
+                        </div>
+                      </td>
 
-                    {/* Created Date */}
-                    <td className="p-3.5 font-mono text-slate-600">
-                      {prj.createdDate}
-                    </td>
+                      {/* Total Materials */}
+                      <td className="p-3.5 text-center whitespace-nowrap">
+                        <span className="inline-flex items-center justify-center min-w-[70px] font-extrabold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200">
+                          {prj.totalMaterials} Items
+                        </span>
+                      </td>
 
-                    {/* Last Updated */}
-                    <td className="p-3.5 font-semibold text-slate-800">
-                      {prj.lastUpdatedDate}
-                    </td>
+                      {/* Total Quantity */}
+                      <td className="p-3.5 text-center whitespace-nowrap">
+                        <span className="inline-flex items-center justify-center min-w-[70px] font-extrabold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200">
+                          {prj.totalQuantity} Units
+                        </span>
+                      </td>
 
-                    {/* Status */}
-                    <td className="p-3.5 text-center">
-                      <StatusBadge status={prj.status} size="sm" />
-                    </td>
+                      {/* Start Date */}
+                      <td className="p-3.5 font-mono text-slate-600 whitespace-nowrap">
+                        {prj.startDate || prj.date || prj.createdDate}
+                      </td>
 
-                    {/* Action */}
-                    <td className="p-3.5 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => onSelectProject(prj)}
-                          className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-black text-white text-xs font-bold shadow-2xs inline-flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
-                        >
-                          <span>View</span>
-                          <ArrowRight className="w-3 h-3 text-emerald-400" />
-                        </button>
-                        {isSuperAdmin && (
+                      {/* Status */}
+                      <td className="p-3.5 text-center whitespace-nowrap">
+                        <StatusBadge status={prj.status} size="sm" />
+                      </td>
+
+                      {/* Action */}
+                      <td className="p-3.5 text-center whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1.5">
                           <button
                             type="button"
-                            title="Delete Project (Super Admin Access)"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setProjectToDelete(prj);
-                            }}
-                            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 transition active:scale-95 cursor-pointer"
+                            onClick={() => onSelectProject(prj)}
+                            className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-black text-white text-xs font-bold shadow-2xs inline-flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>View</span>
+                            <ArrowRight className="w-3 h-3 text-emerald-400" />
                           </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          {isSuperAdmin && (
+                            <button
+                              type="button"
+                              title="Delete Project (Super Admin Access)"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setProjectToDelete(prj);
+                              }}
+                              className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 transition active:scale-95 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -733,161 +861,99 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
         isOpen={isNewProjectModalOpen}
         onClose={() => setIsNewProjectModalOpen(false)}
         title="Create New Project"
-        subtitle="Establish dedicated project with auto-linked material specifications"
-        maxWidth="2xl"
+        subtitle="Establish dedicated project with client details and project timeline"
+        maxWidth="md"
       >
-        <form onSubmit={handleCreateProject} className="space-y-4 text-xs">
+        <form onSubmit={handleCreateProject} className="space-y-4 text-xs font-sans">
+          {/* 1. Project Name */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+              Project Name *
+            </label>
+            <input
+              type="text"
+              required
+              value={newProjectForm.name}
+              onChange={(e) => setNewProjectForm({ ...newProjectForm, name: e.target.value })}
+              placeholder="e.g. Mahalaxmi 2, FOHA, Project 1"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-bold focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition-all"
+              autoFocus
+            />
+          </div>
+
+          {/* 2. Client Name & 3. Client Number (Separate Inputs) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                Project Name * (e.g. FOHA, Project 1)
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+                Client Name *
               </label>
               <input
                 type="text"
                 required
-                value={newProjectForm.name}
-                onChange={(e) => setNewProjectForm({ ...newProjectForm, name: e.target.value })}
-                placeholder="e.g. FOHA"
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-bold"
+                value={newProjectForm.clientName}
+                onChange={(e) => setNewProjectForm({ ...newProjectForm, clientName: e.target.value })}
+                placeholder="e.g. Cadila Healthcare Ltd"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-semibold focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition-all"
               />
             </div>
 
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                Customer Name *
-              </label>
-              <select
-                value={newProjectForm.customer}
-                onChange={(e) => setNewProjectForm({ ...newProjectForm, customer: e.target.value })}
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium"
-              >
-                {customers.map((c) => (
-                  <option key={c.id} value={c.name}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                Machine Type *
-              </label>
-              <select
-                value={newProjectForm.machineType}
-                onChange={(e) => setNewProjectForm({ ...newProjectForm, machineType: e.target.value as MachineCategory })}
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-bold"
-              >
-                {MACHINE_CATEGORIES.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                Primary Vendor *
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+                Client Number *
               </label>
               <input
                 type="text"
                 required
-                value={newProjectForm.vendor}
-                onChange={(e) => setNewProjectForm({ ...newProjectForm, vendor: e.target.value })}
-                placeholder="Manav Metal"
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-semibold"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                PO Number *
-              </label>
-              <input
-                type="text"
-                required
-                value={newProjectForm.poNumber}
-                onChange={(e) => setNewProjectForm({ ...newProjectForm, poNumber: e.target.value })}
-                placeholder="PO-2026-36"
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-mono"
+                value={newProjectForm.clientNumber}
+                onChange={(e) => setNewProjectForm({ ...newProjectForm, clientNumber: e.target.value })}
+                placeholder="e.g. +91 98765 43210"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-semibold focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition-all font-mono"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                Order Source
-              </label>
-              <select
-                value={newProjectForm.orderSource}
-                onChange={(e) => setNewProjectForm({ ...newProjectForm, orderSource: e.target.value })}
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium"
-              >
-                {ORDER_SOURCES.map((os) => (
-                  <option key={os} value={os}>
-                    {os}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                Start Date
+          {/* 3. Start Date & 4. Target Date */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+                Start Date *
               </label>
               <input
                 type="date"
                 required
                 value={newProjectForm.startDate}
                 onChange={(e) => setNewProjectForm({ ...newProjectForm, startDate: e.target.value })}
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-mono"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-bold focus:bg-white focus:border-blue-600 outline-none font-mono text-sm"
               />
             </div>
 
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                Target Date
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+                Target Date *
               </label>
               <input
                 type="date"
                 required
-                value={newProjectForm.targetCompletionDate}
-                onChange={(e) => setNewProjectForm({ ...newProjectForm, targetCompletionDate: e.target.value })}
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-mono"
+                value={newProjectForm.targetDate}
+                onChange={(e) => setNewProjectForm({ ...newProjectForm, targetDate: e.target.value })}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-bold focus:bg-white focus:border-blue-600 outline-none font-mono text-sm"
               />
             </div>
           </div>
 
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-              Project Scope & Notes
-            </label>
-            <input
-              type="text"
-              value={newProjectForm.notes}
-              onChange={(e) => setNewProjectForm({ ...newProjectForm, notes: e.target.value })}
-              placeholder="e.g. Sanitary SS 316 parts with mirror finish"
-              className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium"
-            />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-4 border-t border-slate-200">
+          <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-200">
             <button
               type="button"
               onClick={() => setIsNewProjectModalOpen(false)}
-              className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer transition-all active:scale-95"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs cursor-pointer"
+              className="px-6 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold shadow-md shadow-blue-500/20 cursor-pointer active:scale-95 transition-all"
             >
-              Create Project & View
+              Create Project
             </button>
           </div>
         </form>

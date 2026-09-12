@@ -35,9 +35,11 @@ import { ProjectMaterialEntry } from './components/entry/ProjectMaterialEntry';
 import { EasyTutorialModal } from './components/common/EasyTutorialModal';
 import { Modal } from './components/common/Modal';
 import { MobileAdminApp } from './components/mobile/MobileAdminApp';
+import { MobileStoreInwardApp } from './components/mobile/MobileStoreInwardApp';
+import { LoginScreen } from './components/auth/LoginScreen';
 
 const ERPAppContent: React.FC = () => {
-  const { activeTab, setActiveTab, currentUser } = useERP();
+  const { activeTab, setActiveTab, currentUser, isAuthenticated } = useERP();
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isExcelOpen, setIsExcelOpen] = useState(false);
@@ -66,6 +68,7 @@ const ERPAppContent: React.FC = () => {
     currentUser.role === 'super_admin' ||
     currentUser.role === 'kaustubh' ||
     currentUser.role === 'operator' ||
+    currentUser.role === 'store_incharge' ||
     currentUser.role === 'admin';
 
   const handleOpenQuickAction = (action?: 'order' | 'inward' | 'outward' | 'job' | 'qc') => {
@@ -85,8 +88,16 @@ const ERPAppContent: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // On Phone View: Render dedicated executive mobile monitoring app
+  // Screen Lock / Unauthenticated Gate
+  if (!isAuthenticated) {
+    return <LoginScreen />;
+  }
+
+  // On Phone View: Render dedicated mobile apps
   if (isMobile) {
+    if (currentUser.role === 'store_incharge') {
+      return <MobileStoreInwardApp />;
+    }
     return <MobileAdminApp />;
   }
 

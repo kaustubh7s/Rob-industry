@@ -54,6 +54,7 @@ export const Header: React.FC<HeaderProps> = ({
   const {
     currentUser,
     setCurrentUserRole,
+    logout,
     notifications,
     markNotificationRead,
     activeTab,
@@ -115,6 +116,8 @@ export const Header: React.FC<HeaderProps> = ({
         ? 'Admin@amit'
         : pendingUser.role === 'kaustubh'
         ? 'admin@123'
+        : pendingUser.role === 'store_incharge' || pendingUser.role === 'store_manager'
+        ? 'store@123'
         : 'rahul@123');
 
     // Accept target user password or master password
@@ -122,6 +125,7 @@ export const Header: React.FC<HeaderProps> = ({
       trimmed === expectedPassword ||
       trimmed === 'Admin@amit' ||
       trimmed === 'admin@123' ||
+      trimmed === 'store@123' ||
       trimmed === 'rahul@123' ||
       trimmed === '7276kakakakaka'
     ) {
@@ -291,12 +295,12 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Lock Screen Security Button */}
           <button
             type="button"
-            onClick={() => setIsScreenLocked(true)}
+            onClick={() => logout()}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-rose-950/40 border border-slate-700 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 text-xs font-medium transition-colors cursor-pointer"
-            title="Lock plant terminal with admin password"
+            title="Lock terminal & return to login screen"
           >
             <Lock className="w-3.5 h-3.5 text-rose-500" />
-            <span className="hidden xl:inline">Lock</span>
+            <span className="hidden xl:inline">Lock / Sign Out</span>
           </button>
 
           {/* Role Switcher Menu with Badge Inside */}
@@ -364,6 +368,20 @@ export const Header: React.FC<HeaderProps> = ({
                     </button>
                   );
                 })}
+
+                <div className="pt-1 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsRoleDropdownOpen(false);
+                      logout();
+                    }}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-center gap-2 text-rose-300 hover:bg-rose-950/40 border border-transparent hover:border-rose-800/40 transition-colors font-medium"
+                  >
+                    <Lock className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Lock Screen / Log Out</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>

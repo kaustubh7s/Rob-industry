@@ -613,20 +613,44 @@ export const pullAllDataFromSupabase = async (): Promise<{
       name: u.name,
       email: u.email,
       role: u.role,
-      password: u.role === 'super_admin' ? 'Admin@amit' : u.role === 'kaustubh' ? 'admin@123' : 'rahul@123',
-      department: u.department || 'Operations',
-      authLevel: u.auth_level || 'Tier 3',
+      password: u.role === 'super_admin' ? 'Admin@amit' : u.role === 'kaustubh' ? 'admin@123' : u.role === 'store_incharge' ? 'store@123' : 'rahul@123',
+      department: u.department || (u.role === 'store_incharge' ? 'Stores & Material Inward Receiving' : 'Operations'),
+      authLevel: u.auth_level || (u.role === 'super_admin' ? 'Tier 1: Super Admin' : u.role === 'kaustubh' ? 'Tier 2: Plant Head / Admin' : u.role === 'store_incharge' ? 'Tier 3: Department Manager' : 'Tier 4: Data Entry Operator'),
       status: u.status || 'Active',
-      lastActive: 'Just now',
+      lastActive: 'Active Now',
       permissions: {
-        canEditMaterials: true,
-        canApproveOrders: u.role !== 'operator',
+        canEditMaterials: u.role !== 'store_incharge',
+        canApproveOrders: u.role !== 'operator' && u.role !== 'store_incharge',
         canDeleteRecords: u.role === 'super_admin',
         canManageUsers: u.role === 'super_admin',
         canExportReports: true,
-        canOverrideLock: u.role !== 'operator',
+        canOverrideLock: u.role === 'super_admin' || u.role === 'kaustubh',
       },
     }));
+
+    // Ensure Ramesh Patel (Stores & Inward Inspector) is always present
+    const hasRamesh = parsedUsers.some((u) => u.id === 'usr-ramesh' || u.role === 'store_incharge' || u.email?.toLowerCase().includes('ramesh') || u.name?.toLowerCase().includes('ramesh'));
+    if (!hasRamesh) {
+      parsedUsers.push({
+        id: 'usr-ramesh',
+        name: 'Ramesh Patel',
+        email: 'ramesh.stores@rsbequipments.com',
+        role: 'store_incharge',
+        password: 'store@123',
+        department: 'Stores & Material Inward Receiving',
+        authLevel: 'Tier 3: Department Manager',
+        status: 'Active',
+        lastActive: 'Active Now',
+        permissions: {
+          canEditMaterials: false,
+          canApproveOrders: false,
+          canDeleteRecords: false,
+          canManageUsers: false,
+          canExportReports: true,
+          canOverrideLock: false,
+        },
+      });
+    }
 
     return {
       success: true,
