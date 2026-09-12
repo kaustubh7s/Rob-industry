@@ -53,7 +53,7 @@ const ROLE_OPTIONS: { role: UserRole; title: string; defaultLevel: AuthLevel; de
   { role: 'super_admin', title: 'Super Admin', defaultLevel: 'Tier 1: Super Admin', department: 'Super Admin & Executive Management' },
   { role: 'kaustubh', title: 'Plant Admin (Kaustubh)', defaultLevel: 'Tier 2: Plant Head / Admin', department: 'Plant Administration & Engineering' },
   { role: 'admin', title: 'Plant Operations Admin', defaultLevel: 'Tier 2: Plant Head / Admin', department: 'Plant Operations' },
-  { role: 'store_incharge', title: 'Stores & Inward Inspector (Ramesh Patel)', defaultLevel: 'Tier 3: Department Manager', department: 'Stores & Material Inward Receiving' },
+  { role: 'store_incharge', title: 'Stores & Inward Inspector (Chandramani)', defaultLevel: 'Tier 3: Department Manager', department: 'Stores & Material Inward Receiving' },
   { role: 'purchase_manager', title: 'Purchase Manager', defaultLevel: 'Tier 3: Department Manager', department: 'Procurement & Vendor Mgmt' },
   { role: 'production_manager', title: 'Production Manager', defaultLevel: 'Tier 3: Department Manager', department: 'Shop Floor & Tooling' },
   { role: 'store_manager', title: 'Store & Inventory Manager', defaultLevel: 'Tier 3: Department Manager', department: 'Warehouse & Stores' },
@@ -160,7 +160,7 @@ export const MemberAuthorizationManager: React.FC = () => {
         canManageUsers: user.role === 'super_admin',
         canExportReports: true,
         canOverrideLock: user.role === 'super_admin' || user.role === 'kaustubh',
-        canVerifyInward: user.role === 'store_incharge' || user.role === 'super_admin' || user.role === 'kaustubh' || user.role === 'admin' || user.id === 'usr-ramesh',
+        canVerifyInward: user.role === 'store_incharge' || user.role === 'super_admin' || user.role === 'kaustubh' || user.role === 'admin' || user.id === 'usr-chandramani' || user.id === 'usr-ramesh',
       },
     });
   };
@@ -199,7 +199,7 @@ export const MemberAuthorizationManager: React.FC = () => {
         derivedDept = 'Plant Administration & Engineering';
       }
     } else if (editForm.authLevel === 'Tier 3: Department Manager') {
-      if (editForm.role === 'store_incharge' || editForm.name.toLowerCase().includes('ramesh')) {
+      if (editForm.role === 'store_incharge' || editForm.name.toLowerCase().includes('chandramani') || editForm.name.toLowerCase().includes('ramesh')) {
         derivedRole = 'store_incharge';
         derivedDept = 'Stores & Material Inward Receiving';
       }
@@ -479,7 +479,7 @@ export const MemberAuthorizationManager: React.FC = () => {
                   const isRootAmit = user.name.toLowerCase().includes('amit') || user.email === 'amit@rsbequipments.com' || user.email === 'amit@rsb.com';
                   const isSuperAdmin = user.authLevel?.startsWith('Tier 1') || user.role === 'super_admin';
                   const isPlantHead = user.authLevel?.startsWith('Tier 2') || user.role === 'kaustubh' || user.role === 'admin';
-                  const isStoreIncharge = user.role === 'store_incharge' || user.id === 'usr-ramesh' || user.name.toLowerCase().includes('ramesh');
+                  const isStoreIncharge = user.role === 'store_incharge' || user.id === 'usr-chandramani' || user.id === 'usr-ramesh' || user.name.toLowerCase().includes('chandramani') || user.name.toLowerCase().includes('ramesh');
                   const isManager = user.authLevel?.startsWith('Tier 3') || isStoreIncharge;
 
                   const roleBadgeLabel = isRootAmit
@@ -666,7 +666,7 @@ export const MemberAuthorizationManager: React.FC = () => {
                   required
                   value={newMemberForm.name}
                   onChange={(e) => setNewMemberForm({ ...newMemberForm, name: e.target.value })}
-                  placeholder="e.g. Ramesh Patil"
+                  placeholder="e.g. Chandramani"
                   className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
                 />
               </div>
@@ -680,7 +680,7 @@ export const MemberAuthorizationManager: React.FC = () => {
                   required
                   value={newMemberForm.email}
                   onChange={(e) => setNewMemberForm({ ...newMemberForm, email: e.target.value })}
-                  placeholder="e.g. ramesh@rsb.com"
+                  placeholder="e.g. chandramani@rsbequipments.com"
                   className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
                 />
               </div>

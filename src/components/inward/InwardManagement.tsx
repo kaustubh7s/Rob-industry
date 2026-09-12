@@ -63,7 +63,7 @@ export const InwardManagement: React.FC<InwardManagementProps> = ({ onOpenQuickA
     quantity: 20,
     unit: 'Nos',
     weightKg: 37.0,
-    receivedBy: 'Ramesh Patel',
+    receivedBy: 'Chandramani',
     qualityStatus: 'Approved' as InwardStatus,
     remarks: 'Dimensional verification passed with test cert',
   });

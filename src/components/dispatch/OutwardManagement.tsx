@@ -60,7 +60,7 @@ export const OutwardManagement: React.FC<OutwardManagementProps> = ({ onOpenQuic
     driverName: 'Ramu K. Yadav',
     driverPhone: '+91 98254 99001',
     invoiceNumber: 'RSB-INV-2026-118',
-    dispatchPerson: 'Ramesh Patel',
+    dispatchPerson: 'Chandramani',
     deliveryStatus: 'Dispatched' as OutwardStatus,
     transporter: 'Gujarat Golden Transport',
     eWayBillNo: '241982736500',

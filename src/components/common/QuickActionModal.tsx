@@ -83,7 +83,7 @@ export const QuickActionModal: React.FC<QuickActionModalProps> = ({
     quantity: 10,
     unit: 'Nos',
     weightKg: 18.5,
-    receivedBy: 'Ramesh Patel',
+    receivedBy: 'Chandramani',
     qualityStatus: 'Approved' as InwardStatus,
     remarks: 'Visual and thickness gauge checked OK',
   });
@@ -100,7 +100,7 @@ export const QuickActionModal: React.FC<QuickActionModalProps> = ({
     driverName: 'Ramu Yadav',
     driverPhone: '+91 98250 88991',
     invoiceNumber: 'RSB-INV-2026-118',
-    dispatchPerson: 'Ramesh Patel',
+    dispatchPerson: 'Chandramani',
     deliveryStatus: 'Dispatched' as OutwardStatus,
     transporter: 'Gujarat Golden Transport',
     eWayBillNo: '241982736500',

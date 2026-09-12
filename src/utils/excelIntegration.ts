@@ -164,7 +164,7 @@ export function downloadTemplate(templateType: 'materials' | 'vendors' | 'custom
           'Quantity': 25,
           'Unit': 'Nos',
           'Weight (Kg)': 45.6,
-          'Received By': 'Ramesh Patel',
+          'Received By': 'Chandramani',
           'Quality Status': 'Approved',
           'Remarks': 'Dimensions verified with vernier',
         },

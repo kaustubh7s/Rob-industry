@@ -113,7 +113,7 @@ export const MobileStoreInwardApp: React.FC = () => {
       logAudit?.(
         'Material Inward Status Verified (Mobile)',
         'Stores Inward',
-        `${currentUser?.name || 'Ramesh Patel'} verified & saved arrival receipts (${arrivedCount}/${totalCount} Arrived) to DB for Project ${activeProject.name}`
+        `${currentUser?.name || 'Chandramani'} verified & saved arrival receipts (${arrivedCount}/${totalCount} Arrived) to DB for Project ${activeProject.name}`
       );
 
       // Trigger celebratory confetti on 100% arrival
@@ -166,7 +166,7 @@ export const MobileStoreInwardApp: React.FC = () => {
           <div className="flex items-center gap-1.5">
             <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-slate-800/90 border border-slate-700 text-[10px] font-mono font-bold text-emerald-400">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span>{currentUser?.name ? currentUser.name.split(' ')[0] : 'Ramesh'}</span>
+              <span>{currentUser?.name ? currentUser.name.split(' ')[0] : 'Chandramani'}</span>
             </div>
             <button
               type="button"
@@ -435,7 +435,7 @@ export const MobileStoreInwardApp: React.FC = () => {
           </div>
 
           <div className="text-center text-[10px] text-slate-400 font-mono">
-            <span>Inspector: {currentUser?.name || 'Ramesh Patel'} • RSB Material Inward</span>
+            <span>Inspector: {currentUser?.name || 'Chandramani'} • RSB Material Inward</span>
           </div>
 
         </div>

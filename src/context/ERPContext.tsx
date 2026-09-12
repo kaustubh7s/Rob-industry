@@ -1005,7 +1005,8 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           (trimmedId === 'store' && (u.role === 'store_incharge' || u.role === 'store_manager')) ||
           (trimmedId === 'stores' && (u.role === 'store_incharge' || u.role === 'store_manager')) ||
           (trimmedId === 'store_incharge' && (u.role === 'store_incharge' || u.role === 'store_manager')) ||
-          (trimmedId === 'ramesh' && (u.id === 'usr-ramesh' || u.role === 'store_incharge')) ||
+          (trimmedId === 'chandramani' && (u.id === 'usr-chandramani' || u.role === 'store_incharge' || u.name.toLowerCase().includes('chandramani'))) ||
+          (trimmedId === 'ramesh' && (u.id === 'usr-chandramani' || u.id === 'usr-ramesh' || u.role === 'store_incharge')) ||
           (trimmedId === 'admin' && (u.role === 'kaustubh' || u.role === 'admin' || u.role === 'super_admin'));
         return idMatch || nameMatch || emailMatch || roleMatch;
       });
@@ -1016,14 +1017,15 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return (
             u.id.toLowerCase().includes(trimmedId) ||
             u.name.toLowerCase().includes(trimmedId) ||
-            (trimmedId === 'ramesh' && u.id === 'usr-ramesh') ||
+            (trimmedId === 'chandramani' && (u.id === 'usr-chandramani' || u.role === 'store_incharge')) ||
+            (trimmedId === 'ramesh' && (u.id === 'usr-chandramani' || u.id === 'usr-ramesh')) ||
             (trimmedId === 'store' && u.role === 'store_incharge')
           );
         });
       }
     }
 
-    // Direct password match across users (e.g. typing store@123 directly logs in as Ramesh Patel)
+    // Direct password match across users (e.g. typing chandramani@123 directly logs in as Chandramani)
     if (!targetUser) {
       targetUser = searchPool.find((u) => {
         const exp =
@@ -1033,7 +1035,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : u.role === 'kaustubh'
             ? 'admin@123'
             : u.role === 'store_incharge' || u.role === 'store_manager'
-            ? 'store@123'
+            ? 'chandramani@123'
             : 'rahul@123');
         return trimmedPass === exp;
       }) || INITIAL_USERS.find((u) => trimmedPass === u.password);
@@ -1047,7 +1049,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const lowerPass = trimmedPass.toLowerCase();
     const isSuperAdminPass = lowerPass === 'admin@amit' || lowerPass === 'amit@123' || trimmedPass === 'Admin@amit' || lowerPass === 'admin';
     const isAdminPass = lowerPass === 'admin@123' || lowerPass === 'kaustubh@123';
-    const isStorePass = lowerPass === 'store@123' || lowerPass === 'ramesh@123' || lowerPass === 'store';
+    const isStorePass = lowerPass === 'chandramani@123' || lowerPass === 'chandramani' || lowerPass === 'store@123' || lowerPass === 'ramesh@123' || lowerPass === 'store';
     const isOperatorPass = lowerPass === 'rahul@123' || lowerPass === 'operator@123' || lowerPass === 'rahul';
 
     const userExpectedPass = targetUser.password ? targetUser.password.toLowerCase() : '';
@@ -1057,7 +1059,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       lowerPass === userExpectedPass ||
       (targetUser.role === 'super_admin' && isSuperAdminPass) ||
       ((targetUser.role === 'kaustubh' || targetUser.role === 'admin') && (isAdminPass || isSuperAdminPass)) ||
-      ((targetUser.role === 'store_incharge' || targetUser.role === 'store_manager' || targetUser.id === 'usr-ramesh') && (isStorePass || isSuperAdminPass || isAdminPass)) ||
+      ((targetUser.role === 'store_incharge' || targetUser.role === 'store_manager' || targetUser.id === 'usr-chandramani' || targetUser.id === 'usr-ramesh') && (isStorePass || isSuperAdminPass || isAdminPass)) ||
       (targetUser.role === 'operator' && (isOperatorPass || isSuperAdminPass || isAdminPass));
 
     if (isValidPassword) {

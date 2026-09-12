@@ -608,12 +608,12 @@ export const pullAllDataFromSupabase = async (): Promise<{
 
     // 6. Fetch Users
     const { data: usrData } = await supabase.from('erp_users').select('*');
-    const parsedUsers: User[] = (usrData || []).map((u: any) => ({
+    let parsedUsers: User[] = (usrData || []).map((u: any) => ({
       id: u.id,
       name: u.name,
       email: u.email,
       role: u.role,
-      password: u.role === 'super_admin' ? 'Admin@amit' : u.role === 'kaustubh' ? 'admin@123' : u.role === 'store_incharge' ? 'store@123' : 'rahul@123',
+      password: u.role === 'super_admin' ? 'Admin@amit' : u.role === 'kaustubh' ? 'admin@123' : u.role === 'store_incharge' ? 'chandramani@123' : 'rahul@123',
       department: u.department || (u.role === 'store_incharge' ? 'Stores & Material Inward Receiving' : 'Operations'),
       authLevel: u.auth_level || (u.role === 'super_admin' ? 'Tier 1: Super Admin' : u.role === 'kaustubh' ? 'Tier 2: Plant Head / Admin' : u.role === 'store_incharge' ? 'Tier 3: Department Manager' : 'Tier 4: Data Entry Operator'),
       status: u.status || 'Active',
@@ -628,15 +628,15 @@ export const pullAllDataFromSupabase = async (): Promise<{
       },
     }));
 
-    // Ensure Ramesh Patel (Stores & Inward Inspector) is always present
-    const hasRamesh = parsedUsers.some((u) => u.id === 'usr-ramesh' || u.role === 'store_incharge' || u.email?.toLowerCase().includes('ramesh') || u.name?.toLowerCase().includes('ramesh'));
-    if (!hasRamesh) {
+    // Ensure Chandramani (Stores & Inward Inspector) is always present
+    const hasChandramani = parsedUsers.some((u) => u.id === 'usr-chandramani' || u.id === 'chandramani' || u.id === 'usr-ramesh' || u.role === 'store_incharge' || u.email?.toLowerCase().includes('chandramani') || u.name?.toLowerCase().includes('chandramani'));
+    if (!hasChandramani) {
       parsedUsers.push({
-        id: 'usr-ramesh',
-        name: 'Ramesh Patel',
-        email: 'ramesh.stores@rsbequipments.com',
+        id: 'usr-chandramani',
+        name: 'Chandramani',
+        email: 'chandramani.stores@rsbequipments.com',
         role: 'store_incharge',
-        password: 'store@123',
+        password: 'chandramani@123',
         department: 'Stores & Material Inward Receiving',
         authLevel: 'Tier 3: Department Manager',
         status: 'Active',
@@ -648,7 +648,31 @@ export const pullAllDataFromSupabase = async (): Promise<{
           canManageUsers: false,
           canExportReports: true,
           canOverrideLock: false,
+          canVerifyInward: true,
         },
+      });
+    } else {
+      // Ensure existing store incharge is upgraded to Chandramani credentials
+      parsedUsers = parsedUsers.map((u): User => {
+        if (u.id === 'usr-ramesh' || (u.role === 'store_incharge' && u.name.toLowerCase().includes('ramesh'))) {
+          return {
+            ...u,
+            id: 'usr-chandramani',
+            name: 'Chandramani',
+            email: 'chandramani.stores@rsbequipments.com',
+            password: 'chandramani@123',
+            permissions: {
+              canEditMaterials: u.permissions?.canEditMaterials ?? false,
+              canApproveOrders: u.permissions?.canApproveOrders ?? false,
+              canDeleteRecords: u.permissions?.canDeleteRecords ?? false,
+              canManageUsers: u.permissions?.canManageUsers ?? false,
+              canExportReports: u.permissions?.canExportReports ?? true,
+              canOverrideLock: u.permissions?.canOverrideLock ?? false,
+              canVerifyInward: true,
+            },
+          };
+        }
+        return u;
       });
     }
 
