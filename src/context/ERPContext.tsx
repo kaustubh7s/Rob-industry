@@ -278,7 +278,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (saved) {
       try {
         const parsed: ProjectMaterialRequirementItem[] = JSON.parse(saved);
-        return parsed.filter((r) => !r.id.startsWith('pmr-'));
+        if (Array.isArray(parsed)) return parsed;
       } catch (e) {
         console.error(e);
       }
@@ -662,47 +662,23 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const pullRes = await pullAllDataFromSupabase();
         if (isMounted && pullRes.success && pullRes.data) {
-          if (pullRes.data.projects && pullRes.data.projects.length > 0) {
-            setProjects((prev) => {
-              const remoteIds = new Set(pullRes.data!.projects!.map((p) => p.id));
-              const localUnsynced = prev.filter((p) => !remoteIds.has(p.id));
-              return [...pullRes.data!.projects!, ...localUnsynced];
-            });
+          if (pullRes.data.projects) {
+            setProjects(pullRes.data.projects);
           }
-          if (pullRes.data.requirements && pullRes.data.requirements.length > 0) {
-            setProjectRequirements((prev) => {
-              const remoteIds = new Set(pullRes.data!.requirements!.map((r) => r.id));
-              const localUnsynced = prev.filter((r) => !remoteIds.has(r.id));
-              return [...pullRes.data!.requirements!, ...localUnsynced];
-            });
+          if (pullRes.data.requirements) {
+            setProjectRequirements(pullRes.data.requirements);
           }
           if (pullRes.data.materials && pullRes.data.materials.length > 0) {
-            setMaterials((prev) => {
-              const remoteIds = new Set(pullRes.data!.materials!.map((m) => m.id));
-              const localUnsynced = prev.filter((m) => !remoteIds.has(m.id));
-              return [...pullRes.data!.materials!, ...localUnsynced];
-            });
+            setMaterials(pullRes.data.materials);
           }
           if (pullRes.data.vendors && pullRes.data.vendors.length > 0) {
-            setVendors((prev) => {
-              const remoteIds = new Set(pullRes.data!.vendors!.map((v) => v.id));
-              const localUnsynced = prev.filter((v) => !remoteIds.has(v.id));
-              return [...pullRes.data!.vendors!, ...localUnsynced];
-            });
+            setVendors(pullRes.data.vendors);
           }
           if (pullRes.data.customers && pullRes.data.customers.length > 0) {
-            setCustomers((prev) => {
-              const remoteIds = new Set(pullRes.data!.customers!.map((c) => c.id));
-              const localUnsynced = prev.filter((c) => !remoteIds.has(c.id));
-              return [...pullRes.data!.customers!, ...localUnsynced];
-            });
+            setCustomers(pullRes.data.customers);
           }
           if (pullRes.data.users && pullRes.data.users.length > 0) {
-            setUsers((prev) => {
-              const remoteIds = new Set(pullRes.data!.users!.map((u) => u.id));
-              const localUnsynced = prev.filter((u) => !remoteIds.has(u.id));
-              return [...pullRes.data!.users!, ...localUnsynced];
-            });
+            setUsers(pullRes.data.users);
           }
         }
       } catch (err) {
@@ -854,19 +830,11 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const pullRes = await pullAllDataFromSupabase();
         if (pullRes.success && pullRes.data) {
-          if (pullRes.data.projects && pullRes.data.projects.length > 0) {
-            setProjects((prev) => {
-              const remoteIds = new Set(pullRes.data!.projects!.map((p) => p.id));
-              const localUnsynced = prev.filter((p) => !remoteIds.has(p.id));
-              return [...pullRes.data!.projects!, ...localUnsynced];
-            });
+          if (pullRes.data.projects) {
+            setProjects(pullRes.data.projects);
           }
-          if (pullRes.data.requirements && pullRes.data.requirements.length > 0) {
-            setProjectRequirements((prev) => {
-              const remoteIds = new Set(pullRes.data!.requirements!.map((r) => r.id));
-              const localUnsynced = prev.filter((r) => !remoteIds.has(r.id));
-              return [...pullRes.data!.requirements!, ...localUnsynced];
-            });
+          if (pullRes.data.requirements) {
+            setProjectRequirements(pullRes.data.requirements);
           }
         }
       } catch (err) {

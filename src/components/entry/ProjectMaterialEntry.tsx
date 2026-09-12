@@ -399,14 +399,19 @@ export const ProjectMaterialEntry: React.FC = () => {
         setEntryDate(currentProject.date || currentProject.startDate || '01-09-2026');
       }
     } else {
-      // If project has 0 materials, clear stale rows belonging to other projects
-      setRows((prev) => {
-        const hasOtherProject = prev.some((r) => r.projectName && r.projectName.toLowerCase() !== selectedProjectName.toLowerCase());
-        if (hasOtherProject) {
-          return [];
-        }
-        return prev;
-      });
+      // If project has 0 materials in state/database, clear rows to empty state (0 items)
+      if (!isUserManuallyEditingRef.current) {
+        setRows([]);
+        localStorage.removeItem(DRAFT_STORAGE_KEY);
+      } else {
+        setRows((prev) => {
+          const hasOtherProject = prev.some((r) => r.projectName && r.projectName.toLowerCase() !== selectedProjectName.toLowerCase());
+          if (hasOtherProject) {
+            return [];
+          }
+          return prev;
+        });
+      }
     }
   }, [selectedProjectName, projectRequirements, projects]);
 
@@ -893,8 +898,15 @@ export const ProjectMaterialEntry: React.FC = () => {
 
   // Delete Row
   const handleDeleteRow = (rowId: string) => {
+    isUserManuallyEditingRef.current = false;
     const targetRow = rows.find((r) => r.id === rowId);
-    setRows((prev) => normalizeSrNumbers(prev.filter((r) => r.id !== rowId)));
+    setRows((prev) => {
+      const next = normalizeSrNumbers(prev.filter((r) => r.id !== rowId));
+      if (next.length === 0) {
+        localStorage.removeItem(DRAFT_STORAGE_KEY);
+      }
+      return next;
+    });
     deleteProjectRequirement(rowId);
     if (targetRow) {
       const matched = projectRequirements.find(
