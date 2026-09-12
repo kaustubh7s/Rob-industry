@@ -4,23 +4,19 @@ import {
   Search,
   CheckCircle2,
   Clock,
-  Building2,
-  Layers,
-  Lock,
   LogOut,
-  RefreshCw,
-  Sparkles,
   Check,
   ChevronDown,
   Database,
   Truck,
   Boxes,
-  Calendar,
-  AlertCircle,
-  ShieldCheck,
+  CheckSquare,
+  Square,
+  Sparkles,
+  Layers,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
-import { ProjectItem, ProjectMaterialRequirementItem, MaterialType } from '../../types/erp';
+import { ProjectItem, ProjectMaterialRequirementItem } from '../../types/erp';
 import { getMaterialsForProject } from '../../utils/projectMaterialsHelper';
 import { dbBulkUpsertRequirements } from '../../services/supabaseService';
 import confetti from 'canvas-confetti';
@@ -38,11 +34,17 @@ export const MobileStoreInwardApp: React.FC = () => {
 
   // Selected Project State
   const [selectedProjectName, setSelectedProjectName] = useState<string>(() => {
-    return projects[0]?.name || 'FOHA';
+    return projects[0]?.name || '16 HD';
   });
 
   const activeProject = useMemo(() => {
-    return projects.find((p) => p.name === selectedProjectName) || projects[0] || null;
+    return (
+      projects.find(
+        (p) => p.name.trim().toLowerCase() === selectedProjectName.trim().toLowerCase()
+      ) ||
+      projects[0] ||
+      null
+    );
   }, [projects, selectedProjectName]);
 
   // Search & Filters
@@ -83,6 +85,17 @@ export const MobileStoreInwardApp: React.FC = () => {
     });
   }, [projectMaterials, filterStatus, searchTerm]);
 
+  // Quick Batch: Mark all filtered as Arrived
+  const handleMarkAllFiltered = () => {
+    const unreceived = filteredMaterials.filter((m) => !m.isReceived);
+    if (unreceived.length === 0) return;
+    unreceived.forEach((m) => {
+      toggleMaterialReceived(m.id);
+    });
+    setSaveToast(`Ticked ${unreceived.length} items as Arrived`);
+    setTimeout(() => setSaveToast(null), 2500);
+  };
+
   // Handle Save Inward to DB
   const handleSaveToDb = async () => {
     if (!activeProject) return;
@@ -91,7 +104,7 @@ export const MobileStoreInwardApp: React.FC = () => {
 
     try {
       const currentReqs = projectRequirements.filter(
-        (r) => (r.projectName || '').toLowerCase() === activeProject.name.toLowerCase()
+        (r) => (r.projectName || '').trim().toLowerCase() === activeProject.name.trim().toLowerCase()
       );
       if (currentReqs.length > 0) {
         await dbBulkUpsertRequirements(currentReqs);
@@ -100,7 +113,7 @@ export const MobileStoreInwardApp: React.FC = () => {
       logAudit?.(
         'Material Inward Status Verified (Mobile)',
         'Stores Inward',
-        `${currentUser?.name || 'Ramesh Patel'} verified & synced arrival receipts (${arrivedCount}/${totalCount} Arrived) to DB for Project ${activeProject.name}`
+        `${currentUser?.name || 'Ramesh Patel'} verified & saved arrival receipts (${arrivedCount}/${totalCount} Arrived) to DB for Project ${activeProject.name}`
       );
 
       // Trigger celebratory confetti on 100% arrival
@@ -113,65 +126,75 @@ export const MobileStoreInwardApp: React.FC = () => {
       }
 
       const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      setSaveToast(`✅ Successfully saved & synced to DB at ${timeStr}`);
+      setSaveToast(`✅ Saved to DB at ${timeStr}`);
       setTimeout(() => {
         setSaveToast(null);
-      }, 4000);
+      }, 3500);
     } catch (err) {
       console.error('Error saving to DB from mobile:', err);
     } finally {
       setTimeout(() => {
         setIsSaving(false);
-      }, 350);
+      }, 300);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col justify-between pb-24 font-sans select-none">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between pb-28 font-sans select-none">
       
       {/* 1. TOP MOBILE HEADER */}
-      <header className="sticky top-0 z-30 bg-slate-950/95 backdrop-blur-md border-b border-slate-800 px-4 py-3 shadow-md">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-600 flex items-center justify-center text-white font-black text-sm shadow-md shadow-emerald-900/40">
-              <Truck className="w-5 h-5" />
+      <header className="sticky top-0 z-30 bg-slate-900/95 backdrop-blur-xl border-b border-slate-800 px-3.5 py-2.5 shadow-lg">
+        <div className="flex items-center justify-between gap-2">
+          
+          {/* Logo & Role Title */}
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-600 flex items-center justify-center text-white font-black text-xs shadow-md shadow-emerald-900/40">
+              <Truck className="w-4 h-4" />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <h1 className="text-sm font-black text-white tracking-tight">STORES INWARD (आवक)</h1>
-                <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-mono font-bold">
-                  MOBILE
+                <h1 className="text-xs font-black text-white tracking-tight">STORES INWARD</h1>
+                <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 text-[9px] font-mono font-bold">
+                  LIVE
                 </span>
               </div>
-              <p className="text-[10px] text-slate-400">Vendor Material Receiving Terminal</p>
+              <p className="text-[10px] text-slate-400 font-medium">Arrival Verification Terminal</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-[11px] font-mono font-bold text-emerald-300">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>[RP] Ramesh</span>
+          {/* User Badge & Logout */}
+          <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-slate-800/90 border border-slate-700 text-[10px] font-mono font-bold text-emerald-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>{currentUser?.name ? currentUser.name.split(' ')[0] : 'Ramesh'}</span>
             </div>
             <button
               type="button"
               onClick={() => logout()}
-              className="p-2 rounded-xl bg-slate-800 hover:bg-rose-950/50 text-slate-400 hover:text-rose-300 border border-slate-700 transition-colors"
+              className="p-1.5 rounded-xl bg-slate-800/80 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 border border-slate-700 transition-colors"
               title="Lock Screen / Log Out"
             >
-              <LogOut className="w-4 h-4 text-rose-400" />
+              <LogOut className="w-3.5 h-3.5 text-rose-400" />
             </button>
           </div>
+
         </div>
       </header>
 
-      {/* 2. PROJECT SELECTOR & PROGRESS BANNER */}
-      <section className="p-3.5 space-y-3 bg-slate-950/40 border-b border-slate-800">
+      {/* 2. PROJECT SELECTOR & LIVE ARRIVAL PROGRESS */}
+      <section className="p-3 space-y-2.5 bg-slate-900/60 border-b border-slate-800">
         
         {/* Project Selector Dropdown */}
         <div className="space-y-1">
-          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-            <Boxes className="w-3 h-3 text-blue-400" /> Select Active Project:
-          </label>
+          <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+            <span className="flex items-center gap-1">
+              <Boxes className="w-3 h-3 text-emerald-400" /> Project:
+            </span>
+            <span className="text-slate-300 font-mono">
+              PO: {activeProject?.poNo || activeProject?.poNumber || '36'}
+            </span>
+          </div>
+
           <div className="relative">
             <select
               value={selectedProjectName}
@@ -179,164 +202,126 @@ export const MobileStoreInwardApp: React.FC = () => {
                 setSelectedProjectName(e.target.value);
                 setSearchTerm('');
               }}
-              className="w-full appearance-none bg-slate-800 border border-slate-700 text-white font-black text-sm rounded-xl px-3.5 py-2.5 pr-10 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 shadow-inner cursor-pointer"
+              className="w-full appearance-none bg-slate-800 border border-slate-700 text-white font-black text-xs rounded-xl px-3 py-2 pr-9 focus:outline-none focus:border-emerald-500 shadow-inner cursor-pointer"
             >
               {projects.map((p) => (
                 <option key={p.id} value={p.name}>
-                  {p.name} • {p.machineType || p.machineName || 'Machine'} (PO: {p.poNo || p.poNumber || 'PO'})
+                  {p.name} • {p.machineType || p.machineName || 'Machine'}
                 </option>
               ))}
             </select>
-            <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
         </div>
 
-        {/* Horizontal Project Quick Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-          {projects.map((p) => {
-            const isSelected = p.name === selectedProjectName;
-            return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => {
-                  setSelectedProjectName(p.name);
-                  setSearchTerm('');
-                }}
-                className={`px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1 border ${
-                  isSelected
-                    ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
-                    : 'bg-slate-800/80 text-slate-300 border-slate-700/80 hover:bg-slate-750'
-                }`}
-              >
-                <span>{p.name}</span>
-                {isSelected && <Check className="w-3 h-3 text-white" />}
-              </button>
-            );
-          })}
+        {/* Progress Strip */}
+        <div className="p-2.5 rounded-xl bg-slate-800/80 border border-slate-700/80 space-y-1.5">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-emerald-400 font-bold text-[11px] flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              Arrivals: <strong className="text-white ml-0.5">{arrivedCount} / {totalCount}</strong>
+            </span>
+            <span className="font-mono text-emerald-300 font-black text-xs">
+              {progressPct}%
+            </span>
+          </div>
+
+          <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-slate-700/80">
+            <div
+              className={`h-full rounded-full transition-all duration-300 ${
+                progressPct === 100
+                  ? 'bg-gradient-to-r from-emerald-500 to-teal-400'
+                  : 'bg-gradient-to-r from-emerald-600 via-teal-500 to-emerald-400'
+              }`}
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
         </div>
 
-        {/* Project Metrics & Live Arrival Progress Bar */}
-        {activeProject && (
-          <div className="p-3 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-850 border border-slate-700/80 shadow-md space-y-2.5">
-            <div className="flex items-center justify-between text-xs">
-              <div>
-                <span className="text-[10px] text-slate-400 font-medium block">Client / Customer</span>
-                <strong className="text-white text-xs font-bold truncate">
-                  {activeProject.customer || activeProject.clientName || 'Cadila Healthcare Ltd'}
-                </strong>
-              </div>
-              <div className="text-right">
-                <span className="text-[10px] text-slate-400 font-medium block">PO Number</span>
-                <strong className="text-blue-400 font-mono text-xs">
-                  {activeProject.poNo || activeProject.poNumber || '36'}
-                </strong>
-              </div>
-            </div>
-
-            {/* Arrival Progress Bar */}
-            <div className="space-y-1 pt-1 border-t border-slate-700/60">
-              <div className="flex items-center justify-between text-xs font-bold">
-                <span className="text-emerald-400 flex items-center gap-1 text-[11px]">
-                  <PackageCheck className="w-3.5 h-3.5" />
-                  Material Arrival Status:
-                </span>
-                <span className="font-mono text-white text-xs">
-                  {arrivedCount} / {totalCount} Items ({progressPct}%)
-                </span>
-              </div>
-
-              <div className="w-full bg-slate-950 h-2.5 rounded-full overflow-hidden p-0.5 border border-slate-700">
-                <div
-                  className={`h-full rounded-full transition-all duration-300 ${
-                    progressPct === 100
-                      ? 'bg-gradient-to-r from-emerald-500 to-teal-400'
-                      : 'bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-500'
-                  }`}
-                  style={{ width: `${progressPct}%` }}
-                />
-              </div>
-            </div>
-          </div>
-        )}
       </section>
 
       {/* 3. SEARCH & QUICK FILTER TABS */}
-      <section className="p-3.5 space-y-2.5">
+      <section className="px-3 pt-2.5 pb-1 space-y-2">
         
         {/* Search Input */}
         <div className="relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search size (e.g. 80 x 6), vendor, or part name..."
-            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
+            className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-8.5 pr-8 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
           />
           {searchTerm && (
             <button
               type="button"
               onClick={() => setSearchTerm('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs px-1"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs px-1"
             >
               ✕
             </button>
           )}
         </div>
 
-        {/* Filter Chips */}
-        <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-slate-950/80 border border-slate-800 text-xs font-bold text-center">
-          <button
-            type="button"
-            onClick={() => setFilterStatus('ALL')}
-            className={`py-1.5 rounded-lg transition-all ${
-              filterStatus === 'ALL'
-                ? 'bg-slate-800 text-white shadow-xs'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            All ({totalCount})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilterStatus('PENDING')}
-            className={`py-1.5 rounded-lg transition-all flex items-center justify-center gap-1 ${
-              filterStatus === 'PENDING'
-                ? 'bg-amber-600/30 text-amber-300 border border-amber-500/40 shadow-xs'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <span>Pending</span>
-            <span className="px-1.5 py-0.2 rounded-full bg-amber-950 text-amber-400 text-[10px] font-mono">
-              {pendingCount}
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilterStatus('ARRIVED')}
-            className={`py-1.5 rounded-lg transition-all flex items-center justify-center gap-1 ${
-              filterStatus === 'ARRIVED'
-                ? 'bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 shadow-xs'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <span>Arrived</span>
-            <span className="px-1.5 py-0.2 rounded-full bg-emerald-950 text-emerald-400 text-[10px] font-mono">
-              {arrivedCount}
-            </span>
-          </button>
+        {/* Filter Pills */}
+        <div className="flex items-center justify-between gap-1.5">
+          <div className="grid grid-cols-3 gap-1 flex-1 p-0.5 rounded-xl bg-slate-900 border border-slate-800 text-[11px] font-bold text-center">
+            <button
+              type="button"
+              onClick={() => setFilterStatus('ALL')}
+              className={`py-1 rounded-lg transition-all ${
+                filterStatus === 'ALL'
+                  ? 'bg-slate-800 text-white shadow-xs'
+                  : 'text-slate-400'
+              }`}
+            >
+              All ({totalCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterStatus('PENDING')}
+              className={`py-1 rounded-lg transition-all ${
+                filterStatus === 'PENDING'
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-xs'
+                  : 'text-slate-400'
+              }`}
+            >
+              Pending ({pendingCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterStatus('ARRIVED')}
+              className={`py-1 rounded-lg transition-all ${
+                filterStatus === 'ARRIVED'
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-xs'
+                  : 'text-slate-400'
+              }`}
+            >
+              Arrived ({arrivedCount})
+            </button>
+          </div>
+
+          {pendingCount > 0 && filterStatus !== 'ARRIVED' && (
+            <button
+              type="button"
+              onClick={handleMarkAllFiltered}
+              className="px-2.5 py-1 rounded-xl bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-300 text-[10px] font-bold shrink-0 transition-all active:scale-95 cursor-pointer"
+            >
+              Tick All
+            </button>
+          )}
         </div>
+
       </section>
 
-      {/* 4. MATERIAL CARDS LIST (LARGE TOUCH TARGETS) */}
-      <main className="px-3.5 space-y-3 flex-1 overflow-y-auto">
-        
+      {/* 4. MATERIAL CARDS LIST (GREEN TICK TOUCH TARGETS) */}
+      <main className="px-3 py-2 space-y-2.5 flex-1 overflow-y-auto">
         {filteredMaterials.length === 0 ? (
-          <div className="p-8 text-center bg-slate-950/40 rounded-2xl border border-slate-800 space-y-2">
-            <PackageCheck className="w-10 h-10 text-slate-500 mx-auto" />
-            <h4 className="text-sm font-bold text-slate-300">No matching materials found</h4>
-            <p className="text-xs text-slate-400">Try changing the filter or search term above.</p>
+          <div className="p-8 text-center bg-slate-900/40 rounded-2xl border border-slate-800 space-y-2">
+            <PackageCheck className="w-8 h-8 text-slate-500 mx-auto" />
+            <h4 className="text-xs font-bold text-slate-300">No matching materials found</h4>
+            <p className="text-[11px] text-slate-400">Try changing the filter or search term above.</p>
           </div>
         ) : (
           filteredMaterials.map((m, idx) => {
@@ -345,80 +330,73 @@ export const MobileStoreInwardApp: React.FC = () => {
             return (
               <div
                 key={m.id || idx}
-                className={`rounded-2xl p-4 border transition-all duration-150 space-y-3 ${
+                onClick={() => toggleMaterialReceived(m.id)}
+                className={`rounded-2xl p-3 border transition-all duration-150 flex items-center justify-between gap-3 cursor-pointer active:scale-[0.99] ${
                   isArrived
-                    ? 'bg-emerald-950/20 border-emerald-500/30 shadow-sm'
-                    : 'bg-slate-800/90 border-slate-700/80 shadow-md'
+                    ? 'bg-emerald-950/25 border-emerald-500/40 shadow-sm ring-1 ring-emerald-500/20'
+                    : 'bg-slate-900/90 hover:bg-slate-900 border-slate-800 shadow-md'
                 }`}
               >
-                {/* Header: Type Tag, Quantity & Sr No */}
-                <div className="flex items-start justify-between gap-2">
+                {/* Left Side: Specs & Component Details */}
+                <div className="space-y-1.5 flex-1 min-w-0">
+                  
+                  {/* Top Tags */}
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="px-2 py-0.5 rounded-md bg-blue-500/10 border border-blue-500/30 text-blue-300 text-[10px] font-bold font-mono">
+                    <span className="text-[10px] text-slate-400 font-mono font-bold">#{idx + 1}</span>
+                    <span className="px-1.5 py-0.2 rounded bg-blue-500/15 border border-blue-500/30 text-blue-300 text-[10px] font-mono font-bold">
                       {m.materialType || 'SS Flat'}
                     </span>
-                    <span className="px-2 py-0.5 rounded-md bg-purple-500/10 border border-purple-500/30 text-purple-300 text-[10px] font-mono">
+                    <span className="px-1.5 py-0.2 rounded bg-purple-500/15 border border-purple-500/30 text-purple-300 text-[10px] font-mono font-bold">
                       {m.machineName || m.machineType || activeProject?.machineType || '16 HD'}
                     </span>
-                    <span className="text-[10px] text-slate-400 font-mono">#{idx + 1}</span>
                   </div>
 
-                  <div className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono font-black text-xs">
-                    {m.quantity} {m.unit || 'Nos'}
-                  </div>
-                </div>
-
-                {/* Size Specification (Large & Bold) */}
-                <div>
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">Size Specification:</span>
-                  <div className="text-base font-black text-blue-400 font-mono tracking-wide">
+                  {/* Large Size Specification */}
+                  <div className="text-sm font-black text-white font-mono tracking-wide">
                     {m.sizeSpecs}
                   </div>
-                </div>
 
-                {/* Description & Vendor Info */}
-                <div className="space-y-1 text-xs">
-                  <p className="font-bold text-slate-200 leading-snug">
+                  {/* Description */}
+                  <p className="text-xs font-semibold text-slate-300 truncate">
                     {m.description}
                   </p>
-                  <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-700/50">
-                    <span>Vendor: <strong className="text-amber-300">{m.vendorName || m.vendor || activeProject?.vendor || 'Manav Metal'}</strong></span>
-                    <span>PO: <strong className="text-slate-300 font-mono">{m.poNo || m.poNumber || activeProject?.poNo || '36'}</strong></span>
+
+                  {/* Quantity & Vendor Strip */}
+                  <div className="flex items-center gap-2 text-[11px] text-slate-400 pt-0.5">
+                    <span className="px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700 font-mono font-black text-emerald-300 text-xs">
+                      {m.quantity} {m.unit || 'Nos'}
+                    </span>
+                    <span className="truncate">
+                      Vendor: <strong className="text-amber-300 font-medium">{m.vendorName || m.vendor || activeProject?.vendor || 'Manav Metal'}</strong>
+                    </span>
                   </div>
+
                 </div>
 
-                {/* BIG INTERACTIVE TOGGLE BUTTON */}
-                <button
-                  type="button"
-                  onClick={() => toggleMaterialReceived(m.id)}
-                  className={`w-full py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-98 shadow-md ${
-                    isArrived
-                      ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white border border-emerald-400/40 shadow-emerald-900/30'
-                      : 'bg-slate-700/80 hover:bg-slate-700 text-slate-200 border border-slate-600/80 hover:border-emerald-500'
-                  }`}
-                >
-                  {isArrived ? (
-                    <>
-                      <CheckCircle2 className="w-4 h-4 text-emerald-200" />
-                      <span>ARRIVED • Verified by [{m.receivedByInitials || 'RP'}]</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="w-3 h-3 rounded-full border-2 border-slate-400" />
-                      <span>TAP TO MARK ARRIVED (आवक)</span>
-                    </>
-                  )}
-                </button>
-
-                {/* Timestamp & Verifier Details */}
-                {isArrived && (
-                  <div className="text-[10px] text-emerald-400/90 font-mono text-center flex items-center justify-center gap-1.5 pt-0.5">
-                    <Clock className="w-3 h-3 text-emerald-400" />
-                    <span>Stamped: {m.receivedAt ? new Date(m.receivedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Today'}</span>
-                    <span>•</span>
-                    <span>{m.receivedBy || 'Ramesh Patel'}</span>
+                {/* Right Side: GREEN TICK BUTTON (DIRECT 1-TAP CHECKBOX) */}
+                <div className="shrink-0 flex flex-col items-center justify-center pl-1">
+                  <div
+                    className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-200 shadow-md ${
+                      isArrived
+                        ? 'bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 shadow-emerald-500/30 scale-105'
+                        : 'bg-slate-800 hover:bg-slate-750 border-2 border-slate-700 hover:border-emerald-500/60 text-slate-500'
+                    }`}
+                  >
+                    {isArrived ? (
+                      <Check className="w-7 h-7 stroke-[3.5] text-slate-950" />
+                    ) : (
+                      <div className="w-5 h-5 rounded-lg border-2 border-slate-600" />
+                    )}
                   </div>
-                )}
+
+                  {/* Verification Stamp info */}
+                  {isArrived && (
+                    <div className="text-[9px] text-emerald-400 font-mono font-bold text-center mt-1">
+                      [{m.receivedByInitials || 'RP'}]
+                    </div>
+                  )}
+                </div>
+
               </div>
             );
           })
@@ -427,10 +405,10 @@ export const MobileStoreInwardApp: React.FC = () => {
 
       {/* 5. FLOATING BOTTOM BAR: SAVE TO DB ACTION */}
       <footer className="fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800 p-3 shadow-2xl">
-        <div className="max-w-md mx-auto space-y-2">
+        <div className="max-w-md mx-auto space-y-1.5">
           
           {saveToast && (
-            <div className="p-2 rounded-xl bg-emerald-950/80 border border-emerald-500/50 text-emerald-200 text-xs font-mono font-bold text-center animate-fadeIn">
+            <div className="p-2 rounded-xl bg-emerald-950/90 border border-emerald-500/60 text-emerald-200 text-xs font-mono font-bold text-center animate-fadeIn shadow-lg">
               {saveToast}
             </div>
           )}
@@ -440,7 +418,7 @@ export const MobileStoreInwardApp: React.FC = () => {
               type="button"
               onClick={handleSaveToDb}
               disabled={isSaving}
-              className="flex-1 py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-lg shadow-emerald-900/40 flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer disabled:opacity-50"
+              className="flex-1 py-3 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-sm shadow-lg shadow-emerald-950 flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer disabled:opacity-50"
             >
               {isSaving ? (
                 <>
@@ -457,8 +435,9 @@ export const MobileStoreInwardApp: React.FC = () => {
           </div>
 
           <div className="text-center text-[10px] text-slate-400 font-mono">
-            <span>Inspector: {currentUser?.name || 'Ramesh Patel'} • RSB Machinery Inward</span>
+            <span>Inspector: {currentUser?.name || 'Ramesh Patel'} • RSB Material Inward</span>
           </div>
+
         </div>
       </footer>
 
