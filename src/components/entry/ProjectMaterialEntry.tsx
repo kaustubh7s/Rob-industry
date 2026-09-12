@@ -199,6 +199,7 @@ export const ProjectMaterialEntry: React.FC = () => {
   const {
     projects,
     addProject,
+    updateProject,
     projectRequirements,
     bulkImportProjectRequirements,
     replaceProjectRequirements,
@@ -322,6 +323,7 @@ export const ProjectMaterialEntry: React.FC = () => {
   const [saveToast, setSaveToast] = useState<string | null>(null);
   const [lastAutoSavedTime, setLastAutoSavedTime] = useState<string>('Just now');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isSavingOrder, setIsSavingOrder] = useState<boolean>(false);
 
   const quickDescInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -985,53 +987,85 @@ export const ProjectMaterialEntry: React.FC = () => {
     }
   };
 
-  // Save Project
-  const handleSaveProject = () => {
+  // Save Project (Synchronizes all materials and project headers directly to Database & Cloud)
+  const handleSaveProject = async () => {
     isUserManuallyEditingRef.current = false;
-    const targetProject = selectedProjectName || (projects.length > 0 ? projects[0].name : 'FOHA');
+    const targetProject = selectedProjectName || (projects.length > 0 ? projects[0].name : '16 HD');
+    setIsSavingOrder(true);
 
-    const itemsToSave: Partial<ProjectMaterialRequirementItem>[] = rows.map((r) => ({
-      id: r.id,
-      projectName: r.projectName || targetProject,
-      customerName: 'Cadila Healthcare Ltd (Zydus)',
-      poNumber: r.poNo || poNo,
-      poDate: r.date || entryDate,
-      date: r.date || entryDate,
-      machineType: (r.machineName || machineName) as any,
-      machineName: r.machineName || machineName,
-      poNo: r.poNo || poNo,
-      vendorName: r.vendorName || vendorName,
-      vendor: r.vendorName || vendorName,
-      description: r.description,
-      materialType: r.materialType,
-      materialGrade: 'SS 304',
-      sizeSpecs: r.sizeSpecs,
-      quantity: r.quantity,
-      unit: r.unit || 'Nos',
-      orderedBy: activeOrderedBy,
-      orderSource: 'Customer PO',
-      productionStatus: 'In Production',
-      stockStatus: 'Available',
-      qcStatus: 'Passed',
-      dispatchStatus: 'Ready',
-      materialCost: 500,
-      laborCost: 150,
-      machineCost: 100,
-      outsourcingCost: 0,
-      notes: `RSB Machine Workflow | Ordered by ${activeOrderedBy}`,
-    }));
+    try {
+      const itemsToSave: Partial<ProjectMaterialRequirementItem>[] = rows.map((r) => ({
+        id: r.id,
+        projectName: r.projectName || targetProject,
+        customerName: 'Cadila Healthcare Ltd (Zydus)',
+        poNumber: r.poNo || poNo,
+        poDate: r.date || entryDate,
+        date: r.date || entryDate,
+        machineType: (r.machineName || machineName) as any,
+        machineName: r.machineName || machineName,
+        poNo: r.poNo || poNo,
+        vendorName: r.vendorName || vendorName,
+        vendor: r.vendorName || vendorName,
+        description: r.description,
+        materialType: r.materialType,
+        materialGrade: 'SS 304',
+        sizeSpecs: r.sizeSpecs,
+        quantity: Number(r.quantity) || 1,
+        unit: r.unit || 'Nos',
+        orderedBy: activeOrderedBy,
+        orderSource: 'Customer PO',
+        productionStatus: 'In Production',
+        stockStatus: 'Available',
+        qcStatus: 'Passed',
+        dispatchStatus: 'Ready',
+        materialCost: 500,
+        laborCost: 150,
+        machineCost: 100,
+        outsourcingCost: 0,
+        notes: `RSB Machine Workflow | Ordered by ${activeOrderedBy}`,
+      }));
 
-    replaceProjectRequirements(targetProject, itemsToSave);
-    localStorage.removeItem(DRAFT_STORAGE_KEY);
+      // Replace and update requirements in state and database
+      replaceProjectRequirements(targetProject, itemsToSave);
 
-    confetti({
-      particleCount: 100,
-      spread: 70,
-      origin: { y: 0.6 },
-    });
+      // Update project header in state and database
+      const existingProject = projects.find(
+        (p) => p.name.trim().toLowerCase() === targetProject.trim().toLowerCase()
+      );
+      if (existingProject) {
+        updateProject(existingProject.id, {
+          machineName: machineName || existingProject.machineName,
+          vendorName: vendorName || existingProject.vendorName,
+          vendor: vendorName || existingProject.vendor,
+          poNo: poNo || existingProject.poNo,
+          poNumber: poNo || existingProject.poNumber,
+          date: entryDate || existingProject.date,
+          startDate: entryDate || existingProject.startDate,
+          materialsCount: rows.length,
+          totalQuantity: rows.reduce((s, r) => s + (Number(r.quantity) || 0), 0),
+        });
+      }
 
-    setSaveToast(`🎉 Saved Order for Project "${targetProject}" with ${rows.length} materials • ☁️ Auto-Synced to Cloud & Live across all devices!`);
-    setTimeout(() => setSaveToast(null), 4500);
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
+
+      confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 },
+      });
+
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      setLastAutoSavedTime(timeStr);
+      setSaveToast(`🎉 Successfully saved Order for "${targetProject}" (${rows.length} materials) • ☁️ Synced to DB & Cloud at ${timeStr}`);
+      setTimeout(() => setSaveToast(null), 4500);
+    } catch (err) {
+      console.error('Error saving project order:', err);
+    } finally {
+      setTimeout(() => {
+        setIsSavingOrder(false);
+      }, 300);
+    }
   };
 
   // Export to Excel (Exact 10 Columns)
@@ -1621,10 +1655,21 @@ export const ProjectMaterialEntry: React.FC = () => {
               <button
                 type="button"
                 onClick={handleSaveProject}
-                className="w-full py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
+                disabled={isSavingOrder}
+                className="w-full py-2 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white text-xs font-black transition-all shadow-md shadow-emerald-950/40 flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
+                title="Save order specifications directly to database"
               >
-                <Save className="w-3.5 h-3.5" />
-                <span>Save Order</span>
+                {isSavingOrder ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Saving to DB...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-3.5 h-3.5 text-emerald-200" />
+                    <span>Save Order</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -1984,10 +2029,21 @@ export const ProjectMaterialEntry: React.FC = () => {
           <button
             type="button"
             onClick={handleSaveProject}
-            className="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-black text-white text-xs font-black transition-all shadow-xs flex items-center gap-1.5 cursor-pointer active:scale-95"
+            disabled={isSavingOrder}
+            className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white text-xs font-black transition-all shadow-md shadow-emerald-950/40 flex items-center gap-1.5 cursor-pointer active:scale-95"
+            title="Save order specifications directly to database"
           >
-            <Save className="w-3.5 h-3.5 text-emerald-400" />
-            <span>SAVE ORDER</span>
+            {isSavingOrder ? (
+              <>
+                <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span>Saving to DB...</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-3.5 h-3.5 text-emerald-200" />
+                <span>SAVE ORDER</span>
+              </>
+            )}
           </button>
         </div>
       </div>
