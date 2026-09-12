@@ -129,16 +129,15 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
 
       // Aggregate all unique machine types from project and all its material requirements
       const machineSet = new Set<string>();
-      if (p.machineName) machineSet.add(p.machineName);
-      if (p.machineType) machineSet.add(p.machineType);
+      if (p.machineName && p.machineName !== '16 HD') machineSet.add(p.machineName);
+      if (p.machineType && p.machineType !== '16 HD') machineSet.add(p.machineType);
       mats.forEach((m) => {
         if (m.machineName) machineSet.add(m.machineName);
         if (m.machineType) machineSet.add(m.machineType);
       });
+      if (p.machineName) machineSet.add(p.machineName);
+      if (p.machineType) machineSet.add(p.machineType);
       const machineTypes = Array.from(machineSet).filter(Boolean);
-      if (machineTypes.length === 0) {
-        machineTypes.push('16 HD');
-      }
 
       const receivedMaterials = mats.filter((m) => m.isReceived).length;
       const arrivalPct = totalMaterials > 0 ? Math.round((receivedMaterials / totalMaterials) * 100) : 0;
@@ -167,7 +166,7 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
         p.customer.toLowerCase().includes(searchTerm.toLowerCase()) ||
         p.poNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (p.vendor && p.vendor.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        p.machineType.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (p.machineType && p.machineType.toLowerCase().includes(searchTerm.toLowerCase())) ||
         p.machineTypes.some((m) => m.toLowerCase().includes(searchTerm.toLowerCase()));
 
       const matchesMachine =
@@ -216,8 +215,8 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
       clientNumber: clientNumVal,
       projectNumber,
       orderSource: 'Customer PO',
-      machineType: '16 HD',
-      machineName: '16 HD',
+      machineType: '' as any,
+      machineName: '',
       vendor: 'Manav Metal',
       vendorName: 'Manav Metal',
       poNumber: `PO-2026-${projects.length + 1}`,
@@ -574,7 +573,7 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
             const ordBy = prj.orderedBy || 'Amit';
             const machineList = prj.machineTypes && prj.machineTypes.length > 0
               ? prj.machineTypes
-              : [prj.machineName || prj.machineType || '16 HD'];
+              : (prj.machineName || prj.machineType ? [prj.machineName || prj.machineType] : []);
 
             return (
               <div
@@ -733,7 +732,7 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
                   const deliveryDate = prj.targetCompletionDate || prj.targetDate || '30-10-2026';
                   const machineList = prj.machineTypes && prj.machineTypes.length > 0
                     ? prj.machineTypes
-                    : [prj.machineName || prj.machineType || '16 HD'];
+                    : (prj.machineName || prj.machineType ? [prj.machineName || prj.machineType] : []);
 
                   return (
                     <tr key={prj.id} className="hover:bg-blue-50/40 transition-colors">

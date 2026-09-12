@@ -26,6 +26,11 @@ import {
   Save,
   Check,
   Database,
+  Folder,
+  FolderOpen,
+  FolderTree,
+  ChevronRight,
+  Filter,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 import { ProjectItem, ProjectMaterialRequirementItem, MaterialType, MachineCategory } from '../../types/erp';
@@ -107,6 +112,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const [filterVendor, setFilterVendor] = useState('ALL');
   const [filterReceived, setFilterReceived] = useState<'ALL' | 'RECEIVED' | 'PENDING'>('ALL');
 
+  // Dedicated Machine Folder Navigation State: 'ALL' or specific machine type like '16 HD', '20 HD'
+  const [selectedMachineFolder, setSelectedMachineFolder] = useState<string>('ALL');
+
   // Modal State for Adding / Editing Material & Deleting Project
   const [isAddMaterialModalOpen, setIsAddMaterialModalOpen] = useState(false);
   const [isDeleteProjectModalOpen, setIsDeleteProjectModalOpen] = useState(false);
@@ -133,7 +141,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     return getMaterialsForProject(project, projectRequirements, orders);
   }, [project, projectRequirements, orders]);
 
-  // Arrival / Receiving Statistics
+  // Arrival / Receiving Statistics across entire project
   const receivedMaterialsCount = useMemo(() => {
     return displayMaterials.filter((m) => m.isReceived).length;
   }, [displayMaterials]);
@@ -143,7 +151,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     ? Math.round((receivedMaterialsCount / displayMaterials.length) * 100)
     : 0;
 
-  // Aggregate all unique machine types from project definition and all materials
+  // Aggregate all unique machine types from project definition and all materials (no forced '16 HD')
   const uniqueMachineTypes = useMemo(() => {
     const set = new Set<string>();
     if (project.machineName) set.add(project.machineName);
@@ -153,12 +161,61 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       if (m.machineType) set.add(m.machineType);
     });
     const res = Array.from(set).filter(Boolean);
-    return res.length > 0 ? res : ['16 HD'];
+    return res;
   }, [project, displayMaterials]);
 
-  // Filtered materials
-  const filteredMaterials = useMemo(() => {
+  // Machine Folder Statistics Map (for each machine category folder)
+  const machineFolderStats = useMemo(() => {
+    const map = new Map<
+      string,
+      { totalItems: number; totalQty: number; arrivedCount: number; pendingCount: number; progressPct: number }
+    >();
+
+    uniqueMachineTypes.forEach((mch) => {
+      const items = displayMaterials.filter((m) => {
+        const itemMch = m.machineName || m.machineType || project.machineName || project.machineType;
+        return itemMch === mch;
+      });
+      const totalItems = items.length;
+      const totalQty = items.reduce((acc, m) => acc + (Number(m.quantity) || 0), 0);
+      const arrivedCount = items.filter((m) => m.isReceived).length;
+      const pendingCount = totalItems - arrivedCount;
+      const progressPct = totalItems > 0 ? Math.round((arrivedCount / totalItems) * 100) : 0;
+
+      map.set(mch, {
+        totalItems,
+        totalQty,
+        arrivedCount,
+        pendingCount,
+        progressPct,
+      });
+    });
+
+    return map;
+  }, [uniqueMachineTypes, displayMaterials, project]);
+
+  // Materials strictly belonging to selected machine folder
+  const materialsInFolder = useMemo(() => {
+    if (selectedMachineFolder === 'ALL') return displayMaterials;
     return displayMaterials.filter((m) => {
+      const itemMch = m.machineName || m.machineType || project.machineName || project.machineType;
+      return itemMch === selectedMachineFolder;
+    });
+  }, [displayMaterials, selectedMachineFolder, project]);
+
+  // Machine Folder Active Metrics
+  const activeFolderMetrics = useMemo(() => {
+    const totalItems = materialsInFolder.length;
+    const totalQty = materialsInFolder.reduce((acc, m) => acc + (Number(m.quantity) || 0), 0);
+    const arrivedCount = materialsInFolder.filter((m) => m.isReceived).length;
+    const pendingCount = totalItems - arrivedCount;
+    const progressPct = totalItems > 0 ? Math.round((arrivedCount / totalItems) * 100) : 0;
+    return { totalItems, totalQty, arrivedCount, pendingCount, progressPct };
+  }, [materialsInFolder]);
+
+  // Filtered materials for table display
+  const filteredMaterials = useMemo(() => {
+    return materialsInFolder.filter((m) => {
       const matchSearch =
         searchTerm === '' ||
         m.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -181,14 +238,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
       return matchSearch && matchMat && matchMch && matchVnd && matchRecv;
     });
-  }, [displayMaterials, searchTerm, filterMaterialType, filterMachine, filterVendor, filterReceived]);
+  }, [materialsInFolder, searchTerm, filterMaterialType, filterMachine, filterVendor, filterReceived]);
 
   // Aggregated Summary Statistics for this project
   const projectSummary = useMemo(() => {
     const totalEntries = displayMaterials.length;
     const totalQty = displayMaterials.reduce((acc, m) => acc + (Number(m.quantity) || 0), 0);
     const vendorName = project.vendor || displayMaterials[0]?.vendor || 'Manav Metal';
-    const machineType = project.machineType || displayMaterials[0]?.machineType || '16 HD';
+    const machineType = project.machineType || displayMaterials[0]?.machineType || 'Machine';
     const createdDate = project.createdDate || project.startDate || new Date().toISOString().split('T')[0];
     const lastUpdated = project.lastUpdatedDate || 'Today';
     const totalCostSum = displayMaterials.reduce((acc, m) => acc + (Number(m.totalCost) || 0), 0);
@@ -363,7 +420,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   // Export Project Excel (Exact 10 Columns)
   const handleExportExcel = () => {
     const data = filteredMaterials.map((m, idx) => ({
-      'Machine Name': m.machineName || m.machineType || project.machineName || project.machineType || '16 HD',
+      'Machine Name': m.machineName || m.machineType || project.machineName || project.machineType || 'Machine',
       'Date': m.date || project.date || project.startDate || '01-09-2026',
       'PO No': m.poNo || m.poNumber || project.poNo || project.poNumber || '36',
       'Sr No': idx + 1,
@@ -374,7 +431,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       'Description': m.description,
       'Ordered By': m.orderedBy || project.orderedBy || currentUser.name || 'Amit',
     }));
-    exportToExcel(data, `RSB_Project_${(project.machineName || project.name).replace(/[^a-zA-Z0-9_-]/g, '_')}_10Col`);
+    const suffix = selectedMachineFolder !== 'ALL' ? `_${selectedMachineFolder.replace(/[^a-zA-Z0-9_-]/g, '_')}` : '';
+    exportToExcel(data, `RSB_Project_${(project.machineName || project.name).replace(/[^a-zA-Z0-9_-]/g, '_')}${suffix}_10Col`);
   };
 
   // Export PDF Report
@@ -392,7 +450,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       'Ordered By',
     ];
     const rows = filteredMaterials.map((m, idx) => [
-      m.machineName || m.machineType || project.machineName || project.machineType || '16 HD',
+      m.machineName || m.machineType || project.machineName || project.machineType || 'Machine',
       m.date || project.date || project.startDate || '01-09-2026',
       m.poNo || m.poNumber || project.poNo || project.poNumber || '36',
       String(idx + 1),
@@ -404,11 +462,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       m.orderedBy || project.orderedBy || currentUser.name || 'Amit',
     ]);
 
+    const titleSuffix = selectedMachineFolder !== 'ALL' ? ` [${selectedMachineFolder} Machine Folder]` : ' [All Machines]';
+    const fileSuffix = selectedMachineFolder !== 'ALL' ? `_${selectedMachineFolder.replace(/[^a-zA-Z0-9_-]/g, '_')}` : '';
+
     exportToPdfReport(
-      `RSB Equipment Material Requirement Specification: ${project.name}`,
+      `RSB Equipment Material Requirement Specification: ${project.name}${titleSuffix}`,
       headers,
       rows,
-      `Project_${project.name}_10Col_Spec`
+      `Project_${project.name}${fileSuffix}_10Col_Spec`
     );
   };
 
@@ -448,13 +509,34 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 {project.projectNumber || 'PRJ-2026-FOHA'}
               </span>
               <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setSelectedMachineFolder('ALL')}
+                  className={`px-2.5 py-0.5 rounded-md text-xs font-bold font-mono transition-all cursor-pointer flex items-center gap-1 ${
+                    selectedMachineFolder === 'ALL'
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
+                  }`}
+                  title="View all project machine materials"
+                >
+                  <FolderOpen className="w-3 h-3" />
+                  <span>All Machines</span>
+                </button>
                 {uniqueMachineTypes.map((mch) => (
-                  <span
+                  <button
                     key={mch}
-                    className="px-2.5 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200 text-xs font-bold font-mono"
+                    type="button"
+                    onClick={() => setSelectedMachineFolder(mch)}
+                    className={`px-2.5 py-0.5 rounded-md text-xs font-bold font-mono transition-all cursor-pointer flex items-center gap-1 ${
+                      selectedMachineFolder === mch
+                        ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-xs'
+                        : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200'
+                    }`}
+                    title={`Open dedicated ${mch} folder`}
                   >
-                    {mch}
-                  </span>
+                    <Folder className="w-3 h-3" />
+                    <span>{mch}</span>
+                  </button>
                 ))}
               </div>
               <StatusBadge status={project.status} size="sm" />
@@ -492,7 +574,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     quantity: 1,
                     unit: 'Nos',
                     vendor: project.vendor || 'Manav Metal',
-                    machineType: project.machineType || '16 HD',
+                    machineType: selectedMachineFolder !== 'ALL' ? (selectedMachineFolder as any) : (project.machineType || '16 HD'),
                     orderSource: project.orderSource || 'Customer PO',
                     poNumber: project.poNumber || '36',
                     notes: '',
@@ -502,7 +584,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Add Row</span>
+                <span>{selectedMachineFolder !== 'ALL' ? `Add ${selectedMachineFolder} Row` : 'Add Row'}</span>
               </button>
             )}
 
@@ -588,15 +670,30 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           {/* 1. Machine Categories */}
           <div className="p-3 rounded-xl bg-slate-800/80 border border-slate-700/60">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1 font-sans flex items-center gap-1">
-              <Cpu className="w-3 h-3 text-purple-400" />
-              Machine Categories
+              <Cpu className="w-3 h-3 text-slate-400" />
+              Machine Categories ({uniqueMachineTypes.length})
             </span>
             <div className="flex items-center gap-1 flex-wrap mt-0.5">
-              {uniqueMachineTypes.map((mch) => (
-                <span key={mch} className="text-xs font-bold text-purple-300 bg-purple-950/70 border border-purple-800 px-1.5 py-0.5 rounded">
-                  {mch}
-                </span>
-              ))}
+              {uniqueMachineTypes.length > 0 ? (
+                uniqueMachineTypes.map((mch) => (
+                  <button
+                    key={mch}
+                    type="button"
+                    onClick={() => setSelectedMachineFolder(mch)}
+                    className={`text-xs font-bold px-2 py-0.5 rounded transition-all cursor-pointer flex items-center gap-1 ${
+                      selectedMachineFolder === mch
+                        ? 'bg-purple-600 text-white border border-purple-400 shadow-sm'
+                        : 'text-purple-300 bg-purple-950/60 hover:bg-purple-900/80 border border-purple-800'
+                    }`}
+                    title={`Click to open ${mch} folder`}
+                  >
+                    <Folder className="w-3 h-3" />
+                    <span>{mch}</span>
+                  </button>
+                ))
+              ) : (
+                <span className="text-xs text-slate-400 font-sans italic">No machines assigned</span>
+              )}
             </div>
           </div>
 
@@ -732,9 +829,19 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             </div>
             <div className="flex items-center gap-1 flex-wrap mt-1">
               {uniqueMachineTypes.map((mch) => (
-                <span key={mch} className="px-1.5 py-0.5 rounded bg-purple-50 text-purple-800 border border-purple-200 text-[10px] font-bold">
+                <button
+                  key={mch}
+                  type="button"
+                  onClick={() => setSelectedMachineFolder(mch)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono transition-all cursor-pointer ${
+                    selectedMachineFolder === mch
+                      ? 'bg-purple-600 text-white shadow-2xs'
+                      : 'bg-purple-100 text-purple-800 hover:bg-purple-200 border border-purple-200'
+                  }`}
+                  title={`View ${mch} folder`}
+                >
                   {mch}
-                </span>
+                </button>
               ))}
             </div>
           </div>
@@ -756,6 +863,178 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       </div>
 
       {/* ========================================================================= */}
+      {/* 3.5 DEDICATED MACHINE CATEGORIES FOLDERS NAVIGATION */}
+      {/* ========================================================================= */}
+      {uniqueMachineTypes.length > 0 && (
+        <div className="bg-white border border-purple-200/70 rounded-2xl p-4 shadow-xs space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-purple-100 pb-2.5">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 border border-purple-200 flex items-center justify-center font-bold">
+                <FolderTree className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-900 tracking-tight flex items-center gap-1.5">
+                  <span>MACHINE FOLDERS & SUB-ASSEMBLIES</span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
+                    {uniqueMachineTypes.length} Machine Types
+                  </span>
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Click any machine folder to view its dedicated material requirements, arrival progress & specifications
+                </p>
+              </div>
+            </div>
+
+            {selectedMachineFolder !== 'ALL' && (
+              <button
+                type="button"
+                onClick={() => setSelectedMachineFolder('ALL')}
+                className="inline-flex items-center gap-1 text-xs font-bold text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-xl border border-purple-200 transition-all cursor-pointer active:scale-95"
+              >
+                <FolderOpen className="w-3.5 h-3.5 text-purple-600" />
+                <span>Show All Machines ({displayMaterials.length} Items)</span>
+              </button>
+            )}
+          </div>
+
+          {/* Folder Tabs Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* 1. All Machines Root Folder */}
+            <button
+              type="button"
+              onClick={() => setSelectedMachineFolder('ALL')}
+              className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2 relative overflow-hidden group ${
+                selectedMachineFolder === 'ALL'
+                  ? 'bg-gradient-to-br from-slate-900 via-indigo-950 to-purple-950 text-white border-purple-700 shadow-md shadow-purple-950/20'
+                  : 'bg-white hover:bg-slate-50 border-slate-200 hover:border-purple-200 text-slate-800'
+              }`}
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-2">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                    selectedMachineFolder === 'ALL' ? 'bg-purple-500/20 text-purple-300' : 'bg-purple-100 text-purple-700'
+                  }`}>
+                    <FolderOpen className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className={`text-xs font-black block tracking-tight ${
+                      selectedMachineFolder === 'ALL' ? 'text-white' : 'text-slate-900'
+                    }`}>
+                      All Machines
+                    </span>
+                    <span className={`text-[10px] font-mono ${
+                      selectedMachineFolder === 'ALL' ? 'text-purple-200' : 'text-slate-500'
+                    }`}>
+                      Project Master View
+                    </span>
+                  </div>
+                </div>
+                <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-md ${
+                  selectedMachineFolder === 'ALL' ? 'bg-purple-500/30 text-purple-200 border border-purple-400/40' : 'bg-purple-50 text-purple-700 border border-purple-200'
+                }`}>
+                  {displayMaterials.length} Specs
+                </span>
+              </div>
+
+              <div className="space-y-1 pt-1">
+                <div className="flex items-center justify-between text-[11px] font-bold">
+                  <span className={selectedMachineFolder === 'ALL' ? 'text-purple-200' : 'text-slate-500'}>
+                    Inward Arrivals
+                  </span>
+                  <span className={selectedMachineFolder === 'ALL' ? 'text-emerald-300 font-mono' : 'text-emerald-700 font-mono'}>
+                    {receivedMaterialsCount}/{displayMaterials.length} ({receivingProgressPct}%)
+                  </span>
+                </div>
+                <div className={`w-full h-1.5 rounded-full overflow-hidden ${
+                  selectedMachineFolder === 'ALL' ? 'bg-purple-900/60' : 'bg-slate-100'
+                }`}>
+                  <div
+                    className={`h-full rounded-full transition-all duration-300 ${
+                      selectedMachineFolder === 'ALL' ? 'bg-gradient-to-r from-emerald-400 to-teal-300' : 'bg-emerald-500'
+                    }`}
+                    style={{ width: `${receivingProgressPct}%` }}
+                  />
+                </div>
+              </div>
+            </button>
+
+            {/* 2. Machine Folders */}
+            {uniqueMachineTypes.map((mch) => {
+              const stats = machineFolderStats.get(mch) || {
+                totalItems: 0,
+                totalQty: 0,
+                arrivedCount: 0,
+                pendingCount: 0,
+                progressPct: 0,
+              };
+              const isActive = selectedMachineFolder === mch;
+
+              return (
+                <button
+                  key={mch}
+                  type="button"
+                  onClick={() => setSelectedMachineFolder(mch)}
+                  className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2 relative overflow-hidden group ${
+                    isActive
+                      ? 'bg-gradient-to-br from-purple-900 via-indigo-950 to-slate-900 text-white border-purple-500 shadow-md shadow-purple-900/30 ring-2 ring-purple-400/30'
+                      : 'bg-gradient-to-br from-purple-50/50 via-white to-indigo-50/30 hover:from-purple-50 hover:to-indigo-50 border-purple-200/80 hover:border-purple-300 text-slate-800 shadow-2xs'
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                        isActive ? 'bg-purple-500/30 text-purple-200 border border-purple-400/40' : 'bg-purple-100 text-purple-700 border border-purple-200'
+                      }`}>
+                        {isActive ? <FolderOpen className="w-4 h-4" /> : <Folder className="w-4 h-4" />}
+                      </div>
+                      <div>
+                        <span className={`text-xs font-black block tracking-tight ${
+                          isActive ? 'text-white' : 'text-slate-900'
+                        }`}>
+                          {mch} Folder
+                        </span>
+                        <span className={`text-[10px] font-mono ${
+                          isActive ? 'text-purple-200' : 'text-purple-600'
+                        }`}>
+                          {stats.totalQty} Units Fabrication
+                        </span>
+                      </div>
+                    </div>
+                    <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-md ${
+                      isActive ? 'bg-purple-500/30 text-purple-200 border border-purple-400/40' : 'bg-purple-100 text-purple-700 border border-purple-200'
+                    }`}>
+                      {stats.totalItems} Specs
+                    </span>
+                  </div>
+
+                  <div className="space-y-1 pt-1">
+                    <div className="flex items-center justify-between text-[11px] font-bold">
+                      <span className={isActive ? 'text-purple-200' : 'text-slate-500'}>
+                        Arrival Checkoffs
+                      </span>
+                      <span className={isActive ? 'text-emerald-300 font-mono' : 'text-emerald-700 font-mono'}>
+                        {stats.arrivedCount}/{stats.totalItems} ({stats.progressPct}%)
+                      </span>
+                    </div>
+                    <div className={`w-full h-1.5 rounded-full overflow-hidden ${
+                      isActive ? 'bg-purple-900/60' : 'bg-purple-100'
+                    }`}>
+                      <div
+                        className={`h-full rounded-full transition-all duration-300 ${
+                          isActive ? 'bg-gradient-to-r from-emerald-400 to-teal-300' : 'bg-emerald-500'
+                        }`}
+                        style={{ width: `${stats.progressPct}%` }}
+                      />
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
       {/* 4. SEARCH & FILTER TOOLBAR FOR THIS PROJECT'S MATERIALS */}
       {/* ========================================================================= */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col md:flex-row gap-3">
@@ -763,7 +1042,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search material type, size specs, description, vendor, verified initials in this project..."
+            placeholder={
+              selectedMachineFolder !== 'ALL'
+                ? `Search within ${selectedMachineFolder} materials (size, part, vendor)...`
+                : "Search material type, size specs, description, vendor, verified initials in this project..."
+            }
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-900 placeholder-slate-400 focus:outline-hidden focus:border-blue-500 focus:bg-white"
@@ -781,7 +1064,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 : 'text-slate-500 hover:text-slate-900'
             }`}
           >
-            All ({displayMaterials.length})
+            All ({materialsInFolder.length})
           </button>
           <button
             type="button"
@@ -793,7 +1076,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             }`}
           >
             <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>Arrived ({receivedMaterialsCount})</span>
+            <span>Arrived ({activeFolderMetrics.arrivedCount})</span>
           </button>
           <button
             type="button"
@@ -805,7 +1088,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             }`}
           >
             <Clock className="w-3.5 h-3.5" />
-            <span>Pending ({pendingMaterialsCount})</span>
+            <span>Pending ({activeFolderMetrics.pendingCount})</span>
           </button>
         </div>
 
@@ -855,11 +1138,75 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       {/* 5. COMPLETE MATERIAL LIST TABLE WITH VERIFIED ARRIVAL CHECKOFF */}
       {/* ========================================================================= */}
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
+        {/* Active Machine Folder Context Banner */}
+        {selectedMachineFolder !== 'ALL' && (
+          <div className="px-4 py-3 bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-purple-800">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-purple-500/30 border border-purple-400/40 flex items-center justify-center text-purple-200">
+                <FolderOpen className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-purple-300">
+                    MACHINE FOLDER VIEW:
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-purple-500/40 text-white text-xs font-black font-mono border border-purple-400/50">
+                    {selectedMachineFolder}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300">
+                  Showing material specifications allocated specifically to <strong>{selectedMachineFolder}</strong> ({filteredMaterials.length} items • {activeFolderMetrics.totalQty} Units)
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {!isStoreIncharge && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingItem(null);
+                    setMatForm({
+                      description: '',
+                      materialType: 'SS Flat',
+                      materialGrade: 'SS 304',
+                      sizeSpecs: '',
+                      quantity: 1,
+                      unit: 'Nos',
+                      vendor: project.vendor || 'Manav Metal',
+                      machineType: selectedMachineFolder as any,
+                      orderSource: project.orderSource || 'Customer PO',
+                      poNumber: project.poNumber || '36',
+                      notes: '',
+                    });
+                    setIsAddMaterialModalOpen(true);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-purple-500 hover:bg-purple-400 text-white text-xs font-bold transition-all flex items-center gap-1 cursor-pointer active:scale-95 shadow-sm"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add {selectedMachineFolder} Row</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setSelectedMachineFolder('ALL')}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border border-slate-700"
+              >
+                <span>Back to All Machines</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h3 className="text-sm font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
               <Boxes className="w-4 h-4 text-blue-600" />
-              Project Material Specification List ({filteredMaterials.length} Items)
+              {selectedMachineFolder !== 'ALL' ? (
+                <span>{selectedMachineFolder} Material Specification List ({filteredMaterials.length} Items)</span>
+              ) : (
+                <span>Project Material Specification List ({filteredMaterials.length} Items - All Machines)</span>
+              )}
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
               Tick to confirm material arrival from vendor • Logged with inspector initial & locked timestamp
@@ -899,7 +1246,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               Total Qty: <span className="text-emerald-600 font-black">{filteredMaterials.reduce((acc, m) => acc + Number(m.quantity || 0), 0)} Units</span>
             </div>
             <div className="text-xs font-mono font-bold text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
-              Inward: <span className="font-black">{receivedMaterialsCount}/{displayMaterials.length}</span>
+              Inward: <span className="font-black">
+                {selectedMachineFolder !== 'ALL'
+                  ? `${activeFolderMetrics.arrivedCount}/${activeFolderMetrics.totalItems}`
+                  : `${receivedMaterialsCount}/${displayMaterials.length}`
+                }
+              </span>
             </div>
           </div>
         </div>

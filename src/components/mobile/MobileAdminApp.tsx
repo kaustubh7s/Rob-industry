@@ -27,6 +27,7 @@ import {
   Activity,
   Users,
   Trash2,
+  LogOut,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 import { ProjectItem, ProjectMaterialRequirementItem, MaterialType, MachineCategory } from '../../types/erp';
@@ -53,6 +54,7 @@ export const MobileAdminApp: React.FC = () => {
     deleteProject,
     addProjectRequirement,
     deleteProjectRequirement,
+    logout,
   } = useERP();
 
   const [activeTab, setActiveTab] = useState<MobileTab>('overview');
@@ -207,6 +209,17 @@ export const MobileAdminApp: React.FC = () => {
             >
               <Globe className="w-3 h-3 text-amber-400 animate-pulse" />
               <span>₹312</span>
+            </button>
+
+            {/* Logout Button */}
+            <button
+              type="button"
+              onClick={() => logout()}
+              className="px-2 py-1 rounded-lg bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-800/60 text-[10px] font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-xs"
+              title="Log Out"
+            >
+              <LogOut className="w-3 h-3 text-rose-400" />
+              <span>Logout</span>
             </button>
           </div>
         </div>
