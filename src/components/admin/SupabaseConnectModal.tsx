@@ -313,66 +313,6 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
           </div>
         )}
 
-        {/* Collapsible Advanced Credentials Settings (Clean & Discrete) */}
-        <div className="pt-2 border-t border-slate-800">
-          <button
-            type="button"
-            onClick={() => setShowAdvanced(!showAdvanced)}
-            className="text-[11px] font-semibold text-slate-500 hover:text-slate-300 flex items-center gap-1 cursor-pointer transition-colors"
-          >
-            <span>Advanced Configuration</span>
-            {showAdvanced ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          </button>
-
-          {showAdvanced && (
-            <div className="mt-3 p-4 bg-slate-900/80 rounded-xl border border-slate-800 space-y-3 text-xs">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-400 mb-1">
-                  Cloud Server Endpoint:
-                </label>
-                <input
-                  type="text"
-                  value={config.url}
-                  onChange={(e) => setConfig({ ...config, url: e.target.value.trim() })}
-                  placeholder="https://your-cloud-endpoint.co"
-                  className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-xs focus:ring-1 focus:ring-emerald-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-400 mb-1">
-                  Cloud Access Key:
-                </label>
-                <input
-                  type="password"
-                  value={config.anonKey}
-                  onChange={(e) => setConfig({ ...config, anonKey: e.target.value.trim() })}
-                  placeholder="Access key token..."
-                  className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-xs focus:ring-1 focus:ring-emerald-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="flex items-center justify-between pt-2 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={handleDisconnect}
-                  disabled={!config.url && !config.anonKey}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/30 text-rose-300 text-xs rounded-lg transition disabled:opacity-40 cursor-pointer"
-                >
-                  <Trash2 className="w-3 h-3" /> Clear Config
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleSaveConfig}
-                  className="flex items-center gap-1.5 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg shadow-xs transition cursor-pointer"
-                >
-                  <Check className="w-3.5 h-3.5" /> Save Configuration
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
       </div>
     </Modal>
   );

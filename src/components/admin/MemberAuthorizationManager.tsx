@@ -67,11 +67,9 @@ export const MemberAuthorizationManager: React.FC = () => {
     deleteUser,
     alterUserAuthorization,
     currentUser,
-    auditLogs,
     exportDatabaseBackup,
   } = useERP();
 
-  const [activeTab, setActiveTab] = useState<'members' | 'matrix' | 'audit' | 'terminals'>('members');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTier, setFilterTier] = useState<string>('ALL');
   const [filterDepartment, setFilterDepartment] = useState<string>('ALL');
@@ -383,7 +381,7 @@ export const MemberAuthorizationManager: React.FC = () => {
         </div>
 
         {/* Security Matrix KPI Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 pt-4 border-t border-purple-500/20">
+        <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-purple-500/20 max-w-sm">
           <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between">
             <div>
               <div className="text-[10px] uppercase font-mono text-slate-400">Total Enrolled</div>
@@ -401,401 +399,219 @@ export const MemberAuthorizationManager: React.FC = () => {
             </div>
             <Activity className="w-5 h-5 text-emerald-400 opacity-60" />
           </div>
-
-          <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between">
-            <div>
-              <div className="text-[10px] uppercase font-mono text-slate-400">Password Architecture</div>
-              <div className="text-xs font-black text-cyan-300 font-mono mt-1">Zero-Knowledge Encrypted</div>
-            </div>
-            <Shield className="w-5 h-5 text-cyan-400 opacity-60" />
-          </div>
-
-          <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between">
-            <div>
-              <div className="text-[10px] uppercase font-mono text-slate-400">System Integrity</div>
-              <div className="text-xs font-black text-emerald-400 font-mono mt-1 flex items-center gap-1">
-                <CheckCircle2 className="w-3.5 h-3.5" /> 100% Operational
-              </div>
-            </div>
-            <Cpu className="w-5 h-5 text-indigo-400 opacity-60" />
-          </div>
         </div>
       </div>
 
-      {/* Navigation Sub-Tabs */}
-      <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-slate-900 border border-slate-800">
-        {[
-          { id: 'members', label: 'Member Roster & Authorization Tiers', icon: Users },
-          { id: 'matrix', label: 'Tier Permissions Grid', icon: Sliders },
-          { id: 'audit', label: 'Forensic System Audit Logs', icon: FileText },
-          { id: 'terminals', label: 'Shopfloor Terminals & Security', icon: Terminal },
-        ].map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                isActive
-                  ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* TAB 1: MEMBERS ROSTER */}
-      {activeTab === 'members' && (
-        <div className="space-y-4">
-          {/* Filter Bar */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 rounded-xl bg-slate-900 border border-slate-800">
-            <div className="relative w-full sm:w-80">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search member by name, role, email..."
-                className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-500 text-xs focus:border-purple-500 outline-none"
-              />
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-              <select
-                value={filterTier}
-                onChange={(e) => setFilterTier(e.target.value)}
-                className="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs font-medium focus:border-purple-500 outline-none"
-              >
-                <option value="ALL">All Authorization Tiers</option>
-                {ALL_AUTH_LEVELS.map((tier) => (
-                  <option key={tier} value={tier}>
-                    {tier}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                value={filterDepartment}
-                onChange={(e) => setFilterDepartment(e.target.value)}
-                className="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs font-medium focus:border-purple-500 outline-none"
-              >
-                <option value="ALL">All Departments</option>
-                {uniqueDepartments.map((dept) => (
-                  <option key={dept} value={dept}>
-                    {dept}
-                  </option>
-                ))}
-              </select>
-            </div>
+      {/* MEMBERS ROSTER TABLE */}
+      <div className="space-y-4">
+        {/* Filter Bar */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 rounded-xl bg-slate-900 border border-slate-800">
+          <div className="relative w-full sm:w-80">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search member by name, role, email..."
+              className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-500 text-xs focus:border-purple-500 outline-none"
+            />
           </div>
 
-          {/* Members Table */}
-          <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/90 shadow-xl">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-850 text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800">
-                  <tr>
-                    <th className="px-4 py-3">Member & Identity</th>
-                    <th className="px-4 py-3">Department</th>
-                    <th className="px-4 py-3">Authorization Tier</th>
-                    <th className="px-4 py-3">Access Gate Permissions</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3 text-right">Enterprise Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60 font-medium">
-                  {filteredUsers.map((user) => {
-                    const isRootAmit = user.name.toLowerCase().includes('amit') || user.email === 'amit@rsbequipments.com' || user.email === 'amit@rsb.com';
-                    const isSuperAdmin = user.authLevel?.startsWith('Tier 1') || user.role === 'super_admin';
-                    const isPlantHead = user.authLevel?.startsWith('Tier 2') || user.role === 'kaustubh' || user.role === 'admin';
-                    const isManager = user.authLevel?.startsWith('Tier 3');
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <select
+              value={filterTier}
+              onChange={(e) => setFilterTier(e.target.value)}
+              className="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs font-medium focus:border-purple-500 outline-none"
+            >
+              <option value="ALL">All Authorization Tiers</option>
+              {ALL_AUTH_LEVELS.map((tier) => (
+                <option key={tier} value={tier}>
+                  {tier}
+                </option>
+              ))}
+            </select>
 
-                    const roleBadgeLabel = isRootAmit
-                      ? 'ROOT ADMIN'
-                      : isSuperAdmin
-                      ? 'SUPER ADMIN'
-                      : isPlantHead
-                      ? 'PLANT HEAD'
-                      : isManager
-                      ? 'MANAGER'
-                      : 'OPERATOR';
+            <select
+              value={filterDepartment}
+              onChange={(e) => setFilterDepartment(e.target.value)}
+              className="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs font-medium focus:border-purple-500 outline-none"
+            >
+              <option value="ALL">All Departments</option>
+              {uniqueDepartments.map((dept) => (
+                <option key={dept} value={dept}>
+                  {dept}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
 
-                    const roleBadgeColor = isSuperAdmin
-                      ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
-                      : isPlantHead
-                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                      : isManager
-                      ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
-                      : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40';
+        {/* Members Table */}
+        <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/90 shadow-xl">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-slate-300">
+              <thead className="bg-slate-850 text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800">
+                <tr>
+                  <th className="px-4 py-3">Member & Identity</th>
+                  <th className="px-4 py-3">Department</th>
+                  <th className="px-4 py-3">Authorization Tier</th>
+                  <th className="px-4 py-3">Access Gate Permissions</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3 text-right">Enterprise Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 font-medium">
+                {filteredUsers.map((user) => {
+                  const isRootAmit = user.name.toLowerCase().includes('amit') || user.email === 'amit@rsbequipments.com' || user.email === 'amit@rsb.com';
+                  const isSuperAdmin = user.authLevel?.startsWith('Tier 1') || user.role === 'super_admin';
+                  const isPlantHead = user.authLevel?.startsWith('Tier 2') || user.role === 'kaustubh' || user.role === 'admin';
+                  const isManager = user.authLevel?.startsWith('Tier 3');
 
-                    return (
-                      <tr key={user.id} className="hover:bg-slate-800/50 transition-colors group">
-                        <td className="px-4 py-3.5">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center font-bold text-white shadow-md text-xs">
-                              {user.name.slice(0, 2).toUpperCase()}
+                  const roleBadgeLabel = isRootAmit
+                    ? 'ROOT ADMIN'
+                    : isSuperAdmin
+                    ? 'SUPER ADMIN'
+                    : isPlantHead
+                    ? 'PLANT HEAD'
+                    : isManager
+                    ? 'MANAGER'
+                    : 'OPERATOR';
+
+                  const roleBadgeColor = isSuperAdmin
+                    ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                    : isPlantHead
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                    : isManager
+                    ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                    : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40';
+
+                  return (
+                    <tr key={user.id} className="hover:bg-slate-800/50 transition-colors group">
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center font-bold text-white shadow-md text-xs">
+                            {user.name.slice(0, 2).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-extrabold text-white text-sm">{user.name}</span>
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-bold uppercase tracking-wider border ${roleBadgeColor}`}>
+                                {roleBadgeLabel}
+                              </span>
                             </div>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-extrabold text-white text-sm">{user.name}</span>
-                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-bold uppercase tracking-wider border ${roleBadgeColor}`}>
-                                  {roleBadgeLabel}
-                                </span>
-                              </div>
-                              <span className="text-[11px] text-slate-400 font-mono">{user.email}</span>
-                            </div>
+                            <span className="text-[11px] text-slate-400 font-mono">{user.email}</span>
                           </div>
-                        </td>
+                        </div>
+                      </td>
 
-                        <td className="px-4 py-3.5">
-                          <div className="flex items-center gap-1.5 text-slate-300">
-                            <Building2 className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                            <span>{user.department || 'Plant Operations'}</span>
-                          </div>
-                        </td>
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-1.5 text-slate-300">
+                          <Building2 className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                          <span>{user.department || 'Plant Operations'}</span>
+                        </div>
+                      </td>
 
-                        <td className="px-4 py-3.5">
-                          <span
-                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-extrabold border ${
-                              user.authLevel?.startsWith('Tier 1')
-                                ? 'bg-purple-950/60 text-purple-300 border-purple-600/50'
-                                : user.authLevel?.startsWith('Tier 2')
-                                ? 'bg-amber-950/60 text-amber-300 border-amber-600/50'
-                                : user.authLevel?.startsWith('Tier 3')
-                                ? 'bg-blue-950/60 text-blue-300 border-blue-600/50'
-                                : 'bg-slate-800 text-slate-300 border-slate-700'
-                            }`}
-                          >
-                            <ShieldCheck className="w-3.5 h-3.5" />
-                            {user.authLevel || 'Tier 4: Data Entry Operator'}
-                          </span>
-                        </td>
+                      <td className="px-4 py-3.5">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-extrabold border ${
+                            user.authLevel?.startsWith('Tier 1')
+                              ? 'bg-purple-950/60 text-purple-300 border-purple-600/50'
+                              : user.authLevel?.startsWith('Tier 2')
+                              ? 'bg-amber-950/60 text-amber-300 border-amber-600/50'
+                              : user.authLevel?.startsWith('Tier 3')
+                              ? 'bg-blue-950/60 text-blue-300 border-blue-600/50'
+                              : 'bg-slate-800 text-slate-300 border-slate-700'
+                          }`}
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                          {user.authLevel || 'Tier 4: Data Entry Operator'}
+                        </span>
+                      </td>
 
-                        <td className="px-4 py-3.5">
-                          <div className="flex flex-wrap gap-1 max-w-xs">
-                            {user.permissions?.canEditMaterials && (
-                              <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-emerald-400 border border-emerald-500/30">
-                                Edit Materials
-                              </span>
-                            )}
-                            {user.permissions?.canApproveOrders && (
-                              <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-purple-400 border border-purple-500/30">
-                                Approve Orders
-                              </span>
-                            )}
-                            {user.permissions?.canOverrideLock && (
-                              <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-amber-400 border border-amber-500/30">
-                                Override Lock
-                              </span>
-                            )}
-                            {user.permissions?.canManageUsers && (
-                              <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-cyan-400 border border-cyan-500/30">
-                                Admin Access
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-3.5">
-                          {user.id === currentUser.id || user.email === currentUser.email || user.role === currentUser.role ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-xs shadow-emerald-500/20">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                              Online (Logged In)
-                            </span>
-                          ) : user.status === 'Suspended' ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/40">
-                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                              Suspended
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700">
-                              <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
-                              Offline ({user.lastActive || 'Logged Out'})
+                      <td className="px-4 py-3.5">
+                        <div className="flex flex-wrap gap-1 max-w-xs">
+                          {user.permissions?.canEditMaterials && (
+                            <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-emerald-400 border border-emerald-500/30">
+                              Edit Materials
                             </span>
                           )}
-                        </td>
+                          {user.permissions?.canApproveOrders && (
+                            <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-purple-400 border border-purple-500/30">
+                              Approve Orders
+                            </span>
+                          )}
+                          {user.permissions?.canOverrideLock && (
+                            <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-amber-400 border border-amber-500/30">
+                              Override Lock
+                            </span>
+                          )}
+                          {user.permissions?.canManageUsers && (
+                            <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-cyan-400 border border-cyan-500/30">
+                              Admin Access
+                            </span>
+                          )}
+                        </div>
+                      </td>
 
-                        <td className="px-4 py-3.5 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            {/* Issue Emergency 1-Time Reset PIN */}
+                      <td className="px-4 py-3.5">
+                        {user.id === currentUser.id || user.email === currentUser.email ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-xs shadow-emerald-500/20">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            Online (Logged In)
+                          </span>
+                        ) : user.status === 'Suspended' ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/40">
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                            Suspended
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700">
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                            Offline ({user.lastActive || 'Logged Out'})
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="px-4 py-3.5 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {/* Issue Emergency 1-Time Reset PIN */}
+                          <button
+                            onClick={() => handleIssueResetPin(user)}
+                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 hover:border-amber-500/40 transition-colors"
+                            title="Issue 1-Time Emergency Reset PIN"
+                          >
+                            <Key className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Edit / Alter Authorizations */}
+                          <button
+                            onClick={() => handleOpenEdit(user)}
+                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-purple-900/50 text-purple-300 border border-slate-700 hover:border-purple-500/40 transition-colors"
+                            title="Alter Authorization Tier & Permissions"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Delete (disabled for Amit root) */}
+                          {!isRootAmit && (
                             <button
-                              onClick={() => handleIssueResetPin(user)}
-                              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 hover:border-amber-500/40 transition-colors"
-                              title="Issue 1-Time Emergency Reset PIN"
+                              onClick={() => handleDelete(user)}
+                              className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-950/60 text-rose-400 border border-slate-700 hover:border-rose-500/40 transition-colors"
+                              title="Revoke Account"
                             >
-                              <Key className="w-3.5 h-3.5" />
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
-
-                            {/* Edit / Alter Authorizations */}
-                            <button
-                              onClick={() => handleOpenEdit(user)}
-                              className="p-1.5 rounded-lg bg-slate-800 hover:bg-purple-900/50 text-purple-300 border border-slate-700 hover:border-purple-500/40 transition-colors"
-                              title="Alter Authorization Tier & Permissions"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-
-                            {/* Delete (disabled for Amit root) */}
-                            {!isRootAmit && (
-                              <button
-                                onClick={() => handleDelete(user)}
-                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-950/60 text-rose-400 border border-slate-700 hover:border-rose-500/40 transition-colors"
-                                title="Revoke Account"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
-      )}
-
-      {/* TAB 2: TIER PERMISSIONS MATRIX */}
-      {activeTab === 'matrix' && (
-        <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-            <div>
-              <h3 className="text-sm font-extrabold text-white">Factory RBAC Authorization Tier Standards</h3>
-              <p className="text-xs text-slate-400">Default capabilities assigned per tier level at RSB Equipments</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {ALL_AUTH_LEVELS.map((tier, idx) => (
-              <div key={tier} className="p-4 rounded-xl bg-slate-850 border border-slate-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-purple-300 font-mono">{tier}</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400">Level {idx + 1}</span>
-                </div>
-                <ul className="text-xs text-slate-300 space-y-1.5">
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Material Row Entry & Machine Grouping</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    {idx <= 2 ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                    ) : (
-                      <XCircle className="w-3.5 h-3.5 text-slate-600" />
-                    )}
-                    <span>PO Approval & Digital Sign-off</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    {idx <= 1 ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                    ) : (
-                      <XCircle className="w-3.5 h-3.5 text-slate-600" />
-                    )}
-                    <span>Override Locked Workstations</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    {idx === 0 ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" />
-                    ) : (
-                      <XCircle className="w-3.5 h-3.5 text-slate-600" />
-                    )}
-                    <span>Security & Member Alterations</span>
-                  </li>
-                </ul>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* TAB 3: SYSTEM AUDIT FORENSICS */}
-      {activeTab === 'audit' && (
-        <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-            <div>
-              <h3 className="text-sm font-extrabold text-white">Immutable Forensic System Audit Trail</h3>
-              <p className="text-xs text-slate-400">Chronological tamper-proof ledger of all factory actions</p>
-            </div>
-            <span className="text-xs font-mono text-purple-300 bg-purple-950/60 border border-purple-600/40 px-3 py-1 rounded-lg">
-              {auditLogs.length} Events Logged
-            </span>
-          </div>
-
-          <div className="divide-y divide-slate-800/80 max-h-96 overflow-y-auto font-mono text-xs">
-            {auditLogs.slice(0, 30).map((log) => (
-              <div key={log.id} className="py-2.5 flex items-center justify-between hover:bg-slate-850 px-2 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <span className="text-[10px] text-slate-500">{new Date(log.timestamp).toLocaleTimeString()}</span>
-                  <span className="px-2 py-0.5 rounded bg-slate-800 text-purple-300 text-[10px] font-bold">
-                    {log.action}
-                  </span>
-                  <span className="text-slate-300">{log.details}</span>
-                </div>
-                <span className="text-slate-400 text-[11px] font-sans">by {log.userName}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* TAB 4: SHOPFLOOR TERMINALS */}
-      {activeTab === 'terminals' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
-            <h3 className="text-sm font-extrabold text-white flex items-center gap-2">
-              <Terminal className="w-4 h-4 text-purple-400" />
-              Shop Floor Machine Terminals
-            </h3>
-            <p className="text-xs text-slate-400">
-              Active workstation clients connected to the RSB local factory network.
-            </p>
-            <div className="space-y-2 mt-3">
-              {[
-                { name: 'Terminal 01 - Material Inward Bay', ip: '192.168.1.101', user: 'Rahul (Operator)', status: currentUser.role === 'operator' ? 'Connected' : 'Idle' },
-                { name: 'Terminal 02 - Assembly Bay 16 HD', ip: '192.168.1.104', user: 'Kaustubh (Plant Admin)', status: currentUser.role === 'kaustubh' || currentUser.role === 'admin' ? 'Connected' : 'Idle' },
-                { name: 'Terminal 03 - Super Admin Workstation', ip: '192.168.1.109', user: 'Amit (Super Admin)', status: currentUser.role === 'super_admin' ? 'Connected' : 'Idle' },
-              ].map((term) => (
-                <div key={term.name} className="p-3 rounded-xl bg-slate-850 border border-slate-800 flex items-center justify-between">
-                  <div>
-                    <div className="text-xs font-bold text-white">{term.name}</div>
-                    <div className="text-[10px] font-mono text-slate-400">{term.ip} • {term.user}</div>
-                  </div>
-                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                    term.status === 'Connected'
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                      : 'bg-slate-800 text-slate-400 border border-slate-700'
-                  }`}>
-                    {term.status}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
-            <h3 className="text-sm font-extrabold text-white flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-cyan-400" />
-              Security Architecture Compliance
-            </h3>
-            <div className="p-3.5 rounded-xl bg-cyan-950/30 border border-cyan-500/30 text-xs text-cyan-200 space-y-2">
-              <div className="font-bold flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-cyan-400" />
-                Zero-Knowledge Password Guarantee
-              </div>
-              <p className="text-slate-300 text-[11px] leading-relaxed">
-                As Super Admin, you can authorize tiers, grant access gates, and generate 1-time emergency reset PINs, but employee passwords remain cryptographically sealed and strictly non-viewable.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+      </div>
 
       {/* MODAL 1: REGISTER NEW MEMBER */}
       {isAddModalOpen && (
