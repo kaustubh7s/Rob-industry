@@ -22,6 +22,7 @@ import {
   Lock,
   Tag,
   Hash,
+  AlertTriangle,
   ListFilter,
   FileCheck,
   ChevronDown,
@@ -340,14 +341,131 @@ export const ProjectMaterialEntry: React.FC = () => {
     });
   }, [machineName, projects]);
 
-  // Smart suggestions for the selected machine
+  // Dynamic Historical Learning across all projects
+  const dynamicHistoricalDescriptions = useMemo(() => {
+    const list = new Set<string>(COMMON_DESCRIPTIONS);
+    projectRequirements.forEach((r) => {
+      if (r.description && r.description.trim()) {
+        list.add(r.description.trim());
+      }
+    });
+    rows.forEach((r) => {
+      if (r.description && r.description.trim()) {
+        list.add(r.description.trim());
+      }
+    });
+    return Array.from(list);
+  }, [projectRequirements, rows]);
+
+  const dynamicHistoricalSizes = useMemo(() => {
+    const list = new Set<string>(COMMON_SIZES);
+    projectRequirements.forEach((r) => {
+      if (r.sizeSpecs && r.sizeSpecs.trim()) {
+        list.add(r.sizeSpecs.trim());
+      }
+    });
+    rows.forEach((r) => {
+      if (r.sizeSpecs && r.sizeSpecs.trim()) {
+        list.add(r.sizeSpecs.trim());
+      }
+    });
+    return Array.from(list);
+  }, [projectRequirements, rows]);
+
+  const dynamicHistoricalVendors = useMemo(() => {
+    const list = new Set<string>(COMMON_VENDORS);
+    projectRequirements.forEach((r) => {
+      const v = r.vendorName || r.vendor;
+      if (v && v.trim()) list.add(v.trim());
+    });
+    vendors.forEach((v) => {
+      if (v.name && v.name.trim()) list.add(v.name.trim());
+    });
+    return Array.from(list);
+  }, [projectRequirements, vendors]);
+
+  // Smart suggestions for the selected machine (Combines templates + real past project history)
   const suggestedFrequentParts = useMemo(() => {
-    const found = Object.keys(MACHINE_FREQUENT_COMPONENTS).find(
-      (k) => k.toLowerCase() === machineName.trim().toLowerCase()
+    const cleanMachine = machineName.trim().toLowerCase();
+    const staticList =
+      MACHINE_FREQUENT_COMPONENTS[
+        Object.keys(MACHINE_FREQUENT_COMPONENTS).find((k) => k.toLowerCase() === cleanMachine) || '16 HD'
+      ] || [];
+
+    // Extract dynamic history from saved requirements for this machine or across projects
+    const dynamicHistoryMap = new Map<string, { description: string; materialType: MaterialType; sizeSpecs: string; qty: number; unit: string; count: number }>();
+
+    projectRequirements.forEach((r) => {
+      const rMch = (r.machineName || r.machineType || '').trim().toLowerCase();
+      const isRelevant = rMch.includes(cleanMachine) || cleanMachine.includes(rMch) || !cleanMachine;
+      if (isRelevant && r.description && r.sizeSpecs) {
+        const key = `${r.description.trim()}_${r.sizeSpecs.trim()}`.toLowerCase();
+        if (dynamicHistoryMap.has(key)) {
+          dynamicHistoryMap.get(key)!.count += 1;
+        } else {
+          dynamicHistoryMap.set(key, {
+            description: r.description.trim(),
+            materialType: (r.materialType || 'SS Flat') as MaterialType,
+            sizeSpecs: r.sizeSpecs.trim(),
+            qty: r.quantity || 2,
+            unit: r.unit || 'Nos',
+            count: 1,
+          });
+        }
+      }
+    });
+
+    const mergedList = [...staticList];
+    dynamicHistoryMap.forEach((item) => {
+      const exists = mergedList.some(
+        (m) =>
+          m.description.toLowerCase() === item.description.toLowerCase() &&
+          m.sizeSpecs.toLowerCase().replace(/\s+/g, '') === item.sizeSpecs.toLowerCase().replace(/\s+/g, '')
+      );
+      if (!exists) {
+        mergedList.push(item);
+      }
+    });
+
+    return mergedList;
+  }, [machineName, projectRequirements]);
+
+  // Live Check: Is current typed item already in this project or used in previous projects?
+  const currentItemDuplicateStatus = useMemo(() => {
+    const cleanDesc = quickDesc.trim().toLowerCase();
+    const cleanSize = quickSize.trim().toLowerCase().replace(/\s+/g, '');
+    if (!cleanDesc && !cleanSize) return null;
+
+    // Check current active table rows
+    const inCurrentRow = rows.find(
+      (r) =>
+        cleanDesc &&
+        r.description?.trim().toLowerCase() === cleanDesc &&
+        (!cleanSize || r.sizeSpecs?.trim().toLowerCase().replace(/\s+/g, '') === cleanSize)
     );
-    if (found) return MACHINE_FREQUENT_COMPONENTS[found];
-    return MACHINE_FREQUENT_COMPONENTS['16 HD'] || [];
-  }, [machineName]);
+
+    // Check past projects history
+    const pastMatches = projectRequirements.filter(
+      (pr) =>
+        cleanDesc &&
+        pr.description?.trim().toLowerCase() === cleanDesc
+    );
+
+    const pastMatchExact = pastMatches.find(
+      (pr) => !cleanSize || pr.sizeSpecs?.trim().toLowerCase().replace(/\s+/g, '') === cleanSize
+    );
+
+    const pastProjectNames = Array.from(
+      new Set(pastMatches.map((p) => p.machineName || p.projectName || 'Previous Project'))
+    ).filter(Boolean);
+
+    return {
+      inCurrentRow,
+      pastMatchesCount: pastMatches.length,
+      pastMatchExact,
+      pastProjectNames,
+    };
+  }, [quickDesc, quickSize, rows, projectRequirements]);
 
   // Handle Smart Duplicate / Use Previous Order
   const handleUsePreviousOrder = (prevProject: ProjectItem) => {
@@ -1079,19 +1197,19 @@ export const ProjectMaterialEntry: React.FC = () => {
       </datalist>
 
       <datalist id="vendor-suggestions">
-        {COMMON_VENDORS.map((v) => (
+        {dynamicHistoricalVendors.map((v) => (
           <option key={v} value={v} />
         ))}
       </datalist>
 
       <datalist id="description-suggestions">
-        {COMMON_DESCRIPTIONS.map((d) => (
+        {dynamicHistoricalDescriptions.map((d) => (
           <option key={d} value={d} />
         ))}
       </datalist>
 
       <datalist id="size-suggestions">
-        {COMMON_SIZES.map((s) => (
+        {dynamicHistoricalSizes.map((s) => (
           <option key={s} value={s} />
         ))}
       </datalist>
@@ -1346,6 +1464,47 @@ export const ProjectMaterialEntry: React.FC = () => {
               Select project, type description or size, then click Add
             </span>
           </div>
+
+          {/* Real-Time Historical Intelligence & Duplicate Indicator */}
+          {currentItemDuplicateStatus && (currentItemDuplicateStatus.inCurrentRow || currentItemDuplicateStatus.pastMatchesCount > 0) && (
+            <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-700/80 text-xs flex flex-wrap items-center justify-between gap-2 animate-fadeIn">
+              <div className="flex items-center gap-2">
+                {currentItemDuplicateStatus.inCurrentRow ? (
+                  <div className="flex items-center gap-1.5 text-amber-300 font-bold">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span>⚠️ Already added in this project: Row #{currentItemDuplicateStatus.inCurrentRow.srNo} ({currentItemDuplicateStatus.inCurrentRow.quantity} {currentItemDuplicateStatus.inCurrentRow.unit})</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-blue-300 font-bold">
+                    <Sparkles className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                    <span>
+                      ✨ Previously made in {currentItemDuplicateStatus.pastProjectNames.slice(0, 3).join(', ')} ({currentItemDuplicateStatus.pastMatchesCount}x)
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {currentItemDuplicateStatus.pastMatchExact && !currentItemDuplicateStatus.inCurrentRow && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (currentItemDuplicateStatus.pastMatchExact) {
+                      setQuickMatType(currentItemDuplicateStatus.pastMatchExact.materialType as MaterialType);
+                      setQuickSize(currentItemDuplicateStatus.pastMatchExact.sizeSpecs);
+                      setQuickUnit(currentItemDuplicateStatus.pastMatchExact.unit || 'Nos');
+                      const v = currentItemDuplicateStatus.pastMatchExact.vendorName || currentItemDuplicateStatus.pastMatchExact.vendor;
+                      if (v) setVendorName(v);
+                      setSaveToast(`✨ Auto-filled specs from previous project: ${currentItemDuplicateStatus.pastMatchExact.sizeSpecs}`);
+                      setTimeout(() => setSaveToast(null), 2500);
+                    }
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-blue-600/30 hover:bg-blue-600/50 text-blue-200 border border-blue-400/30 text-[11px] font-bold cursor-pointer transition-colors flex items-center gap-1"
+                >
+                  <span>Auto-fill past specs ({currentItemDuplicateStatus.pastMatchExact.materialType} • {currentItemDuplicateStatus.pastMatchExact.sizeSpecs})</span>
+                </button>
+              )}
+            </div>
+          )}
 
           <form onSubmit={handleAddMaterialRow} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 items-end">
             {/* 1. Project Selector */}
