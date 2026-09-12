@@ -1603,7 +1603,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                     </p>
                   </div>
                   <span className="px-2 py-1 rounded-lg bg-blue-50 text-blue-800 border border-blue-200 text-[11px] font-bold shrink-0">
-                    {prev.materialsCount || 51} Items
+                    {getMaterialsForProject(prev, projectRequirements).length} Items
                   </span>
                 </div>
 

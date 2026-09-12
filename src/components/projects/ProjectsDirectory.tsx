@@ -489,7 +489,7 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
             const vName = prj.vendorName || prj.vendor || 'Manav Metal';
             const poNum = prj.poNo || prj.poNumber || '36';
             const prjDate = prj.date || prj.createdDate || '01-09-2026';
-            const matCount = prj.totalMaterials || prj.materialsCount || 51;
+            const matCount = prj.totalMaterials ?? prj.materialsCount ?? 0;
             const ordBy = prj.orderedBy || 'Amit';
 
             return (
