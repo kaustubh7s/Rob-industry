@@ -934,7 +934,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           <span>Arrived</span>
                           <span className="font-mono text-[10px] font-black bg-emerald-800/80 text-emerald-100 px-1.5 py-0.5 rounded border border-emerald-500/40 flex items-center gap-0.5">
                             <Lock className="w-2.5 h-2.5 text-emerald-300" />
-                            {m.receivedByInitials || (m.receivedBy ? m.receivedBy.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase() : 'AM')}
+                            {m.receivedByInitials || (m.receivedBy?.toLowerCase().includes('amit') ? 'AM' : m.receivedBy?.toLowerCase().includes('kaustubh') ? 'KA' : 'CP')}
                           </span>
                         </button>
                       ) : (

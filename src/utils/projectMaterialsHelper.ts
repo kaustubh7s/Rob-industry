@@ -127,49 +127,54 @@ export function getMaterialsForProject(
   projectRequirements: ProjectMaterialRequirementItem[],
   orders: ManufacturingOrderItem[] = []
 ): ProjectMaterialRequirementItem[] {
-  // 1. Check projectRequirements first
-  const matched = projectRequirements.filter((r) => isRequirementMatchedToProject(r.projectName, project));
-  if (matched.length > 0) {
-    return matched;
-  }
+  // 1. Check projectRequirements
+  const matchedReqs = projectRequirements.filter((r) => isRequirementMatchedToProject(r.projectName, project));
 
   // 2. Check manufacturing orders
   const matchedOrders = orders.filter((o) => isRequirementMatchedToProject(o.project, project));
-  if (matchedOrders.length > 0) {
-    return matchedOrders.map((o, idx) => ({
-      id: `ord-mat-${o.id}`,
-      srNo: idx + 1,
-      description: o.drawingRef ? `${o.materialType} Part (${o.drawingRef})` : `${o.materialType} Component`,
-      materialType: o.materialType,
-      materialGrade: 'SS 304',
-      sizeSpecs: o.sizeSpecs,
-      quantity: o.quantity,
-      unit: o.unit || 'Nos',
-      weightKg: 2.5,
-      projectName: project.name,
-      customerName: o.customer || project.customer,
-      poNumber: o.poNumber || project.poNumber,
-      poDate: o.date || project.startDate,
-      machineType: (o.machineType || project.machineType) as MachineCategory,
-      orderSource: o.orderSource || project.orderSource,
-      deliveryDate: o.deliveryDate || project.targetCompletionDate,
-      vendor: o.vendor || project.vendor || 'Manav Metal',
-      bomRef: `BOM-${o.orderNumber}`,
-      stockStatus: o.status === 'Completed' ? 'Available' : 'Partial Available',
-      availableStock: o.currentStock || 15,
-      shortageQty: 0,
-      productionStatus: o.status,
-      qcStatus: 'Passed',
-      dispatchStatus: 'Not Ready',
-      materialCost: 450 * o.quantity,
-      laborCost: 180 * o.quantity,
-      machineCost: 120 * o.quantity,
-      outsourcingCost: 0,
-      totalCost: o.totalAmount || 750 * o.quantity,
-    } as ProjectMaterialRequirementItem));
+  const orderReqs = matchedOrders.map((o, idx) => ({
+    id: `ord-mat-${o.id}`,
+    srNo: idx + 1,
+    description: o.drawingRef ? `${o.materialType} Part (${o.drawingRef})` : `${o.materialType} Component`,
+    materialType: o.materialType,
+    materialGrade: 'SS 304',
+    sizeSpecs: o.sizeSpecs,
+    quantity: o.quantity,
+    unit: o.unit || 'Nos',
+    weightKg: 2.5,
+    projectName: project.name,
+    customerName: o.customer || project.customer,
+    poNumber: o.poNumber || project.poNumber,
+    poDate: o.date || project.startDate,
+    machineType: (o.machineType || project.machineType) as MachineCategory,
+    orderSource: o.orderSource || project.orderSource,
+    deliveryDate: o.deliveryDate || project.targetCompletionDate,
+    vendor: o.vendor || project.vendor || 'Manav Metal',
+    bomRef: `BOM-${o.orderNumber}`,
+    stockStatus: o.status === 'Completed' ? 'Available' : 'Partial Available',
+    availableStock: o.currentStock || 15,
+    shortageQty: 0,
+    productionStatus: o.status,
+    qcStatus: 'Passed',
+    dispatchStatus: 'Not Ready',
+    materialCost: 450 * o.quantity,
+    laborCost: 180 * o.quantity,
+    machineCost: 120 * o.quantity,
+    outsourcingCost: 0,
+    totalCost: o.totalAmount || 750 * o.quantity,
+  } as ProjectMaterialRequirementItem));
+
+  if (matchedReqs.length > 0) {
+    // If order items have unique specs not in matchedReqs, merge them
+    const reqSignatures = new Set(matchedReqs.map((r) => (r.description + '::' + r.sizeSpecs).toLowerCase()));
+    const extraOrders = orderReqs.filter((o) => !reqSignatures.has((o.description + '::' + o.sizeSpecs).toLowerCase()));
+    return [...matchedReqs, ...extraOrders];
   }
 
-  // 3. For real empty projects, return empty array (0 materials)
+  if (orderReqs.length > 0) {
+    return orderReqs;
+  }
+
   return [];
 }
 

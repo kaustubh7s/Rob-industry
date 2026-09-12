@@ -14,6 +14,7 @@ import {
   Square,
   Sparkles,
   Layers,
+  Lock,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 import { ProjectItem, ProjectMaterialRequirementItem } from '../../types/erp';
@@ -389,10 +390,11 @@ export const MobileStoreInwardApp: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Verification Stamp info */}
+                  {/* Verification Stamp info: Locked Initial */}
                   {isArrived && (
-                    <div className="text-[9px] text-emerald-400 font-mono font-bold text-center mt-1">
-                      [{m.receivedByInitials || 'RP'}]
+                    <div className="text-[10px] text-emerald-300 font-mono font-black text-center mt-1 flex items-center justify-center gap-0.5 bg-emerald-950/80 px-1.5 py-0.5 rounded border border-emerald-500/40">
+                      <Lock className="w-2.5 h-2.5 text-emerald-400 shrink-0" />
+                      <span>{m.receivedByInitials || (m.receivedBy?.toLowerCase().includes('amit') ? 'AM' : m.receivedBy?.toLowerCase().includes('kaustubh') ? 'KA' : 'CP')}</span>
                     </div>
                   )}
                 </div>
