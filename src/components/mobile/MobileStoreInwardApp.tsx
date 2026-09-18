@@ -722,7 +722,7 @@ export const MobileStoreInwardApp: React.FC = () => {
                           {/* Machine & Material Tag */}
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-mono font-bold">
-                              {m.machineName || m.machineType || activeProject?.machineType || '16 HD'}
+                              {m.machineName || m.machineType || activeProject?.machineType || activeProject?.name || 'General'}
                             </span>
                             <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-600 text-[11px] font-mono">
                               {m.materialType || 'SS Flat'}

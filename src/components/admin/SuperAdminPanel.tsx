@@ -141,7 +141,7 @@ export const SuperAdminPanel: React.FC = () => {
 
             <div className="sm:col-span-2">
               <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">Plant 1 Address</label>
-              <input type="text" disabled value="Plot 18/B, Phase 1, GIDC Industrial Estate, Vatva, Ahmedabad - 382445, Gujarat, India" className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-300" />
+              <input type="text" disabled value="F, 16/4, Naregaon Main Rd, Naregaon, Chilkalthana, Chhatrapati Sambhajinagar, Maharashtra 431007" className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-300" />
             </div>
 
             <div>

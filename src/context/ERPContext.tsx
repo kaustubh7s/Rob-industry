@@ -182,11 +182,17 @@ interface ERPContextType {
   addCustomer: (customer: Omit<CustomerItem, 'id'>) => void;
   updateCustomer: (id: string, updates: Partial<CustomerItem>) => void;
   deleteCustomer: (id: string) => void;
+  learnCustomer: (name: string, mobile?: string, email?: string, address?: string) => CustomerItem;
+  learnMachine: (name: string) => void;
+  learnVendor: (name: string, contactPerson?: string, mobile?: string, category?: string) => VendorItem;
 
   // Handlers for Machines
   addMachine: (machine: Omit<MachineItem, 'id'>) => void;
   updateMachine: (id: string, updates: Partial<MachineItem>) => void;
   deleteMachine: (id: string) => void;
+
+  // BOM Operations & Live Sync
+  syncProjectToBOM: (projectNameOrId: string) => void;
 
   // Commercials: Purchase & Sales
   addPurchaseOrder: (po: Omit<PurchaseOrder, 'id'>) => void;
@@ -221,6 +227,41 @@ interface ERPContextType {
   bulkImportInward: (items: any[]) => void;
   bulkImportVendors: (items: any[]) => void;
   bulkImportCustomers: (items: any[]) => void;
+
+  // Procurement Basket Operations
+  bulkAssignMaterialVendor: (reqIds: string[], vendorName: string) => void;
+  generateProcurementPO: (
+    vendor: string,
+    items: {
+      material: string;
+      sizeSpecs: string;
+      qty: number;
+      unit: string;
+      rate?: number;
+      amount?: number;
+      requirementId?: string;
+      projectName?: string;
+      machineName?: string;
+    }[],
+    expectedDate?: string,
+    notes?: string,
+    customPoNumber?: string
+  ) => PurchaseOrder;
+  sendProcurementRFQ: (
+    vendors: string[],
+    items: {
+      requirementId?: string;
+      description: string;
+      materialType: string;
+      sizeSpecs: string;
+      quantity: number;
+      unit: string;
+      projectName: string;
+      machineName: string;
+      targetRate?: number;
+    }[],
+    notes?: string
+  ) => RFQRecord;
 
   // Super Admin Member Authorization & Access Matrix
   addUser: (user: Omit<User, 'id'>) => void;
@@ -1085,7 +1126,8 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           (trimmedId === 'store_incharge' && (u.role === 'store_incharge' || u.role === 'store_manager')) ||
           (trimmedId === 'chandramani' && (u.id === 'usr-chandramani' || u.role === 'store_incharge' || u.name.toLowerCase().includes('chandramani'))) ||
           (trimmedId === 'ramesh' && (u.id === 'usr-chandramani' || u.id === 'usr-ramesh' || u.role === 'store_incharge')) ||
-          (trimmedId === 'admin' && (u.role === 'kaustubh' || u.role === 'admin' || u.role === 'super_admin'));
+          (trimmedId === 'rahul' && (u.id === 'usr-rahul' || u.name.toLowerCase() === 'rahul')) ||
+          (trimmedId === 'admin' && (u.role === 'kaustubh' || u.role === 'admin' || u.role === 'super_admin' || u.name.toLowerCase() === 'rahul'));
         return idMatch || nameMatch || emailMatch || roleMatch;
       });
 
@@ -1095,6 +1137,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return (
             u.id.toLowerCase().includes(trimmedId) ||
             u.name.toLowerCase().includes(trimmedId) ||
+            (trimmedId === 'rahul' && (u.id === 'usr-rahul' || u.name.toLowerCase() === 'rahul')) ||
             (trimmedId === 'chandramani' && (u.id === 'usr-chandramani' || u.role === 'store_incharge')) ||
             (trimmedId === 'ramesh' && (u.id === 'usr-chandramani' || u.id === 'usr-ramesh')) ||
             (trimmedId === 'store' && u.role === 'store_incharge')
@@ -1103,7 +1146,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    // Direct password match across users (e.g. typing chandramani@123 directly logs in as Chandramani)
+    // Direct password match across users (e.g. typing Rahul@123 directly logs in as Rahul)
     if (!targetUser) {
       targetUser = searchPool.find((u) => {
         const exp =
@@ -1112,11 +1155,13 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ? 'Admin@amit'
             : u.role === 'kaustubh'
             ? 'admin@123'
+            : u.id === 'usr-rahul' || u.name === 'Rahul'
+            ? 'Rahul@123'
             : u.role === 'store_incharge' || u.role === 'store_manager'
             ? 'chandramani@123'
-            : 'rahul@123');
-        return trimmedPass === exp;
-      }) || INITIAL_USERS.find((u) => trimmedPass === u.password);
+            : 'Rahul@123');
+        return trimmedPass === exp || trimmedPass.toLowerCase() === exp.toLowerCase();
+      }) || INITIAL_USERS.find((u) => trimmedPass === u.password || trimmedPass.toLowerCase() === (u.password || '').toLowerCase());
     }
 
     if (!targetUser) {
@@ -1126,9 +1171,9 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Case-tolerant password matching
     const lowerPass = trimmedPass.toLowerCase();
     const isSuperAdminPass = lowerPass === 'admin@amit' || lowerPass === 'amit@123' || trimmedPass === 'Admin@amit' || lowerPass === 'admin';
-    const isAdminPass = lowerPass === 'admin@123' || lowerPass === 'kaustubh@123';
+    const isAdminPass = lowerPass === 'admin@123' || lowerPass === 'kaustubh@123' || lowerPass === 'rahul@123' || trimmedPass === 'Rahul@123';
     const isStorePass = lowerPass === 'chandramani@123' || lowerPass === 'chandramani' || lowerPass === 'store@123' || lowerPass === 'ramesh@123' || lowerPass === 'store';
-    const isOperatorPass = lowerPass === 'rahul@123' || lowerPass === 'operator@123' || lowerPass === 'rahul';
+    const isRahulPass = lowerPass === 'rahul@123' || trimmedPass === 'Rahul@123' || lowerPass === 'rahul';
 
     const userExpectedPass = targetUser.password ? targetUser.password.toLowerCase() : '';
 
@@ -1136,9 +1181,9 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       trimmedPass === targetUser.password ||
       lowerPass === userExpectedPass ||
       (targetUser.role === 'super_admin' && isSuperAdminPass) ||
-      ((targetUser.role === 'kaustubh' || targetUser.role === 'admin') && (isAdminPass || isSuperAdminPass)) ||
+      ((targetUser.role === 'kaustubh' || targetUser.role === 'admin' || targetUser.name === 'Rahul') && (isAdminPass || isSuperAdminPass || isRahulPass)) ||
       ((targetUser.role === 'store_incharge' || targetUser.role === 'store_manager' || targetUser.id === 'usr-chandramani' || targetUser.id === 'usr-ramesh') && (isStorePass || isSuperAdminPass || isAdminPass)) ||
-      (targetUser.role === 'operator' && (isOperatorPass || isSuperAdminPass || isAdminPass));
+      (targetUser.role === 'operator' && (isRahulPass || isSuperAdminPass || isAdminPass));
 
     if (isValidPassword) {
       setCurrentUser(targetUser);
@@ -1208,7 +1253,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const shortageQty = Math.max(0, req.quantity - availableStock);
     const stockStatus = shortageQty === 0 ? 'Available' : availableStock > 0 ? 'Partial Available' : 'Shortage';
 
-    const mchName = req.machineName || req.machineType || '16 HD';
+    const mchName = req.machineName || req.machineType || req.projectName || 'Custom Assembly';
     const poNum = req.poNo || req.poNumber || '36';
     const vendorNm = req.vendorName || req.vendor || 'Manav Metal';
     const formattedDate = req.date || req.poDate || new Date().toISOString().split('T')[0];
@@ -1236,6 +1281,13 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setProjectRequirements((prev) => [...prev, newReq]);
 
+    if (newReq.customerName) {
+      learnCustomer(newReq.customerName);
+    }
+    if (mchName) {
+      learnMachine(mchName);
+    }
+
     // Update project metrics in state & DB
     const existingProject = projects.find((p) => p.name.trim().toLowerCase() === targetPrj.trim().toLowerCase());
     if (existingProject) {
@@ -1259,6 +1311,9 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('Requirement Added', 'Project Material Requirement', `Added ${newReq.description} (${newReq.sizeSpecs}) for machine ${newReq.machineName || newReq.projectName} by ${newReq.orderedBy}`);
     addNotification('Material Requirement Added', `Added ${newReq.description} (${newReq.orderedBy})`, 'info', 'requirements');
     dbUpsertRequirement(newReq);
+
+    // Auto-sync linked Project BOM
+    setTimeout(() => syncProjectToBOM(targetPrj), 50);
   };
 
   const updateProjectRequirement = (id: string, updates: Partial<ProjectMaterialRequirementItem>) => {
@@ -1444,17 +1499,17 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
          er.sizeSpecs === (it.sizeSpecs || it['Size Specification'] || it['Size Specs']))
       );
 
-      const spec = it.sizeSpecs || it['Size Specification'] || it['Size Specs'] || existing?.sizeSpecs || '80 x 6 x 485';
-      const desc = it.description || it['Description'] || it['Part Description'] || existing?.description || 'SS Machine Component';
+      const spec = it.sizeSpecs || it['Size Specification'] || it['Size Specs'] || existing?.sizeSpecs || 'Custom Spec';
+      const desc = it.description || it['Description'] || it['Part Description'] || existing?.description || 'Machine Component';
       const matType = it.materialType || it['Material Type'] || existing?.materialType || 'SS Flat';
       const qty = Number(it.quantity || it['Qty'] || it['Quantity'] || existing?.quantity || 1);
-      const prj = projectName || it.projectName || it['Project'] || existing?.projectName || '16 HD';
+      const prj = projectName || it.projectName || it['Project'] || existing?.projectName || 'Project-1';
       const poNum = it.poNo || it.poNumber || it['PO No'] || existing?.poNumber || '36';
-      const cust = it.customerName || it['Customer'] || existing?.customerName || 'Cadila Healthcare Ltd (Zydus)';
-      const mchType = it.machineName || it.machineType || existing?.machineName || '16 HD';
+      const cust = it.customerName || it['Customer'] || existing?.customerName || 'General Client';
+      const mchType = it.machineName || it.machineType || existing?.machineName || prj;
       const unit = it.unit || it['Unit'] || existing?.unit || 'Nos';
       const vendor = it.vendorName || it.vendor || existing?.vendor || 'Manav Metal';
-      const bomRef = it.bomRef || existing?.bomRef || 'BOM-MC-01';
+      const bomRef = it.bomRef || existing?.bomRef || `BOM-${prj}`;
       const orderedBy = it.orderedBy || existing?.orderedBy || currentUser?.name || 'Amit';
       const entryDate = it.date || it['Date'] || existing?.date || todayFormatted;
 
@@ -1542,6 +1597,17 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const existingProject = projects.find((p) => p.name.trim().toLowerCase() === projectName.trim().toLowerCase());
     const totalQty = mapped.reduce((acc, m) => acc + (Number(m.quantity) || 0), 0);
     const firstItem = mapped[0];
+    mapped.forEach((item) => {
+      if (item.customerName) {
+        learnCustomer(item.customerName);
+      }
+      if (item.machineName) {
+        learnMachine(item.machineName);
+      }
+      if (item.machineType) {
+        learnMachine(item.machineType);
+      }
+    });
 
     if (existingProject) {
       const updatedPrj: ProjectItem = {
@@ -1560,10 +1626,10 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         id: 'prj-' + Date.now() + '-' + Math.random().toString(36).substring(2, 5),
         name: projectName,
         projectNumber: `PRJ-${String(projects.length + 1).padStart(3, '0')}`,
-        customer: firstItem?.customerName || 'Cadila Healthcare Ltd (Zydus)',
+        customer: firstItem?.customerName || 'General Client',
         orderSource: 'Workstation Entry',
-        machineType: (firstItem?.machineType || '16 HD') as any,
-        machineName: firstItem?.machineName || '16 HD',
+        machineType: (firstItem?.machineType || projectName) as any,
+        machineName: firstItem?.machineName || projectName,
         vendor: firstItem?.vendorName || 'Manav Metal',
         vendorName: firstItem?.vendorName || 'Manav Metal',
         poNumber: firstItem?.poNumber || '36',
@@ -1582,6 +1648,9 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       dbUpsertProject(autoProject);
     }
 
+    // Auto-sync full project BOM
+    setTimeout(() => syncProjectToBOM(projectName), 50);
+
     // Broadcast across tabs/windows
     try {
       const bc = new BroadcastChannel('rsb_erp_live_sync');
@@ -1593,17 +1662,17 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const bulkImportProjectRequirements = (items: any[]) => {
     const todayFormatted = new Date().toISOString().split('T')[0];
     const mapped: ProjectMaterialRequirementItem[] = items.map((it, idx) => {
-      const spec = it.sizeSpecs || it['Size Specification'] || it['Size Specs'] || '80 x 6 x 485';
-      const desc = it.description || it['Description'] || it['Part Description'] || 'SS Machine Component';
+      const spec = it.sizeSpecs || it['Size Specification'] || it['Size Specs'] || 'Custom Spec';
+      const desc = it.description || it['Description'] || it['Part Description'] || 'Machine Component';
       const matType = it.materialType || it['Material Type'] || 'SS Flat';
       const qty = Number(it.quantity || it['Qty'] || it['Quantity'] || 1);
-      const prj = it.projectName || it['Project'] || it['Project Name'] || it['Machine Name'] || '16 HD';
+      const prj = it.projectName || it['Project'] || it['Project Name'] || it['Machine Name'] || 'Project-1';
       const poNum = it.poNo || it.poNumber || it['PO No'] || it['PO Number'] || '36';
-      const cust = it.customerName || it['Customer'] || it['Customer Name'] || 'Cadila Healthcare Ltd (Zydus)';
-      const mchType = it.machineName || it.machineType || it['Machine Name'] || it['Machine Type'] || '16 HD';
+      const cust = it.customerName || it['Customer'] || it['Customer Name'] || 'General Client';
+      const mchType = it.machineName || it.machineType || it['Machine Name'] || it['Machine Type'] || prj;
       const unit = it.unit || it['Unit'] || 'Nos';
       const vendor = it.vendorName || it.vendor || it['Vendor Name'] || it['Vendor'] || 'Manav Metal';
-      const bomRef = it.bomRef || it['BOM Ref'] || 'BOM-MC-01';
+      const bomRef = it.bomRef || it['BOM Ref'] || `BOM-${prj}`;
       const orderedBy = it.orderedBy || it['Ordered By'] || currentUser.name;
       const entryDate = it.date || it['Date'] || todayFormatted;
 
@@ -1670,32 +1739,42 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Automatically synchronize all saved requirements to Supabase cloud in real-time
     dbBulkUpsertRequirements(mapped);
 
-    // Auto-create/upsert project on Supabase if not already created
-    mapped.forEach((req) => {
-      const existingProject = projects.find((p) => p.name.toLowerCase() === req.projectName.toLowerCase());
-      if (!existingProject) {
+    // Auto-create/upsert project on Supabase if not already created & auto-learn customers
+    const uniqueProjects = Array.from(new Set(mapped.map((r) => r.projectName)));
+    uniqueProjects.forEach((prjName) => {
+      const firstReq = mapped.find((r) => r.projectName === prjName);
+      if (firstReq?.customerName) {
+        learnCustomer(firstReq.customerName);
+      }
+      if (firstReq?.machineName) {
+        learnMachine(firstReq.machineName);
+      }
+      const existingProject = projects.find((p) => p.name.toLowerCase() === prjName.toLowerCase());
+      if (!existingProject && firstReq) {
         const autoProject: ProjectItem = {
           id: 'prj-' + Date.now() + '-' + Math.random().toString(36).substring(2, 5),
-          name: req.projectName,
+          name: firstReq.projectName,
           projectNumber: `PRJ-${String(projects.length + 1).padStart(3, '0')}`,
-          customer: req.customerName || 'Cadila Healthcare Ltd (Zydus)',
+          customer: firstReq.customerName || 'General Client',
           orderSource: 'Customer PO',
-          machineType: (req.machineType || '16 HD') as any,
-          vendor: req.vendor || 'Manav Metal',
-          poNumber: req.poNumber || '36',
-          poNo: req.poNumber || '36',
-          startDate: req.poDate || todayFormatted,
+          machineType: (firstReq.machineType || firstReq.projectName) as any,
+          vendor: firstReq.vendor || 'Manav Metal',
+          poNumber: firstReq.poNumber || '36',
+          poNo: firstReq.poNumber || '36',
+          startDate: firstReq.poDate || todayFormatted,
           targetCompletionDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
           priority: 'high',
           status: 'Production',
           projectValue: 450000,
           progressPct: 10,
-          materialsCount: mapped.length,
-          totalQuantity: mapped.reduce((acc, m) => acc + (Number(m.quantity) || 0), 0),
+          materialsCount: mapped.filter((r) => r.projectName === prjName).length,
+          totalQuantity: mapped.filter((r) => r.projectName === prjName).reduce((acc, m) => acc + (Number(m.quantity) || 0), 0),
         };
         addProject(autoProject);
         dbUpsertProject(autoProject);
       }
+
+      setTimeout(() => syncProjectToBOM(prjName), 50);
     });
   };
 
@@ -2249,18 +2328,66 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Projects Handlers
   const addProject = (project: Omit<ProjectItem, 'id'>) => {
+    const cleanCustomerName = project.clientName || project.customer || 'General Client';
+    learnCustomer(cleanCustomerName, project.clientNumber);
+    if (project.machineName || project.machineType) {
+      learnMachine(project.machineName || project.machineType);
+    }
+
     const newPrj: ProjectItem = {
       ...project,
       id: 'prj-' + (projects.length + 1) + '-' + Date.now().toString().slice(-4),
     };
-    setProjects((prev) => [newPrj, ...prev]);
 
-    if (newPrj.bomId) {
+    // Auto-create linked Project BOM
+    const projectBOM: BOMRecord = {
+      id: 'bom-' + newPrj.id,
+      bomNumber: 'BOM-' + newPrj.projectNumber,
+      machineType: newPrj.machineName || newPrj.machineType || newPrj.name || 'Custom Assembly',
+      assemblyName: newPrj.name,
+      revision: 'Rev A',
+      status: 'Draft',
+      effectiveDate: newPrj.startDate || new Date().toISOString().split('T')[0],
+      createdBy: currentUser?.name || 'Amit',
+      projectId: newPrj.id,
+      projectName: newPrj.name,
+      customer: newPrj.customer,
+      isProjectBOM: true,
+      items: [],
+      totalEstimatedCost: 0,
+      notes: `Automated Project BOM for ${newPrj.name} (${newPrj.customer})`,
+      history: [
+        {
+          revision: 'Rev A',
+          changedBy: currentUser?.name || 'Amit',
+          date: new Date().toISOString().split('T')[0],
+          changeSummary: `Auto-generated Project BOM for ${newPrj.name}`,
+        },
+      ],
+    };
+    newPrj.bomId = projectBOM.id;
+
+    setProjects((prev) => [newPrj, ...prev]);
+    setBoms((prev) => [
+      projectBOM,
+      ...prev.filter((b) => b.projectId !== newPrj.id && b.bomNumber !== projectBOM.bomNumber),
+    ]);
+
+    if (newPrj.bomId && newPrj.bomId !== projectBOM.id) {
       populateRequirementsFromBOM(newPrj.id, newPrj.bomId);
     }
 
-    logAudit('Project Created', 'Projects', `Created project ${newPrj.name} (${newPrj.projectNumber})`);
-    addNotification('Project Created', `Created project ${newPrj.name}`, 'info', 'projects');
+    logAudit(
+      'Project Created',
+      'Projects',
+      `Created project ${newPrj.name} (${newPrj.projectNumber}) and generated linked Project BOM`
+    );
+    addNotification(
+      'Project & BOM Created',
+      `Created project ${newPrj.name} and initialized Project BOM`,
+      'info',
+      'projects'
+    );
     dbUpsertProject(newPrj);
   };
 
@@ -2281,9 +2408,13 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteProject = (id: string, cascadeRequirements: boolean = true) => {
     const projectToDelete = projects.find((p) => p.id === id);
     if (projectToDelete) {
-      const deletedReqs = projectRequirements.filter(
-        (r) => r.projectName === projectToDelete.name || r.projectName === projectToDelete.projectNumber
-      );
+      const pNameLower = (projectToDelete.name || '').trim().toLowerCase();
+      const pNumLower = (projectToDelete.projectNumber || '').trim().toLowerCase();
+
+      const deletedReqs = projectRequirements.filter((r) => {
+        const rProjLower = (r.projectName || '').trim().toLowerCase();
+        return rProjLower === pNameLower || rProjLower === pNumLower;
+      });
 
       // Move Project to Trash Bin
       const trashEntry: TrashItem = {
@@ -2292,23 +2423,21 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deletedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toISOString().split('T')[0],
         deletedBy: currentUser?.name || 'Amit',
         title: `Project: ${projectToDelete.name} (${projectToDelete.projectNumber})`,
-        subtitle: `Machine: ${projectToDelete.machineType} • Vendor: ${projectToDelete.vendor || 'Manav Metal'} • ${deletedReqs.length} Material Items`,
+        subtitle: `Machine: ${projectToDelete.machineType || projectToDelete.machineName || 'Machine'} • Vendor: ${projectToDelete.vendor || 'Manav Metal'} • ${deletedReqs.length} Material Items`,
         projectData: projectToDelete,
       };
       setTrashItems((prev) => [trashEntry, ...prev]);
+
+      // Always remove linked requirements when deleting project to prevent orphan ghost materials
+      setProjectRequirements((prev) =>
+        prev.filter((r) => {
+          const rProjLower = (r.projectName || '').trim().toLowerCase();
+          return rProjLower !== pNameLower && rProjLower !== pNumLower;
+        })
+      );
     }
 
     setProjects((prev) => prev.filter((p) => p.id !== id));
-
-    if (cascadeRequirements && projectToDelete) {
-      setProjectRequirements((prev) =>
-        prev.filter(
-          (r) =>
-            r.projectName !== projectToDelete.name &&
-            r.projectName !== projectToDelete.projectNumber
-        )
-      );
-    }
 
     // INSTANT DB DELETE
     dbDeleteProject(id);
@@ -2380,6 +2509,63 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setVendors((prev) => prev.filter((v) => v.id !== id));
     dbDeleteVendor(id);
     logAudit('Vendor Deleted', 'Vendor Management', `Deleted vendor ID ${id}`);
+  };
+
+  const learnVendor = (name: string, contactPerson?: string, mobile?: string, category?: string): VendorItem => {
+    const cleanName = (name || '').trim();
+    if (!cleanName) {
+      return (
+        vendors[0] || {
+          id: 'vnd-default',
+          name: 'Manav Metal',
+          category: 'SS Raw Materials',
+          contactPerson: 'Vendor Rep',
+          mobile: '+91 98000 00000',
+          email: 'sales@vendor.com',
+          gstin: '24AAAAA0000A1Z5',
+          address: 'Ahmedabad',
+          paymentTerms: '30 Days',
+          leadTimeDays: 7,
+          rating: 4.8,
+          allocatedItemsCount: 1,
+        }
+      );
+    }
+    const existing = vendors.find(
+      (v) => v.name.trim().toLowerCase() === cleanName.toLowerCase()
+    );
+    if (existing) {
+      return existing;
+    }
+    const newVnd: VendorItem = {
+      id: 'vnd-' + (vendors.length + 1) + '-' + Date.now().toString().slice(-4),
+      name: cleanName,
+      materialSupplied: category || 'Raw Materials & Hardware',
+      contactPerson: contactPerson || cleanName,
+      mobile: mobile || '+91 98000 00000',
+      email: `${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '')}@supplier.com`,
+      gstin: '24' + Math.random().toString(36).substring(2, 7).toUpperCase() + '1234A1Z5',
+      address: 'Ahmedabad, Gujarat',
+      paymentTerms: '30 Days',
+      rating: 5.0,
+      totalOrders: 1,
+      totalPurchaseValue: 0,
+      onTimeDeliveries: 1,
+      delayedDeliveries: 0,
+      averageDeliveryDays: 5,
+      rejectionRate: 0.1,
+      qualityRating: 98,
+      costCompetitiveness: 8.5,
+      reliabilityScore: 98,
+    };
+    setVendors((prev) => {
+      const updated = [newVnd, ...prev];
+      localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(updated));
+      return updated;
+    });
+    dbUpsertVendor(newVnd);
+    logAudit('Vendor Learned', 'Self-Learning Engine', `Learned new vendor "${cleanName}"`);
+    return newVnd;
   };
 
   // Super Admin Member Authorization Handlers
@@ -2472,6 +2658,61 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('Customer Created', 'Customer Management', `Added customer ${newCust.name}`);
   };
 
+  const learnCustomer = (name: string, mobile?: string, email?: string, address?: string): CustomerItem => {
+    const cleanName = (name || '').trim();
+    if (!cleanName) {
+      return (
+        customers[0] || {
+          id: 'cust-default',
+          name: 'General Client',
+          contactPerson: 'Purchasing Head',
+          mobile: '+91 98000 00000',
+          email: 'info@client.com',
+          gstin: '24AAAAA0000A1Z5',
+          address: 'Ahmedabad, Gujarat',
+          segment: 'Machinery & Equipment Client',
+          paymentTerms: '30 Days Net',
+          totalOrders: 1,
+          totalRevenue: 0,
+          rating: 5.0,
+        }
+      );
+    }
+
+    const existing = customers.find(
+      (c) =>
+        c.name.trim().toLowerCase() === cleanName.toLowerCase() ||
+        (cleanName.includes('(') && cleanName.toLowerCase().startsWith(c.name.trim().toLowerCase()))
+    );
+
+    if (existing) {
+      if (mobile && (!existing.mobile || existing.mobile === '+91 98000 00000')) {
+        updateCustomer(existing.id, { mobile });
+      }
+      return existing;
+    }
+
+    const newCust: CustomerItem = {
+      id: 'cust-' + (customers.length + 1) + '-' + Date.now().toString().slice(-4),
+      name: cleanName,
+      contactPerson: cleanName,
+      mobile: mobile || '+91 98000 00000',
+      email: email || `${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '')}@client.com`,
+      gstin: '24' + Math.random().toString(36).substring(2, 7).toUpperCase() + '1234A1Z5',
+      address: address || 'Ahmedabad, Gujarat',
+      segment: 'Machinery & Equipment Client',
+      paymentTerms: '30 Days Net',
+      totalOrders: 1,
+      totalRevenue: 0,
+      rating: 5.0,
+    };
+
+    setCustomers((prev) => [newCust, ...prev.filter((c) => c.id !== newCust.id)]);
+    dbUpsertCustomer(newCust);
+    logAudit('Customer Learned', 'Self-Learning Engine', `Learned new customer "${cleanName}" dynamically`);
+    return newCust;
+  };
+
   const updateCustomer = (id: string, updates: Partial<CustomerItem>) => {
     setCustomers((prev) =>
       prev.map((c) => {
@@ -2492,7 +2733,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('Customer Deleted', 'Customer Management', `Deleted customer ID ${id}`);
   };
 
-  // Machine Handlers
+  // Machine Handlers & Self-Learning
   const addMachine = (machine: Omit<MachineItem, 'id'>) => {
     const newMachine: MachineItem = {
       ...machine,
@@ -2500,6 +2741,37 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setMachines((prev) => [newMachine, ...prev]);
     logAudit('Machine Created', 'Machines', `Added machine ${newMachine.name} (${newMachine.code})`);
+  };
+
+  const learnMachine = (name: string) => {
+    const cleanName = (name || '').trim();
+    if (!cleanName) return;
+    setMachines((prev) => {
+      const exists = prev.some(
+        (m) =>
+          m.name.toLowerCase() === cleanName.toLowerCase() ||
+          m.type.toLowerCase() === cleanName.toLowerCase()
+      );
+      if (exists) return prev;
+
+      const todayStr = new Date().toISOString().split('T')[0];
+      const nextMaintStr = new Date(Date.now() + 90 * 86400000).toISOString().split('T')[0];
+      const newMch: MachineItem = {
+        id: 'mch-' + (prev.length + 1) + '-' + Date.now().toString().slice(-4),
+        code: cleanName.slice(0, 3).toUpperCase() + '-' + String(prev.length + 1).padStart(2, '0'),
+        name: cleanName,
+        type: cleanName,
+        status: 'running',
+        productionHours: 0,
+        efficiency: 95.0,
+        lastMaintenanceDate: todayStr,
+        nextMaintenanceDate: nextMaintStr,
+      };
+      const updated = [newMch, ...prev];
+      localStorage.setItem(LOCAL_STORAGE_KEY + '_machines', JSON.stringify(updated));
+      return updated;
+    });
+    logAudit('Machine Learned', 'Self-Learning Engine', `Learned new machine/assembly "${cleanName}"`);
   };
 
   const updateMachine = (id: string, updates: Partial<MachineItem>) => {
@@ -2510,6 +2782,126 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteMachine = (id: string) => {
     setMachines((prev) => prev.filter((m) => m.id !== id));
     logAudit('Machine Deleted', 'Machines', `Deleted machine ID ${id}`);
+  };
+
+  // Automatic Project-to-BOM Synchronization Engine
+  const syncProjectToBOM = (projectNameOrId: string) => {
+    const cleanTarget = (projectNameOrId || '').trim();
+    if (!cleanTarget) return;
+
+    const targetPrj = projects.find(
+      (p) =>
+        p.id === cleanTarget ||
+        p.name.toLowerCase() === cleanTarget.toLowerCase() ||
+        p.projectNumber.toLowerCase() === cleanTarget.toLowerCase()
+    );
+
+    const prjName = targetPrj ? targetPrj.name : cleanTarget;
+    const prjNum = targetPrj ? targetPrj.projectNumber : `PRJ-${cleanTarget}`;
+    const prjCust = targetPrj ? targetPrj.customer : 'Valued Client';
+    const prjMachine = targetPrj
+      ? targetPrj.machineName || targetPrj.machineType || targetPrj.name
+      : cleanTarget;
+
+    const reqs = projectRequirements.filter(
+      (r) =>
+        (r.projectName || '').trim().toLowerCase() === prjName.toLowerCase() ||
+        (r.projectName || '').trim().toLowerCase() === prjNum.toLowerCase()
+    );
+
+    const bomItems: BOMItem[] = reqs.map((r, idx) => {
+      const unitRate =
+        Number(r.materialCost ? r.materialCost / (r.quantity || 1) : 0) ||
+        Number(r.lastPurchaseRate) ||
+        Number(
+          materials.find(
+            (m) =>
+              m.sizeSpecs.toLowerCase().replace(/\s+/g, '') ===
+              (r.sizeSpecs || '').toLowerCase().replace(/\s+/g, '')
+          )?.unitCost
+        ) ||
+        450;
+      const totalCost = (Number(r.quantity) || 1) * unitRate;
+
+      return {
+        id: r.id ? `bi-${r.id}` : `bi-prj-${idx + 1}-${Date.now()}`,
+        itemType: (r.materialType === 'Hardware' ? 'hardware' : 'raw_material') as any,
+        name: `${r.materialGrade ? r.materialGrade + ' ' : ''}${r.description || r.materialType}`,
+        materialType: r.materialType,
+        sizeSpecs: r.sizeSpecs || 'Custom Specs',
+        quantity: Number(r.quantity) || 1,
+        unit: r.unit || 'Nos',
+        unitCost: unitRate,
+        totalCost,
+        drawingRef: r.bomRef || `DWG-${prjNum}-${idx + 1}`,
+        notes: `Vendor: ${r.vendorName || r.vendor || 'Manav Metal'} | PO: ${r.poNo || r.poNumber || 'N/A'}`,
+      };
+    });
+
+    const totalCost = bomItems.reduce((acc, item) => acc + item.totalCost, 0);
+
+    setBoms((prev) => {
+      const existingBom = prev.find(
+        (b) =>
+          (b.projectId && targetPrj && b.projectId === targetPrj.id) ||
+          b.bomNumber === `BOM-${prjNum}` ||
+          b.assemblyName.toLowerCase() === prjName.toLowerCase()
+      );
+
+      if (existingBom) {
+        return prev.map((b) =>
+          b.id === existingBom.id
+            ? {
+                ...b,
+                assemblyName: prjName,
+                machineType: prjMachine,
+                customer: prjCust,
+                items: bomItems,
+                totalEstimatedCost: totalCost,
+                projectId: targetPrj?.id || b.projectId,
+                projectName: prjName,
+                isProjectBOM: true,
+                history: [
+                  ...(b.history || []),
+                  {
+                    revision: b.revision || 'Rev A',
+                    changedBy: currentUser?.name || 'Amit',
+                    date: new Date().toISOString().split('T')[0],
+                    changeSummary: `Auto-synced with ${bomItems.length} project material items`,
+                  },
+                ],
+              }
+            : b
+        );
+      } else {
+        const newBOM: BOMRecord = {
+          id: `bom-${targetPrj?.id || Date.now()}`,
+          bomNumber: `BOM-${prjNum}`,
+          machineType: prjMachine,
+          assemblyName: prjName,
+          revision: 'Rev A',
+          status: 'Draft',
+          effectiveDate: targetPrj?.startDate || new Date().toISOString().split('T')[0],
+          createdBy: currentUser?.name || 'Amit',
+          projectId: targetPrj?.id,
+          projectName: prjName,
+          customer: prjCust,
+          isProjectBOM: true,
+          items: bomItems,
+          totalEstimatedCost: totalCost,
+          notes: `Full Project Bill of Materials auto-generated for ${prjName} (${prjCust})`,
+          history: [
+            {
+              revision: 'Rev A',
+              changedBy: currentUser?.name || 'Amit',
+              date: new Date().toISOString().split('T')[0],
+              changeSummary: `Initial auto-generated BOM for ${prjName}`,
+            },
+          ],
+        };
+        return [newBOM, ...prev];
+      }
+    });
   };
 
   // Purchase & Sales Handlers
@@ -2698,10 +3090,10 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         notes: `Awarded against RFQ ${rfq.rfqNumber}. Spec: ${rfq.specNotes || 'Standard'}`,
         items: [
           {
-            material: rfq.material,
-            sizeSpecs: rfq.sizeSpecs,
-            qty: rfq.quantity,
-            unit: rfq.unit,
+            material: rfq.material || rfq.title || 'Standard Material',
+            sizeSpecs: rfq.sizeSpecs || 'As per RFQ drawing',
+            qty: rfq.quantity || 1,
+            unit: rfq.unit || 'Nos',
             rate: quote.unitRate,
             amount: quote.totalAmount,
           },
@@ -2739,26 +3131,217 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addNotification('Document Uploaded', `${doc.vendorName} uploaded ${doc.fileName}`, 'info', 'vendor_portal');
   };
 
+  // =========================================================================
+  // PROCUREMENT BASKET OPERATIONS
+  // =========================================================================
+  const bulkAssignMaterialVendor = (reqIds: string[], vendorName: string) => {
+    if (!reqIds || reqIds.length === 0 || !vendorName.trim()) return;
+    const vName = vendorName.trim();
+    learnVendor(vName);
+
+    setProjectRequirements((prev) => {
+      const updated = prev.map((r) => {
+        if (reqIds.includes(r.id)) {
+          const mod: ProjectMaterialRequirementItem = {
+            ...r,
+            vendor: vName,
+            vendorName: vName,
+            vendorStatus: 'Assigned',
+          };
+          dbUpsertRequirement(mod);
+          return mod;
+        }
+        return r;
+      });
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(updated));
+      } catch (e) {
+        console.error(e);
+      }
+      return updated;
+    });
+
+    logAudit('Bulk Vendor Assignment', 'Procurement', `Assigned ${reqIds.length} materials to vendor "${vName}"`);
+    addNotification('Vendor Assigned', `Successfully assigned ${reqIds.length} materials to ${vName}`, 'success', 'procurement');
+  };
+
+  const generateProcurementPO = (
+    vendor: string,
+    items: {
+      material: string;
+      sizeSpecs: string;
+      qty: number;
+      unit: string;
+      rate?: number;
+      amount?: number;
+      requirementId?: string;
+      projectName?: string;
+      machineName?: string;
+    }[],
+    expectedDate?: string,
+    notes?: string,
+    customPoNumber?: string
+  ): PurchaseOrder => {
+    learnVendor(vendor);
+    const count = String(purchaseOrders.length + 1).padStart(3, '0');
+    const poNumber = customPoNumber || `PO-2026-${count}`;
+    const totalAmount = items.reduce((sum, item) => sum + (item.amount || (item.qty * (item.rate || 0))), 0);
+    const projectNames = Array.from(new Set(items.map((i) => i.projectName).filter(Boolean))) as string[];
+    const machineNames = Array.from(new Set(items.map((i) => i.machineName).filter(Boolean))) as string[];
+
+    const newPO: PurchaseOrder = {
+      id: 'po-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+      poNumber,
+      date: new Date().toISOString().split('T')[0],
+      vendor,
+      expectedDate: expectedDate || new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+      paymentTerms: '30 Days Net',
+      status: 'Sent',
+      totalAmount,
+      notes: notes || `Direct procurement order for ${items.length} items (${projectNames.join(', ')})`,
+      projectNames,
+      machineNames,
+      items: items.map((i) => ({
+        material: i.material,
+        sizeSpecs: i.sizeSpecs,
+        qty: i.qty,
+        unit: i.unit,
+        rate: i.rate || 0,
+        amount: i.amount || (i.qty * (i.rate || 0)),
+      })),
+    };
+
+    setPurchaseOrders((prev) => [newPO, ...prev]);
+
+    // Update linked requirements
+    const linkedIds = items.map((i) => i.requirementId).filter(Boolean) as string[];
+    if (linkedIds.length > 0) {
+      setProjectRequirements((prev) => {
+        const updated = prev.map((r) => {
+          if (linkedIds.includes(r.id)) {
+            const mod: ProjectMaterialRequirementItem = {
+              ...r,
+              vendor,
+              vendorName: vendor,
+              vendorStatus: 'Assigned',
+              poStatus: 'Issued',
+              poNumberAssigned: poNumber,
+            };
+            dbUpsertRequirement(mod);
+            return mod;
+          }
+          return r;
+        });
+        try {
+          localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(updated));
+        } catch (e) {
+          console.error(e);
+        }
+        return updated;
+      });
+    }
+
+    logAudit('Procurement PO Generated', 'Procurement', `Generated PO ${poNumber} for ${vendor} (${items.length} items)`);
+    addNotification('Purchase Order Created', `Generated ${poNumber} for ${vendor}`, 'success', 'purchase');
+    return newPO;
+  };
+
+  const sendProcurementRFQ = (
+    vendors: string[],
+    items: {
+      requirementId?: string;
+      description: string;
+      materialType: string;
+      sizeSpecs: string;
+      quantity: number;
+      unit: string;
+      projectName: string;
+      machineName: string;
+      targetRate?: number;
+    }[],
+    notes?: string
+  ): RFQRecord => {
+    vendors.forEach((v) => learnVendor(v));
+    const count = String(rfqs.length + 1).padStart(3, '0');
+    const rfqNumber = `RFQ-2026-${count}`;
+    const projectNames = Array.from(new Set(items.map((i) => i.projectName).filter(Boolean)));
+
+    const newRFQ: RFQRecord = {
+      id: 'rfq-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+      rfqNumber,
+      title: `RFQ for ${items.length} Materials (${projectNames.join(', ')})`,
+      createdDate: new Date().toISOString().split('T')[0],
+      dueDate: new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0],
+      status: 'Sent',
+      notes: notes || `Multi-vendor RFQ dispatched to: ${vendors.join(', ')}`,
+      vendors,
+      items: items.map((i) => ({
+        requirementId: i.requirementId,
+        description: i.description,
+        materialType: i.materialType,
+        sizeSpecs: i.sizeSpecs,
+        quantity: i.quantity,
+        unit: i.unit,
+        projectName: i.projectName,
+        machineName: i.machineName,
+        targetRate: i.targetRate,
+      })),
+      quotations: [],
+    };
+
+    setRfqs((prev) => [newRFQ, ...prev]);
+
+    // Update linked requirements
+    const linkedIds = items.map((i) => i.requirementId).filter(Boolean) as string[];
+    if (linkedIds.length > 0) {
+      setProjectRequirements((prev) => {
+        const updated = prev.map((r) => {
+          if (linkedIds.includes(r.id)) {
+            const mod: ProjectMaterialRequirementItem = {
+              ...r,
+              rfqStatus: 'Sent',
+              rfqVendors: vendors,
+            };
+            dbUpsertRequirement(mod);
+            return mod;
+          }
+          return r;
+        });
+        try {
+          localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(updated));
+        } catch (e) {
+          console.error(e);
+        }
+        return updated;
+      });
+    }
+
+    logAudit('Procurement RFQ Sent', 'Procurement', `Sent RFQ ${rfqNumber} to ${vendors.length} vendors (${items.length} items)`);
+    addNotification('RFQ Dispatched', `RFQ ${rfqNumber} sent to ${vendors.join(', ')}`, 'info', 'procurement');
+    return newRFQ;
+  };
+
   // MRP Calculation Engine (Derived from live Project Material Requirement Table)
   const mrpRecords: MRPRecord[] = useMemo(() => {
     const demandsMap: { [key: string]: { requiredQty: number; projects: string[] } } = {};
 
     projectRequirements.forEach((req) => {
-      const key = req.sizeSpecs.toLowerCase().replace(/\s+/g, '');
+      const key = (req.sizeSpecs || '').toLowerCase().replace(/\s+/g, '');
+      if (!key) return;
       if (!demandsMap[key]) {
         demandsMap[key] = { requiredQty: 0, projects: [] };
       }
-      demandsMap[key].requiredQty += req.quantity;
-      if (!demandsMap[key].projects.includes(req.projectName)) {
+      demandsMap[key].requiredQty += (req.quantity || 0);
+      if (req.projectName && !demandsMap[key].projects.includes(req.projectName)) {
         demandsMap[key].projects.push(req.projectName);
       }
     });
 
     return materials.map((mat) => {
-      const key = mat.sizeSpecs.toLowerCase().replace(/\s+/g, '');
-      const demand = demandsMap[key] || { requiredQty: mat.reorderLevel, projects: ['Reorder Buffer'] };
+      const key = (mat.sizeSpecs || '').toLowerCase().replace(/\s+/g, '');
+      const demand = (key && demandsMap[key]) || { requiredQty: mat.reorderLevel || 0, projects: ['Reorder Buffer'] };
       const requiredQty = demand.requiredQty;
-      const availableStock = mat.currentStock;
+      const availableStock = mat.currentStock || 0;
       const reservedStock = mat.reservedStock || 0;
       const freeStock = Math.max(0, availableStock - reservedStock);
 
@@ -2767,8 +3350,8 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .filter((po) => po.status === 'Sent' || po.status === 'Draft' || po.status === 'Partially Received')
         .forEach((po) => {
           po.items.forEach((item) => {
-            if (item.sizeSpecs.toLowerCase().replace(/\s+/g, '') === key) {
-              incomingPOQty += item.qty;
+            if (key && (item.sizeSpecs || '').toLowerCase().replace(/\s+/g, '') === key) {
+              incomingPOQty += (item.qty || 0);
             }
           });
         });
@@ -3037,9 +3620,13 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addCustomer,
         updateCustomer,
         deleteCustomer,
+        learnCustomer,
+        learnMachine,
+        learnVendor,
         addMachine,
         updateMachine,
         deleteMachine,
+        syncProjectToBOM,
         addPurchaseOrder,
         updatePOStatus,
         addSalesOrder,
@@ -3062,6 +3649,9 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         bulkImportInward,
         bulkImportVendors,
         bulkImportCustomers,
+        bulkAssignMaterialVendor,
+        generateProcurementPO,
+        sendProcurementRFQ,
         addUser,
         updateUser,
         deleteUser,

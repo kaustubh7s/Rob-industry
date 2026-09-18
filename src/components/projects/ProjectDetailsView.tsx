@@ -130,7 +130,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     quantity: 1,
     unit: 'Nos',
     vendor: project.vendor || 'Manav Metal',
-    machineType: project.machineType || '16 HD',
+    machineType: project.machineName || project.machineType || project.name,
     orderSource: project.orderSource || 'Customer PO',
     poNumber: project.poNumber || '36',
     notes: '',
@@ -325,7 +325,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       quantity: 1,
       unit: 'Nos',
       vendor: project.vendor || 'Manav Metal',
-      machineType: project.machineType || '16 HD',
+      machineType: project.machineName || project.machineType || project.name,
       orderSource: project.orderSource || 'Customer PO',
       poNumber: project.poNumber || '36',
       notes: '',
@@ -342,7 +342,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       quantity: item.quantity,
       unit: item.unit,
       vendor: item.vendor || project.vendor || 'Manav Metal',
-      machineType: item.machineType || project.machineType || '16 HD',
+      machineType: item.machineName || item.machineType || project.machineName || project.machineType || project.name,
       orderSource: item.orderSource || project.orderSource || 'Customer PO',
       poNumber: item.poNumber || project.poNumber || '36',
       notes: item.notes || '',
@@ -574,7 +574,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     quantity: 1,
                     unit: 'Nos',
                     vendor: project.vendor || 'Manav Metal',
-                    machineType: selectedMachineFolder !== 'ALL' ? (selectedMachineFolder as any) : (project.machineType || '16 HD'),
+                    machineType: selectedMachineFolder !== 'ALL' ? (selectedMachineFolder as any) : (project.machineName || project.machineType || project.name),
                     orderSource: project.orderSource || 'Customer PO',
                     poNumber: project.poNumber || '36',
                     notes: '',
@@ -1326,7 +1326,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                     {/* 1. Machine Name */}
                     <td className="p-3 font-bold text-purple-900 whitespace-nowrap">
-                      {m.machineName || m.machineType || project.machineName || project.machineType || '16 HD'}
+                      {m.machineName || m.machineType || project.machineName || project.machineType || project.name}
                     </td>
 
                     {/* 2. Date */}

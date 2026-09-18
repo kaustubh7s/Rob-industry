@@ -111,23 +111,7 @@ export interface CustomerItem {
   rating: number;
 }
 
-export type MachineCategory = 
-  | '10 HD'
-  | '12 HD'
-  | '16 HD'
-  | '20 HD'
-  | '24 HD'
-  | '30 HD'
-  | '40 HD'
-  | 'Mono Conveyor'
-  | 'Washing Unit'
-  | 'Distributor'
-  | 'Sealing Unit'
-  | 'Cap Transfer'
-  | 'Pipeline System'
-  | 'Conveyor Assembly'
-  | 'Custom Machine'
-  | 'Custom Fabrication';
+export type MachineCategory = string;
 
 export interface MachineItem {
   id: string;
@@ -247,6 +231,12 @@ export interface ProjectMaterialRequirementItem {
   lastPurchaseDate?: string;
   vendorRating?: number;
   vendorReliability?: number;
+  vendorStatus?: 'Unassigned' | 'Assigned';
+  rfqStatus?: 'Pending' | 'Sent' | 'Quoted';
+  poStatus?: 'Draft' | 'Issued' | 'Received';
+  poNumberAssigned?: string;
+  rfqVendors?: string[];
+  assignedVendor?: string;
 
   // Live Integrated Statuses
   stockStatus: StockStatus;
@@ -438,6 +428,21 @@ export interface PurchaseOrder {
   status: 'Draft' | 'Sent' | 'Partially Received' | 'Received' | 'Cancelled';
   notes?: string;
   linkedRequirementId?: string;
+  projectNames?: string[];
+  machineNames?: string[];
+}
+
+export interface RFQItemDetail {
+  id?: string;
+  requirementId?: string;
+  description: string;
+  materialType: string;
+  sizeSpecs: string;
+  quantity: number;
+  unit: string;
+  projectName: string;
+  machineName: string;
+  targetRate?: number;
 }
 
 export interface SalesOrderItem {
@@ -508,6 +513,10 @@ export interface BOMRecord {
   effectiveDate: string;
   createdBy: string;
   approvedBy?: string;
+  projectId?: string;
+  projectName?: string;
+  customer?: string;
+  isProjectBOM?: boolean;
   items: BOMItem[];
   totalEstimatedCost: number;
   notes?: string;
@@ -548,15 +557,18 @@ export interface RFQRecord {
   id: string;
   rfqNumber: string;
   title: string;
-  material: string;
-  sizeSpecs: string;
-  quantity: number;
-  unit: string;
+  material?: string;
+  sizeSpecs?: string;
+  quantity?: number;
+  unit?: string;
   createdDate: string;
   dueDate: string;
-  status: 'Open' | 'Closed' | 'Awarded';
+  status: 'Open' | 'Closed' | 'Awarded' | 'Sent' | 'Quoted';
   drawingRef?: string;
   specNotes?: string;
+  notes?: string;
+  vendors?: string[];
+  items?: RFQItemDetail[];
   quotations: VendorQuotation[];
 }
 

@@ -93,11 +93,11 @@ export const PrintableSlipModal: React.FC<PrintableSlipModalProps> = ({
                   RSB PRIVATE LIMITED
                 </h2>
               </div>
-              <p className="text-[11px] text-slate-600 mt-0.5">
-                Stainless Steel Precision Engineering & Machine Manufacturing
+              <p className="text-[11px] text-slate-600 mt-0.5 font-medium">
+                Manufacturing Industry
               </p>
               <p className="text-[10px] text-slate-500">
-                Plot 42, GIDC Industrial Estate, Vatva, Ahmedabad, Gujarat - 382445 | GSTIN: 24AAACR1234F1Z8
+                F, 16/4, Naregaon Main Rd, Naregaon, Chilkalthana, Chhatrapati Sambhajinagar, Maharashtra 431007
               </p>
             </div>
             <div className="text-right">

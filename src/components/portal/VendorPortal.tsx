@@ -78,7 +78,7 @@ export const VendorPortal: React.FC = () => {
       vendorId: activeVendor.id,
       vendorName: activeVendor.name,
       unitRate: quoteForm.unitRate,
-      totalAmount: quoteForm.unitRate * selectedRFQForQuote.quantity,
+      totalAmount: quoteForm.unitRate * (selectedRFQForQuote.quantity || 1),
       leadTimeDays: quoteForm.leadTimeDays,
       notes: quoteForm.notes,
     });
@@ -517,7 +517,7 @@ export const VendorPortal: React.FC = () => {
             <div className="p-3.5 bg-slate-850 rounded-xl border border-slate-750 flex justify-between items-center">
               <span className="text-slate-400">Total Calculated Bid:</span>
               <span className="font-mono text-sm font-bold text-emerald-400">
-                {formatINR(quoteForm.unitRate * selectedRFQForQuote.quantity)}
+                {formatINR(quoteForm.unitRate * (selectedRFQForQuote.quantity || 1))}
               </span>
             </div>
 

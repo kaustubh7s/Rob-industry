@@ -240,8 +240,11 @@ export const PurchaseManager: React.FC = () => {
                   <h1 className="text-lg font-extrabold tracking-tight text-slate-900">
                     RSB PRIVATE LIMITED
                   </h1>
-                  <p className="text-xs font-medium text-slate-600">
-                    Plot 18/B, GIDC Vatva, Ahmedabad - 382445 | GSTIN: 24AABCR1234F1Z5
+                  <p className="text-xs font-semibold text-slate-700">
+                    Manufacturing Industry
+                  </p>
+                  <p className="text-[11px] font-medium text-slate-600">
+                    F, 16/4, Naregaon Main Rd, Naregaon, Chilkalthana, Chhatrapati Sambhajinagar, Maharashtra 431007
                   </p>
                 </div>
                 <div className="text-right">

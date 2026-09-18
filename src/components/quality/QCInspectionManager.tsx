@@ -605,11 +605,11 @@ export const QCInspectionManager: React.FC = () => {
                   <h1 className="text-lg font-extrabold tracking-tight text-slate-900">
                     RSB PRIVATE LIMITED
                   </h1>
-                  <p className="text-xs font-medium text-slate-600">
-                    Quality Assurance & Inspection Laboratory
+                  <p className="text-xs font-semibold text-slate-700">
+                    Manufacturing Industry • Quality Assurance Lab
                   </p>
                   <p className="text-[10px] text-slate-500">
-                    Plot 18/B, GIDC Vatva, Ahmedabad - 382445 | ISO 9001:2015 Compliant
+                    F, 16/4, Naregaon Main Rd, Naregaon, Chilkalthana, Chhatrapati Sambhajinagar, Maharashtra 431007
                   </p>
                 </div>
                 <div className="text-right">

@@ -28,16 +28,16 @@ export const MachineManager: React.FC = () => {
   const [isNewMachineModalOpen, setIsNewMachineModalOpen] = useState(false);
 
   const [form, setForm] = useState({
-    code: 'MC-07',
-    name: 'Conveyor Drive Roller Machining Cell',
-    type: 'Mono Conveyor' as MachineCategory,
-    assignedProject: 'FOHA',
-    productionHours: 120,
-    efficiency: 92.5,
+    code: `MCH-${String(machines.length + 1).padStart(2, '0')}`,
+    name: '',
+    type: '' as MachineCategory,
+    assignedProject: projects[0]?.name || '',
+    productionHours: 0,
+    efficiency: 95.0,
     status: 'running' as 'running' | 'idle' | 'maintenance',
     lastMaintenanceDate: new Date().toISOString().split('T')[0],
     nextMaintenanceDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
-    operatorAssigned: 'Mahesh Thakor',
+    operatorAssigned: '',
   });
 
   const filteredMachines = machines.filter((m) => {
@@ -271,22 +271,22 @@ export const MachineManager: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">
-                Category *
+                Category / Type *
               </label>
-              <select
+              <input
+                type="text"
+                required
+                list="learned-machine-categories"
                 value={form.type}
-                onChange={(e) => setForm({ ...form, type: e.target.value as any })}
+                onChange={(e) => setForm({ ...form, type: e.target.value })}
                 className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-slate-100 text-xs"
-              >
-                <option value="Mono Conveyor">Mono Conveyor</option>
-                <option value="Washing Unit">Washing Unit</option>
-                <option value="Distributor">Distributor</option>
-                <option value="Sealing Unit">Sealing Unit</option>
-                <option value="Cap Transfer">Cap Transfer</option>
-                <option value="Pipeline System">Pipeline System</option>
-                <option value="Conveyor Assembly">Conveyor Assembly</option>
-                <option value="Custom Machine">Custom Machine</option>
-              </select>
+                placeholder="Type or select category..."
+              />
+              <datalist id="learned-machine-categories">
+                {Array.from(new Set(machines.map((m) => m.type).concat(machines.map((m) => m.name)))).filter(Boolean).map((cat) => (
+                  <option key={cat} value={cat} />
+                ))}
+              </datalist>
             </div>
 
             <div>
@@ -295,11 +295,17 @@ export const MachineManager: React.FC = () => {
               </label>
               <input
                 type="text"
+                list="assigned-project-options"
                 value={form.assignedProject}
                 onChange={(e) => setForm({ ...form, assignedProject: e.target.value })}
                 className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-slate-100 text-xs"
-                placeholder="FOHA"
+                placeholder="Assign to project..."
               />
+              <datalist id="assigned-project-options">
+                {projects.map((p) => (
+                  <option key={p.id} value={p.name} />
+                ))}
+              </datalist>
             </div>
 
             <div>

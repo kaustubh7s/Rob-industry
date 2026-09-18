@@ -26,6 +26,7 @@ import {
   RotateCcw,
   CheckCircle2,
   Truck,
+  ShoppingCart,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 import { ProjectItem, ProjectStatus, MachineCategory } from '../../types/erp';
@@ -40,6 +41,8 @@ import { getMaterialsForProject } from '../../utils/projectMaterialsHelper';
 interface ProjectsDirectoryProps {
   onSelectProject: (project: ProjectItem) => void;
   onOpenEntrySheetWithProject?: (projectName: string) => void;
+  onOpenProcurementBasket?: () => void;
+  onOpenProcurementBasketWithProject?: (projectName: string) => void;
 }
 
 const MACHINE_CATEGORIES: MachineCategory[] = [
@@ -75,6 +78,8 @@ const ORDER_SOURCES = [
 export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
   onSelectProject,
   onOpenEntrySheetWithProject,
+  onOpenProcurementBasket,
+  onOpenProcurementBasketWithProject,
 }) => {
   const {
     projects,
@@ -84,6 +89,9 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
     orders,
     vendors,
     customers,
+    machines,
+    learnMachine,
+    learnCustomer,
     currentUser,
     trashItems,
     restoreFromTrash,
@@ -113,6 +121,7 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
     name: '',
     clientName: '',
     clientNumber: '',
+    machineName: '',
     startDate: new Date().toISOString().split('T')[0],
     targetDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
   });
@@ -124,19 +133,17 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
       const totalMaterials = mats.length;
       const totalQuantity = mats.reduce((acc, m) => acc + (Number(m.quantity) || 0), 0);
       const vendor = p.vendor || mats[0]?.vendor || 'Manav Metal';
-      const createdDate = p.createdDate || p.startDate || '2026-08-10';
+      const createdDate = p.createdDate || p.startDate || new Date().toISOString().split('T')[0];
       const lastUpdatedDate = p.lastUpdatedDate || 'Today';
 
       // Aggregate all unique machine types from project and all its material requirements
       const machineSet = new Set<string>();
-      if (p.machineName && p.machineName !== '16 HD') machineSet.add(p.machineName);
-      if (p.machineType && p.machineType !== '16 HD') machineSet.add(p.machineType);
+      if (p.machineName) machineSet.add(p.machineName);
+      if (p.machineType) machineSet.add(p.machineType);
       mats.forEach((m) => {
         if (m.machineName) machineSet.add(m.machineName);
         if (m.machineType) machineSet.add(m.machineType);
       });
-      if (p.machineName) machineSet.add(p.machineName);
-      if (p.machineType) machineSet.add(p.machineType);
       const machineTypes = Array.from(machineSet).filter(Boolean);
 
       const receivedMaterials = mats.filter((m) => m.isReceived).length;
@@ -156,6 +163,24 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
     });
   }, [projects, projectRequirements, orders]);
 
+  // Dynamic list of all machines in system
+  const dynamicMachineList = useMemo(() => {
+    const list = new Set<string>();
+    machines.forEach((m) => {
+      if (m.name) list.add(m.name);
+      if (m.type) list.add(m.type);
+    });
+    projects.forEach((p) => {
+      if (p.machineName) list.add(p.machineName);
+      if (p.machineType) list.add(p.machineType);
+    });
+    projectRequirements.forEach((r) => {
+      if (r.machineName) list.add(r.machineName);
+      if (r.machineType) list.add(r.machineType);
+    });
+    return Array.from(list).filter(Boolean);
+  }, [machines, projects, projectRequirements]);
+
   // Apply search and all filters
   const filteredProjects = useMemo(() => {
     return enrichedProjects.filter((p) => {
@@ -164,29 +189,55 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
         p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         p.projectNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
         p.customer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.poNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (p.vendor && p.vendor.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (p.machineType && p.machineType.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        p.machineTypes.some((m) => m.toLowerCase().includes(searchTerm.toLowerCase()));
+        (p.clientName && p.clientName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (p.clientNumber && p.clientNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (p.machineName && p.machineName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (p.machineType && p.machineType.toLowerCase().includes(searchTerm.toLowerCase()));
 
       const matchesMachine =
         filterMachine === 'ALL' ||
+        (p.machineTypes && p.machineTypes.includes(filterMachine)) ||
         p.machineType === filterMachine ||
-        p.machineTypes.includes(filterMachine);
-      const matchesVendor = filterVendor === 'ALL' || p.vendor === filterVendor;
-      const matchesOrderSource = filterOrderSource === 'ALL' || p.orderSource === filterOrderSource;
-      const matchesDate = !filterDate || p.startDate === filterDate || p.createdDate === filterDate;
+        p.machineName === filterMachine;
 
-      return matchesSearch && matchesMachine && matchesVendor && matchesOrderSource && matchesDate;
+      const matchesVendor =
+        filterVendor === 'ALL' ||
+        p.vendor === filterVendor ||
+        p.vendorName === filterVendor;
+
+      const matchesDate =
+        !filterDate ||
+        (p.startDate && p.startDate === filterDate) ||
+        (p.createdDate && p.createdDate === filterDate) ||
+        (p.date && p.date === filterDate);
+
+      const matchesOrderSource =
+        filterOrderSource === 'ALL' || p.orderSource === filterOrderSource;
+
+      return (
+        matchesSearch &&
+        matchesMachine &&
+        matchesVendor &&
+        matchesDate &&
+        matchesOrderSource
+      );
     });
-  }, [enrichedProjects, searchTerm, filterMachine, filterVendor, filterOrderSource, filterDate]);
+  }, [
+    enrichedProjects,
+    searchTerm,
+    filterMachine,
+    filterVendor,
+    filterDate,
+    filterOrderSource,
+  ]);
 
-  // Aggregated Overall Portfolio Metrics
+  // Summary Metrics
   const summaryMetrics = useMemo(() => {
     const totalProjects = filteredProjects.length;
-    const totalMaterialsSum = filteredProjects.reduce((acc, p) => acc + p.totalMaterials, 0);
-    const totalQtySum = filteredProjects.reduce((acc, p) => acc + p.totalQuantity, 0);
-    const totalVendors = new Set(filteredProjects.map((p) => p.vendor)).size;
+    const totalMaterialsSum = filteredProjects.reduce((acc, p) => acc + (p.totalMaterials || 0), 0);
+    const totalQtySum = filteredProjects.reduce((acc, p) => acc + (p.totalQuantity || 0), 0);
+    const vendorSet = new Set(filteredProjects.map((p) => p.vendor).filter(Boolean));
+    const totalVendors = vendorSet.size;
 
     return {
       totalProjects,
@@ -203,9 +254,10 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
 
     const count = String(projects.length + 10).padStart(3, '0');
     const projectNumber = `PRJ-2026-${count}`;
-    const clientNameVal = newProjectForm.clientName.trim() || 'Cadila Healthcare Ltd';
+    const clientNameVal = newProjectForm.clientName.trim() || 'General Client';
     const clientNumVal = newProjectForm.clientNumber.trim();
     const customerDisplay = clientNumVal ? `${clientNameVal} (${clientNumVal})` : clientNameVal;
+    const machineNameVal = newProjectForm.machineName.trim() || newProjectForm.name.trim();
 
     const newPrj: ProjectItem = {
       id: `prj-${Date.now()}`,
@@ -215,8 +267,8 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
       clientNumber: clientNumVal,
       projectNumber,
       orderSource: 'Customer PO',
-      machineType: '' as any,
-      machineName: '',
+      machineType: machineNameVal as any,
+      machineName: machineNameVal,
       vendor: 'Manav Metal',
       vendorName: 'Manav Metal',
       poNumber: `PO-2026-${projects.length + 1}`,
@@ -232,8 +284,15 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
       lastUpdatedDate: 'Just now',
       materialsCount: 0,
       totalQuantity: 0,
-      notes: `Project: ${newProjectForm.name} - Client: ${clientNameVal} | Phone: ${clientNumVal || 'N/A'}`,
+      notes: `Project: ${newProjectForm.name} - Client: ${clientNameVal} | Machine: ${machineNameVal}`,
     };
+
+    if (machineNameVal) {
+      learnMachine(machineNameVal);
+    }
+    if (clientNameVal) {
+      learnCustomer(clientNameVal, clientNumVal);
+    }
 
     addProject(newPrj);
     setIsNewProjectModalOpen(false);
@@ -242,6 +301,7 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
       name: '',
       clientName: '',
       clientNumber: '',
+      machineName: '',
       startDate: new Date().toISOString().split('T')[0],
       targetDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
     });
@@ -369,20 +429,6 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
                   <Cloud className="w-3.5 h-3.5 text-emerald-400" />
                   <span>Cloud Backup</span>
                 </button>
-
-                <button
-                  type="button"
-                  onClick={() => setIsTrashModalOpen(true)}
-                  className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 border ${
-                    trashItems.length > 0
-                      ? 'bg-rose-50 text-rose-750 border-rose-300 hover:bg-rose-100 shadow-2xs'
-                      : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
-                  }`}
-                  title="Open Trash Bin to restore deleted projects or materials"
-                >
-                  <Trash2 className={`w-3.5 h-3.5 ${trashItems.length > 0 ? 'text-rose-600 animate-bounce' : 'text-slate-500'}`} />
-                  <span>Trash Bin ({trashItems.length})</span>
-                </button>
               </>
             )}
 
@@ -480,8 +526,8 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
               onChange={(e) => setFilterMachine(e.target.value)}
               className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 font-semibold focus:outline-hidden"
             >
-              <option value="ALL">All Machine Types</option>
-              {MACHINE_CATEGORIES.map((m) => (
+              <option value="ALL">All Machine Types ({dynamicMachineList.length})</option>
+              {dynamicMachineList.map((m) => (
                 <option key={m} value={m}>
                   {m}
                 </option>
@@ -680,16 +726,34 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
                   </div>
                 </div>
 
-                {/* Open Project Action Button & Super Admin Delete */}
+                {/* Open Project & Basket Action Buttons & Super Admin Delete */}
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => onSelectProject(prj)}
-                    className="flex-1 py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold shadow-xs flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer"
+                    className="flex-1 py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold shadow-xs flex items-center justify-center gap-1.5 transition-all active:scale-98 cursor-pointer"
                   >
                     <span>Open Project</span>
                     <ArrowRight className="w-3.5 h-3.5 text-emerald-400 group-hover:translate-x-0.5 transition-transform" />
                   </button>
+
+                  <button
+                    type="button"
+                    title={`Open Order Basket for ${prj.name}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (onOpenProcurementBasketWithProject) {
+                        onOpenProcurementBasketWithProject(prj.name);
+                      } else if (onOpenProcurementBasket) {
+                        onOpenProcurementBasket();
+                      }
+                    }}
+                    className="py-2.5 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                  >
+                    <ShoppingCart className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Basket</span>
+                  </button>
+
                   {isSuperAdmin && (
                     <button
                       type="button"
@@ -829,6 +893,22 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
                             <span>View</span>
                             <ArrowRight className="w-3 h-3 text-emerald-400" />
                           </button>
+                          <button
+                            type="button"
+                            title={`Open Order Basket for ${prj.name}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (onOpenProcurementBasketWithProject) {
+                                onOpenProcurementBasketWithProject(prj.name);
+                              } else if (onOpenProcurementBasket) {
+                                onOpenProcurementBasket();
+                              }
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-2xs inline-flex items-center gap-1 transition-all cursor-pointer active:scale-95"
+                          >
+                            <ShoppingCart className="w-3 h-3 text-amber-300" />
+                            <span>Basket</span>
+                          </button>
                           {isSuperAdmin && (
                             <button
                               type="button"
@@ -860,10 +940,21 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
         isOpen={isNewProjectModalOpen}
         onClose={() => setIsNewProjectModalOpen(false)}
         title="Create New Project"
-        subtitle="Establish dedicated project with client details and project timeline"
+        subtitle="Establish dedicated project with self-learning client memory & automatic BOM generation"
         maxWidth="md"
       >
         <form onSubmit={handleCreateProject} className="space-y-4 text-xs font-sans">
+          {/* Smart Self-Learning Notice */}
+          <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-blue-900 font-bold text-xs">
+              <Sparkles className="w-4 h-4 text-blue-600 shrink-0" />
+              <span>Auto-Learns Customer & Generates Project BOM</span>
+            </div>
+            <span className="px-2 py-0.5 rounded-md bg-blue-600 text-white font-black text-[10px] uppercase tracking-wider shrink-0">
+              Live Sync
+            </span>
+          </div>
+
           {/* 1. Project Name */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
@@ -874,35 +965,70 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
               required
               value={newProjectForm.name}
               onChange={(e) => setNewProjectForm({ ...newProjectForm, name: e.target.value })}
-              placeholder="e.g. Mahalaxmi 2, FOHA, Project 1"
+              placeholder="e.g. Mahalaxmi 2, FOHA, Rotary Line 1"
               className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-bold focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition-all"
               autoFocus
             />
           </div>
 
-          {/* 2. Client Name & 3. Client Number (Separate Inputs) */}
+          {/* Machine / Assembly Name */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+              Machine / Assembly Name (Optional)
+            </label>
+            <input
+              type="text"
+              list="learned-machines-directory"
+              value={newProjectForm.machineName}
+              onChange={(e) => setNewProjectForm({ ...newProjectForm, machineName: e.target.value })}
+              placeholder="e.g. Liquid Filling Line, Conveyor Cell, Washing System"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-semibold focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition-all"
+            />
+            <datalist id="learned-machines-directory">
+              {dynamicMachineList.map((m) => (
+                <option key={m} value={m} />
+              ))}
+            </datalist>
+          </div>
+
+          {/* 2. Client Name & 3. Client Number (Self-Learning Combobox) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
-                Client Name *
+                Client / Customer Name *
               </label>
               <input
                 type="text"
                 required
+                list="learned-customers-directory"
                 value={newProjectForm.clientName}
-                onChange={(e) => setNewProjectForm({ ...newProjectForm, clientName: e.target.value })}
-                placeholder="e.g. Cadila Healthcare Ltd"
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const matched = customers.find(c => c.name.toLowerCase() === val.toLowerCase());
+                  setNewProjectForm({
+                    ...newProjectForm,
+                    clientName: val,
+                    clientNumber: matched?.mobile || newProjectForm.clientNumber,
+                  });
+                }}
+                placeholder="Type new or select existing"
                 className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-semibold focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none text-sm transition-all"
               />
+              <datalist id="learned-customers-directory">
+                {customers.map((c) => (
+                  <option key={c.id} value={c.name}>
+                    {c.mobile ? `${c.name} (${c.mobile})` : c.name}
+                  </option>
+                ))}
+              </datalist>
             </div>
 
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
-                Client Number *
+                Client Contact Number
               </label>
               <input
                 type="text"
-                required
                 value={newProjectForm.clientNumber}
                 onChange={(e) => setNewProjectForm({ ...newProjectForm, clientNumber: e.target.value })}
                 placeholder="e.g. +91 98765 43210"

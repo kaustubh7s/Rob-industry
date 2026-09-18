@@ -67,15 +67,15 @@ export const MobileAdminApp: React.FC = () => {
 
   // Quick Material Add Form State
   const [quickMatForm, setQuickMatForm] = useState({
-    projectName: projects[0]?.name || 'FOHA',
-    machineName: '16 HD',
+    projectName: projects[0]?.name || '',
+    machineName: projects[0]?.machineType || '',
     description: '',
     materialType: 'SS Flat' as MaterialType,
-    sizeSpecs: '80 x 6 x 485',
+    sizeSpecs: '',
     quantity: 1,
     unit: 'Nos',
-    vendor: 'Manav Metal',
-    poNo: '36',
+    vendor: 'Standard Vendor',
+    poNo: '',
   });
 
   const isCloudOn = getSupabaseConfig().autoSync;
@@ -126,14 +126,14 @@ export const MobileAdminApp: React.FC = () => {
       sizeSpecs: quickMatForm.sizeSpecs.trim(),
       quantity: Number(quickMatForm.quantity) || 1,
       unit: quickMatForm.unit,
-      projectName: quickMatForm.projectName || (projects[0]?.name || 'FOHA'),
-      customerName: 'Cadila Healthcare Ltd',
-      poNumber: quickMatForm.poNo,
+      projectName: quickMatForm.projectName || (projects[0]?.name || 'General Project'),
+      customerName: projects.find(p => p.name === quickMatForm.projectName)?.customer || 'Direct Customer',
+      poNumber: quickMatForm.poNo || '-',
       poDate: new Date().toISOString().split('T')[0],
-      machineType: (quickMatForm.machineName || '16 HD') as MachineCategory,
+      machineType: (quickMatForm.machineName || projects[0]?.machineType || 'General Machine') as MachineCategory,
       orderSource: 'Customer PO',
-      vendor: quickMatForm.vendor,
-      bomRef: `BOM-${(quickMatForm.projectName || 'MC').substring(0, 4)}`,
+      vendor: quickMatForm.vendor || 'Standard Vendor',
+      bomRef: `BOM-${(quickMatForm.projectName || 'GEN').substring(0, 6)}`,
       stockStatus: 'Available',
       availableStock: 25,
       shortageQty: 0,
@@ -369,7 +369,7 @@ export const MobileAdminApp: React.FC = () => {
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-white text-xs truncate">{p.name}</span>
                             <span className="text-[9px] font-mono bg-blue-500/10 text-blue-400 px-1.5 py-0.2 rounded border border-blue-500/30">
-                              {p.machineType || '16 HD'}
+                              {p.machineType || p.name}
                             </span>
                           </div>
                           <p className="text-[10px] text-slate-400 mt-0.5">
@@ -434,7 +434,7 @@ export const MobileAdminApp: React.FC = () => {
                           </span>
                         </div>
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-300 border border-blue-500/30 shrink-0 font-mono">
-                          {p.machineType || '16 HD'}
+                          {p.machineType || p.name}
                         </span>
                       </div>
 
@@ -805,7 +805,7 @@ export const MobileAdminApp: React.FC = () => {
           isOpen={Boolean(selectedProjectForDetail)}
           onClose={() => setSelectedProjectForDetail(null)}
           title={`📁 ${selectedProjectForDetail.name}`}
-          subtitle={`${selectedProjectForDetail.projectNumber} • ${selectedProjectForDetail.machineType || '16 HD'}`}
+          subtitle={`${selectedProjectForDetail.projectNumber} • ${selectedProjectForDetail.machineType || selectedProjectForDetail.name}`}
           maxWidth="md"
         >
           <div className="space-y-3.5 text-xs">

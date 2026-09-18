@@ -101,66 +101,75 @@ const ERPAppContent: React.FC = () => {
     return <MobileAdminApp />;
   }
 
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
   return (
     <div className={`min-h-screen flex flex-col ${isProductionWorkstation ? 'bg-[#f8fafc] text-slate-900' : 'bg-slate-950 text-slate-100'} selection:bg-slate-900 selection:text-white`}>
-      {/* Header */}
+      {/* Header with ☰ Menu Drawer Toggle */}
       <Header
         onOpenSearch={() => setIsSearchOpen(true)}
         onOpenExcel={() => setIsExcelOpen(true)}
         onOpenCalculator={() => setIsCalcModalOpen(true)}
         onOpenQuickAction={handleOpenQuickAction}
         onOpenTutorial={() => setIsTutorialOpen(true)}
+        onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
       />
 
-      {/* Main Body */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar (Hidden in focused production workstation view) */}
-        {!isProductionWorkstation && <Sidebar onOpenTutorial={() => setIsTutorialOpen(true)} />}
+      {/* Main Full-Screen Body */}
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* Slide-out Drawer Sidebar (Opens only when needed) */}
+        <Sidebar
+          isOpen={isSidebarOpen}
+          onClose={() => setIsSidebarOpen(false)}
+          onOpenTutorial={() => setIsTutorialOpen(true)}
+        />
 
-        {/* Main View Port */}
-        <main className={`flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 ${isProductionWorkstation ? 'bg-[#f8fafc] w-full' : 'bg-slate-950'}`}>
-          <div className={`${isProductionWorkstation ? 'max-w-[1600px]' : 'max-w-7xl'} mx-auto space-y-6`}>
-            {/* Primary Factory Workstation: Material Entry, Projects Directory & Security Matrix */}
-            {isProductionWorkstation ? (
+        {/* 100% Full Screen Main Viewport */}
+        <main className="flex-1 w-full overflow-y-auto p-4 sm:p-6 lg:p-8 bg-[#f8fafc] text-slate-900 custom-scrollbar">
+          <div className="w-full max-w-[1800px] mx-auto space-y-6">
+            {/* Core Workstation Screens */}
+            {(activeTab === 'entry' ||
+              activeTab === 'requirements' ||
+              activeTab === 'projects' ||
+              activeTab === 'details' ||
+              activeTab === 'procurement' ||
+              activeTab === 'members') && (
               <ProjectMaterialEntry />
-            ) : (
-              <>
-                {activeTab === 'requirements' && <ProjectMaterialRequirementsTable />}
-                {activeTab === 'dashboard' && (
-                  <Dashboard
-                    onOpenQuickAction={handleOpenQuickAction}
-                    onOpenExcel={() => setIsExcelOpen(true)}
-                    onOpenTutorial={() => setIsTutorialOpen(true)}
-                  />
-                )}
-                {activeTab === 'orders' && <ProductionTable />}
-                {activeTab === 'bom' && <BOMManager />}
-                {activeTab === 'mrp' && <MRPEngine />}
-                {activeTab === 'dispatcher' && <ShopfloorDispatcher />}
-                {activeTab === 'terminal' && <OperatorTerminal />}
-                {activeTab === 'subcontracting' && <SubcontractingManager />}
-                {activeTab === 'traceability' && <MaterialTraceabilityEngine />}
-                {activeTab === 'vendor_performance' && <VendorPerformanceDashboard />}
-                {activeTab === 'vendor_portal' && <VendorPortal />}
-                {activeTab === 'projects' && <ProjectManager />}
-                {activeTab === 'materials' && (
-                  <MaterialCatalog onOpenCalculator={() => setIsCalcModalOpen(true)} />
-                )}
-                {activeTab === 'calculator' && <WeightCalculator />}
-                {activeTab === 'inward' && <InwardManagement onOpenQuickAction={handleOpenQuickAction} />}
-                {activeTab === 'outward' && <OutwardManagement onOpenQuickAction={handleOpenQuickAction} />}
-                {activeTab === 'production' && <JobCardManager />}
-                {activeTab === 'quality' && <QCInspectionManager />}
-                {activeTab === 'vendors' && <VendorManager />}
-                {activeTab === 'customers' && <CustomerManager />}
-                {activeTab === 'machines' && <MachineManager />}
-                {activeTab === 'purchase' && <PurchaseManager />}
-                {activeTab === 'sales' && <SalesManager />}
-                {activeTab === 'costing' && <CostingAnalysis />}
-                {activeTab === 'reports' && <ReportCenter />}
-                {activeTab === 'admin' && <SuperAdminPanel />}
-              </>
             )}
+
+            {/* Additional Plant Registers & Modules */}
+            {activeTab === 'dashboard' && (
+              <Dashboard
+                onOpenQuickAction={handleOpenQuickAction}
+                onOpenExcel={() => setIsExcelOpen(true)}
+                onOpenTutorial={() => setIsTutorialOpen(true)}
+              />
+            )}
+            {activeTab === 'orders' && <ProductionTable />}
+            {activeTab === 'bom' && <BOMManager />}
+            {activeTab === 'mrp' && <MRPEngine />}
+            {activeTab === 'dispatcher' && <ShopfloorDispatcher />}
+            {activeTab === 'terminal' && <OperatorTerminal />}
+            {activeTab === 'subcontracting' && <SubcontractingManager />}
+            {activeTab === 'traceability' && <MaterialTraceabilityEngine />}
+            {activeTab === 'vendor_performance' && <VendorPerformanceDashboard />}
+            {activeTab === 'vendor_portal' && <VendorPortal />}
+            {activeTab === 'materials' && (
+              <MaterialCatalog onOpenCalculator={() => setIsCalcModalOpen(true)} />
+            )}
+            {activeTab === 'calculator' && <WeightCalculator />}
+            {activeTab === 'inward' && <InwardManagement onOpenQuickAction={handleOpenQuickAction} />}
+            {activeTab === 'outward' && <OutwardManagement onOpenQuickAction={handleOpenQuickAction} />}
+            {activeTab === 'production' && <JobCardManager />}
+            {activeTab === 'quality' && <QCInspectionManager />}
+            {activeTab === 'vendors' && <VendorManager />}
+            {activeTab === 'customers' && <CustomerManager />}
+            {activeTab === 'machines' && <MachineManager />}
+            {activeTab === 'purchase' && <PurchaseManager />}
+            {activeTab === 'sales' && <SalesManager />}
+            {activeTab === 'costing' && <CostingAnalysis />}
+            {activeTab === 'reports' && <ReportCenter />}
+            {activeTab === 'admin' && <SuperAdminPanel />}
           </div>
         </main>
       </div>

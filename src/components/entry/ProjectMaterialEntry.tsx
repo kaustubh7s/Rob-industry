@@ -36,6 +36,7 @@ import {
   Eye,
   ShieldCheck,
   Globe,
+  ShoppingCart,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useERP } from '../../context/ERPContext';
@@ -45,6 +46,7 @@ import { Modal } from '../common/Modal';
 import { ProjectsDirectory } from '../projects/ProjectsDirectory';
 import { ProjectDetailsView } from '../projects/ProjectDetailsView';
 import { MemberAuthorizationManager } from '../admin/MemberAuthorizationManager';
+import { ProcurementBasket } from '../procurement/ProcurementBasket';
 import { getMaterialsForProject } from '../../utils/projectMaterialsHelper';
 import { MACHINE_BOM_TEMPLATES, MachineBOMTemplate } from '../../data/machineBOMTemplates';
 import { LiveWorldSSRatesModal } from '../rates/LiveWorldSSRatesModal';
@@ -210,15 +212,42 @@ export const ProjectMaterialEntry: React.FC = () => {
     emptyTrash,
     currentUser,
     vendors,
+    customers,
+    machines,
+    learnMachine,
+    learnCustomer,
+    learnVendor,
     logAudit,
+    activeTab,
+    setActiveTab,
   } = useERP();
 
   const isStoreIncharge = currentUser?.role === 'store_incharge';
 
-  // Mode View State: 'entry' | 'projects' | 'details' | 'members'
-  const [activeViewMode, setActiveViewMode] = useState<'entry' | 'projects' | 'details' | 'members'>(() => {
-    return currentUser?.role === 'store_incharge' ? 'projects' : 'entry';
+  // Mode View State: 'entry' | 'projects' | 'procurement' | 'details' | 'members'
+  const [activeViewMode, setActiveViewMode] = useState<'entry' | 'projects' | 'procurement' | 'details' | 'members'>(() => {
+    if (currentUser?.role === 'store_incharge') return 'projects';
+    if (activeTab === 'projects') return 'projects';
+    if (activeTab === 'procurement') return 'procurement';
+    if (activeTab === 'members') return 'members';
+    return 'entry';
   });
+
+  // Targeted Project filter for Order Basket navigation
+  const [basketProjectFilter, setBasketProjectFilter] = useState<string | undefined>(undefined);
+
+  // Sync activeViewMode with activeTab from global context
+  useEffect(() => {
+    if (activeTab === 'entry' || activeTab === 'requirements') {
+      setActiveViewMode('entry');
+    } else if (activeTab === 'projects') {
+      setActiveViewMode('projects');
+    } else if (activeTab === 'procurement') {
+      setActiveViewMode('procurement');
+    } else if (activeTab === 'members') {
+      setActiveViewMode('members');
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (isStoreIncharge && activeViewMode === 'entry') {
@@ -229,17 +258,73 @@ export const ProjectMaterialEntry: React.FC = () => {
   const [selectedDetailProject, setSelectedDetailProject] = useState<ProjectItem | null>(null);
 
   // Machine Name & Header Workflow Fields (Machine Name is primary entity)
-  const [machineName, setMachineName] = useState('16 HD');
-  const [vendorName, setVendorName] = useState('Manav Metal');
+  const [machineName, setMachineName] = useState(() => projects[0]?.machineName || projects[0]?.machineType || '');
+  const [vendorName, setVendorName] = useState(() => vendors[0]?.name || 'Manav Metal');
   const [poNo, setPoNo] = useState('36');
-  const [entryDate, setEntryDate] = useState('01-09-2026');
-  const [selectedProjectName, setSelectedProjectName] = useState<string>(() => projects[0]?.name || 'FOHA');
+  const [entryDate, setEntryDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [selectedProjectName, setSelectedProjectName] = useState<string>(() => projects[0]?.name || '');
 
-  // Custom Options Dynamic Memory
+  // Custom Options Dynamic Memory with Local Storage Persistence
   const [customMachines, setCustomMachines] = useState<string[]>([]);
   const [customMaterials, setCustomMaterials] = useState<string[]>([]);
   const [customVendors, setCustomVendors] = useState<string[]>([]);
-  const [customUnits, setCustomUnits] = useState<string[]>(['Nos', 'Kg', 'Mtr', 'Sets', 'Pcs', 'Ltr', 'Sheet']);
+  const [customUnits, setCustomUnits] = useState<string[]>(() => {
+    const saved = localStorage.getItem('rsb_custom_units');
+    return saved ? JSON.parse(saved) : ['Nos', 'Kg', 'Mtr', 'Sets', 'Pcs', 'Ltr', 'Sheet'];
+  });
+  const [customDescs, setCustomDescs] = useState<string[]>(() => {
+    const saved = localStorage.getItem('rsb_custom_descriptions');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [customSizes, setCustomSizes] = useState<string[]>(() => {
+    const saved = localStorage.getItem('rsb_custom_sizes');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Dynamic Learning Helper Functions
+  const learnDescription = (desc: string) => {
+    const clean = (desc || '').trim();
+    if (!clean) return;
+    setCustomDescs((prev) => {
+      if (prev.includes(clean)) return prev;
+      const updated = [clean, ...prev];
+      localStorage.setItem('rsb_custom_descriptions', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const learnSize = (size: string) => {
+    const clean = (size || '').trim();
+    if (!clean) return;
+    setCustomSizes((prev) => {
+      if (prev.includes(clean)) return prev;
+      const updated = [clean, ...prev];
+      localStorage.setItem('rsb_custom_sizes', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const learnUnit = (unit: string) => {
+    const clean = (unit || '').trim();
+    if (!clean) return;
+    setCustomUnits((prev) => {
+      if (prev.includes(clean)) return prev;
+      const updated = [...prev, clean];
+      localStorage.setItem('rsb_custom_units', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  // Keyboard Navigation Forwarding Refs
+  const machineInputRef = useRef<HTMLInputElement>(null);
+  const vendorInputRef = useRef<HTMLInputElement>(null);
+  const poNoInputRef = useRef<HTMLInputElement>(null);
+  const entryDateInputRef = useRef<HTMLInputElement>(null);
+  const quickDescInputRef = useRef<HTMLInputElement>(null);
+  const quickMatTypeRef = useRef<HTMLSelectElement>(null);
+  const quickSizeInputRef = useRef<HTMLInputElement>(null);
+  const quickQtyInputRef = useRef<HTMLInputElement>(null);
+  const quickUnitRef = useRef<HTMLSelectElement>(null);
 
   // Modals for Custom Additions & Direct Project Creation
   const [isAddProjectModalOpen, setIsAddProjectModalOpen] = useState(false);
@@ -252,11 +337,32 @@ export const ProjectMaterialEntry: React.FC = () => {
   const [isCustomSizeModalOpen, setIsCustomSizeModalOpen] = useState(false);
   const [isRatesModalOpen, setIsRatesModalOpen] = useState(false);
   const [isBOMModalOpen, setIsBOMModalOpen] = useState(false);
-  const [selectedBOMTemplateKey, setSelectedBOMTemplateKey] = useState<string>('16 HD');
+  const [selectedBOMTemplateKey, setSelectedBOMTemplateKey] = useState<string>(() => Object.keys(MACHINE_BOM_TEMPLATES)[0] || '');
   const [selectedBOMPartIndices, setSelectedBOMPartIndices] = useState<number[]>([]);
 
   // Temporary inputs for custom modals
   const [customMachineInput, setCustomMachineInput] = useState('');
+  const [newCustomVal, setNewCustomVal] = useState('');
+
+  // Global Event Listeners for Header & Sidebar Actions
+  useEffect(() => {
+    const handleOpenAdd = () => setIsAddProjectModalOpen(true);
+    const handleOpenBOM = () => handleOpenBOMModal(machineName);
+    const handleOpenRates = () => setIsRatesModalOpen(true);
+    const handleOpenTrash = () => setIsTrashModalOpen(true);
+
+    window.addEventListener('rsb:open-add-project', handleOpenAdd);
+    window.addEventListener('rsb:open-load-bom', handleOpenBOM);
+    window.addEventListener('rsb:open-rates', handleOpenRates);
+    window.addEventListener('rsb:open-trash', handleOpenTrash);
+
+    return () => {
+      window.removeEventListener('rsb:open-add-project', handleOpenAdd);
+      window.removeEventListener('rsb:open-load-bom', handleOpenBOM);
+      window.removeEventListener('rsb:open-rates', handleOpenRates);
+      window.removeEventListener('rsb:open-trash', handleOpenTrash);
+    };
+  }, [machineName]);
   const [customMaterialInput, setCustomMaterialInput] = useState('');
   const [customVendorInput, setCustomVendorInput] = useState('');
   const [customUnitInput, setCustomUnitInput] = useState('');
@@ -268,36 +374,45 @@ export const ProjectMaterialEntry: React.FC = () => {
     name: '',
     clientName: '',
     clientNumber: '',
+    machineName: '',
     startDate: new Date().toISOString().split('T')[0],
     targetDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
   });
 
   // Quick Material Addition Row (Step 4)
-  const [quickDesc, setQuickDesc] = useState('Mono Conveyor Inlet Patti');
+  const [quickDesc, setQuickDesc] = useState('');
   const [quickMatType, setQuickMatType] = useState<string>('SS Flat');
-  const [quickSize, setQuickSize] = useState('80 x 6 x 485');
-  const [quickQty, setQuickQty] = useState<number>(2);
+  const [quickSize, setQuickSize] = useState('');
+  const [quickQty, setQuickQty] = useState<number>(1);
   const [quickUnit, setQuickUnit] = useState('Nos');
 
   // Dynamic merged options
   const allMachineOptions = useMemo(() => {
-    return Array.from(new Set([...MACHINE_SUGGESTIONS, ...customMachines, ...projects.map((p) => p.machineName || p.machineType || '').filter(Boolean)]));
-  }, [customMachines, projects]);
+    return Array.from(
+      new Set([
+        ...customMachines,
+        ...machines.map((m) => m.name || m.type || '').filter(Boolean),
+        ...projects.map((p) => p.machineName || p.machineType || '').filter(Boolean),
+        ...projectRequirements.map((r) => r.machineName || r.machineType || '').filter(Boolean),
+      ])
+    );
+  }, [customMachines, machines, projects, projectRequirements]);
 
   const allMaterialTypes = useMemo(() => {
     return Array.from(new Set([...MATERIAL_TYPES, ...customMaterials]));
   }, [customMaterials]);
 
   const allVendorOptions = useMemo(() => {
-    return Array.from(new Set([...COMMON_VENDORS, ...customVendors, ...vendors.map((v) => v.name)]));
-  }, [customVendors, vendors]);
-
-  const allUnits = useMemo(() => {
-    return Array.from(new Set([...customUnits]));
-  }, [customUnits]);
-
-  // Ordered By is locked to the logged-in user (Amit, Kaustubh, Rahul)
-  const activeOrderedBy = currentUser?.name || 'Amit';
+    return Array.from(
+      new Set([
+        ...COMMON_VENDORS,
+        ...customVendors,
+        ...vendors.map((v) => v.name).filter(Boolean),
+        ...projects.map((p) => p.vendorName || p.vendor || '').filter(Boolean),
+        ...projectRequirements.map((r) => r.vendorName || r.vendor || '').filter(Boolean),
+      ])
+    );
+  }, [customVendors, vendors, projects, projectRequirements]);
 
   // Seed Initial 10-column table (discard empty/blank drafts)
   const [rows, setRows] = useState<EntryRow[]>(() => {
@@ -316,6 +431,35 @@ export const ProjectMaterialEntry: React.FC = () => {
     return [];
   });
 
+  const allDescriptionOptions = useMemo(() => {
+    return Array.from(
+      new Set([
+        ...COMMON_DESCRIPTIONS,
+        ...customDescs,
+        ...projectRequirements.map((r) => r.description).filter(Boolean),
+        ...rows.map((r) => r.description).filter(Boolean),
+      ])
+    );
+  }, [customDescs, projectRequirements, rows]);
+
+  const allSizeOptions = useMemo(() => {
+    return Array.from(
+      new Set([
+        ...COMMON_SIZES,
+        ...customSizes,
+        ...projectRequirements.map((r) => r.sizeSpecs).filter(Boolean),
+        ...rows.map((r) => r.sizeSpecs).filter(Boolean),
+      ])
+    );
+  }, [customSizes, projectRequirements, rows]);
+
+  const allUnits = useMemo(() => {
+    return Array.from(new Set([...customUnits]));
+  }, [customUnits]);
+
+  // Ordered By is locked to the logged-in user (Amit, Kaustubh, Rahul)
+  const activeOrderedBy = currentUser?.name || 'Amit';
+
   const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterMaterialType, setFilterMaterialType] = useState('ALL');
@@ -325,7 +469,6 @@ export const ProjectMaterialEntry: React.FC = () => {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isSavingOrder, setIsSavingOrder] = useState<boolean>(false);
 
-  const quickDescInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isUserManuallyEditingRef = useRef<boolean>(false);
   const lastSelectedProjectRef = useRef<string>('');
@@ -347,9 +490,9 @@ export const ProjectMaterialEntry: React.FC = () => {
     }));
   };
 
-  // Sync selectedProjectName when projects list updates if currently unselected or fallback
+  // Sync selectedProjectName when projects list updates if currently unselected
   useEffect(() => {
-    if ((!selectedProjectName || selectedProjectName === '16 HD') && projects.length > 0) {
+    if (!selectedProjectName && projects.length > 0) {
       setSelectedProjectName(projects[0].name);
     }
   }, [projects]);
@@ -371,7 +514,7 @@ export const ProjectMaterialEntry: React.FC = () => {
       poNo: m.poNumber || m.poNo || currentProject.poNo || currentProject.poNumber || poNo,
       srNo: idx + 1,
       materialType: (m.materialType || 'SS Flat') as MaterialType,
-      sizeSpecs: m.sizeSpecs || '80 x 6 x 485',
+      sizeSpecs: m.sizeSpecs || 'Custom Specs',
       quantity: Number(m.quantity) || 1,
       unit: m.unit || 'Nos',
       vendorName: m.vendor || m.vendorName || currentProject.vendorName || currentProject.vendor || vendorName,
@@ -391,7 +534,7 @@ export const ProjectMaterialEntry: React.FC = () => {
 
       // Update header fields to match project
       if (currentProject.machineName || currentProject.machineType) {
-        setMachineName(currentProject.machineName || currentProject.machineType || '16 HD');
+        setMachineName(currentProject.machineName || currentProject.machineType || currentProject.name);
       }
       if (currentProject.vendorName || currentProject.vendor) {
         setVendorName(currentProject.vendorName || currentProject.vendor || 'Manav Metal');
@@ -400,7 +543,7 @@ export const ProjectMaterialEntry: React.FC = () => {
         setPoNo(currentProject.poNo || currentProject.poNumber || '36');
       }
       if (currentProject.date || currentProject.startDate) {
-        setEntryDate(currentProject.date || currentProject.startDate || '01-09-2026');
+        setEntryDate(currentProject.date || currentProject.startDate || new Date().toISOString().split('T')[0]);
       }
     } else {
       // Still on the same project: only sync if external updates happened and user is not actively editing
@@ -534,7 +677,7 @@ export const ProjectMaterialEntry: React.FC = () => {
 
     const copiedRows: EntryRow[] = prevMaterials.map((m, idx) => ({
       id: `copy-${Date.now()}-${idx}`,
-      machineName: machineName || prevProject.machineName || prevProject.machineType || '16 HD',
+      machineName: machineName || prevProject.machineName || prevProject.machineType || prevProject.name,
       date: entryDate,
       poNo: poNo,
       srNo: rows.length + idx + 1,
@@ -556,7 +699,7 @@ export const ProjectMaterialEntry: React.FC = () => {
 
   // Duplicate Order (Generates new PO entry and copies all materials)
   const handleDuplicateOrder = (prevProject: ProjectItem) => {
-    const prevMachine = prevProject.machineName || prevProject.machineType || machineName;
+    const prevMachine = prevProject.machineName || prevProject.machineType || machineName || prevProject.name;
     const prevVendor = prevProject.vendorName || prevProject.vendor || vendorName;
     const newPo = `${Number(prevProject.poNo || prevProject.poNumber || 36) + 1}`;
 
@@ -590,11 +733,11 @@ export const ProjectMaterialEntry: React.FC = () => {
 
   // Add 1-click suggested part
   const handleAddSuggestedPart = (part: { description: string; materialType: MaterialType; sizeSpecs: string; qty: number; unit: string }) => {
-    const targetProject = selectedProjectName || (projects.length > 0 ? projects[0].name : 'FOHA');
+    const targetProject = selectedProjectName || (projects.length > 0 ? projects[0].name : 'Project-1');
     const newRow: EntryRow = {
       id: `sug-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-      machineName: machineName || '16 HD',
-      date: entryDate || '01-09-2026',
+      machineName: machineName || targetProject,
+      date: entryDate || new Date().toISOString().split('T')[0],
       poNo: poNo || '36',
       srNo: rows.length + 1,
       materialType: part.materialType,
@@ -614,11 +757,11 @@ export const ProjectMaterialEntry: React.FC = () => {
 
   // Add all suggested parts in 1 click
   const handleAddAllSuggestedParts = () => {
-    const targetProject = selectedProjectName || (projects.length > 0 ? projects[0].name : 'FOHA');
+    const targetProject = selectedProjectName || (projects.length > 0 ? projects[0].name : 'Project-1');
     const newRows: EntryRow[] = suggestedFrequentParts.map((part, idx) => ({
       id: `sug-all-${Date.now()}-${idx}`,
-      machineName: machineName || '16 HD',
-      date: entryDate || '01-09-2026',
+      machineName: machineName || targetProject,
+      date: entryDate || new Date().toISOString().split('T')[0],
       poNo: poNo || '36',
       srNo: rows.length + idx + 1,
       materialType: part.materialType,
@@ -642,17 +785,17 @@ export const ProjectMaterialEntry: React.FC = () => {
     setSelectedProjectName(pName);
     const found = projects.find((p) => p.name === pName);
     if (found) {
-      if (found.machineName || found.machineType) setMachineName(found.machineName || found.machineType || '16 HD');
+      if (found.machineName || found.machineType) setMachineName(found.machineName || found.machineType || found.name);
       if (found.vendorName || found.vendor) setVendorName(found.vendorName || found.vendor || 'Manav Metal');
       if (found.poNo || found.poNumber) setPoNo(found.poNo || found.poNumber || '36');
-      if (found.date || found.createdDate) setEntryDate(found.date || found.createdDate || '01-09-2026');
+      if (found.date || found.createdDate) setEntryDate(found.date || found.createdDate || new Date().toISOString().split('T')[0]);
 
       // Sync workstation rows with the project's actual material requirements
       const existingMats = getMaterialsForProject(found, projectRequirements);
       const mappedRows: EntryRow[] = existingMats.map((m, idx) => ({
         id: m.id,
-        machineName: m.machineName || m.machineType || found.machineType || '16 HD',
-        date: m.poDate || m.date || found.startDate || '01-09-2026',
+        machineName: m.machineName || m.machineType || found.machineType || found.name,
+        date: m.poDate || m.date || found.startDate || new Date().toISOString().split('T')[0],
         poNo: m.poNumber || m.poNo || found.poNumber || '36',
         srNo: idx + 1,
         materialType: m.materialType as MaterialType,
@@ -673,11 +816,12 @@ export const ProjectMaterialEntry: React.FC = () => {
     if (e) e.preventDefault();
     if (!newProjectForm.name.trim()) return;
 
-    const formattedStartDate = newProjectForm.startDate || '01-09-2026';
-    const formattedTargetDate = newProjectForm.targetDate || '30-10-2026';
-    const clientNameVal = newProjectForm.clientName.trim() || 'Cadila Healthcare Ltd';
+    const formattedStartDate = newProjectForm.startDate || new Date().toISOString().split('T')[0];
+    const formattedTargetDate = newProjectForm.targetDate || new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+    const clientNameVal = newProjectForm.clientName.trim() || 'General Client';
     const clientNumVal = newProjectForm.clientNumber.trim();
     const customerDisplay = clientNumVal ? `${clientNameVal} (${clientNumVal})` : clientNameVal;
+    const resolvedMachine = newProjectForm.machineName?.trim() || machineName || newProjectForm.name.trim();
 
     const newPrj: Omit<ProjectItem, 'id'> = {
       name: newProjectForm.name.trim(),
@@ -686,8 +830,8 @@ export const ProjectMaterialEntry: React.FC = () => {
       clientName: clientNameVal,
       clientNumber: clientNumVal,
       orderSource: 'Customer PO',
-      machineType: (machineName || '16 HD') as MachineCategory,
-      machineName: machineName || '16 HD',
+      machineType: resolvedMachine as any,
+      machineName: resolvedMachine,
       poNumber: poNo || `PO-2026-${projects.length + 1}`,
       poNo: poNo || `PO-2026-${projects.length + 1}`,
       date: formattedStartDate,
@@ -707,19 +851,28 @@ export const ProjectMaterialEntry: React.FC = () => {
       notes: `Project ${newProjectForm.name.trim()} - Client: ${clientNameVal} | Phone: ${clientNumVal || 'N/A'}`,
     };
 
+    if (resolvedMachine) {
+      learnMachine(resolvedMachine);
+    }
+    if (clientNameVal) {
+      learnCustomer(clientNameVal, clientNumVal);
+    }
+
     addProject(newPrj);
     setSelectedProjectName(newPrj.name);
+    setMachineName(resolvedMachine);
     setIsAddProjectModalOpen(false);
     setNewProjectForm({
       name: '',
       clientName: '',
       clientNumber: '',
+      machineName: '',
       startDate: new Date().toISOString().split('T')[0],
       targetDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     });
 
     confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
-    setSaveToast(`✨ Created Project "${newPrj.name}"! You can now add material requirements to it.`);
+    setSaveToast(`✨ Created Project "${newPrj.name}" & Learned Machine "${resolvedMachine}"!`);
     setTimeout(() => setSaveToast(null), 4000);
   };
 
@@ -728,13 +881,14 @@ export const ProjectMaterialEntry: React.FC = () => {
     if (e) e.preventDefault();
     const val = customMachineInput.trim();
     if (!val) return;
+    learnMachine(val);
     if (!customMachines.includes(val)) {
       setCustomMachines((prev) => [...prev, val]);
     }
     setMachineName(val);
     setCustomMachineInput('');
     setIsCustomMachineModalOpen(false);
-    setSaveToast(`Added Custom Machine: "${val}"`);
+    setSaveToast(`Added & Learned Machine: "${val}"`);
     setTimeout(() => setSaveToast(null), 2500);
   };
 
@@ -809,10 +963,11 @@ export const ProjectMaterialEntry: React.FC = () => {
 
   // Open Standard Machine BOM Template Modal
   const handleOpenBOMModal = (targetMachine?: string) => {
-    const key = targetMachine || machineName || '16 HD';
-    const foundKey = Object.keys(MACHINE_BOM_TEMPLATES).find(
+    const keys = Object.keys(MACHINE_BOM_TEMPLATES);
+    const key = targetMachine || machineName || (keys[0] || '');
+    const foundKey = keys.find(
       (k) => k.toLowerCase() === key.trim().toLowerCase()
-    ) || '16 HD';
+    ) || keys[0] || '';
     setSelectedBOMTemplateKey(foundKey);
     const tmpl = MACHINE_BOM_TEMPLATES[foundKey];
     if (tmpl) {
@@ -832,19 +987,19 @@ export const ProjectMaterialEntry: React.FC = () => {
       return;
     }
 
-    const targetProject = selectedProjectName || (projects.length > 0 ? projects[0].name : 'FOHA');
+    const targetProject = selectedProjectName || (projects.length > 0 ? projects[0].name : 'General Project');
 
     const newRows: EntryRow[] = partsToLoad.map((p, idx) => ({
       id: `bom-${tmpl.machineName}-${Date.now()}-${idx}`,
       machineName: tmpl.machineName,
-      date: entryDate || '01-09-2026',
-      poNo: poNo || '36',
+      date: entryDate || new Date().toLocaleDateString('en-GB'),
+      poNo: poNo || '-',
       srNo: rows.length + idx + 1,
       materialType: p.materialType as MaterialType,
       sizeSpecs: p.sizeSpecification,
       quantity: p.quantity,
       unit: p.unit,
-      vendorName: p.recommendedVendor || vendorName || 'Manav Metal',
+      vendorName: p.recommendedVendor || vendorName || 'Standard Vendor',
       description: p.description,
       orderedBy: activeOrderedBy,
       projectName: targetProject,
@@ -868,18 +1023,21 @@ export const ProjectMaterialEntry: React.FC = () => {
   // Add single material from quick entry form
   const handleAddMaterialRow = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!quickDesc.trim()) return;
+    if (!quickDesc.trim()) {
+      quickDescInputRef.current?.focus();
+      return;
+    }
 
-    const targetProject = selectedProjectName || (projects.length > 0 ? projects[0].name : 'FOHA');
+    const targetProject = selectedProjectName || (projects.length > 0 ? projects[0].name : 'Project-1');
 
     const newRow: EntryRow = {
       id: `row-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-      machineName: machineName || '16 HD',
-      date: entryDate || '01-09-2026',
+      machineName: machineName || targetProject,
+      date: entryDate || new Date().toISOString().split('T')[0],
       poNo: poNo || '36',
       srNo: rows.length + 1,
       materialType: quickMatType as MaterialType,
-      sizeSpecs: quickSize.trim() || '80 x 6 x 485',
+      sizeSpecs: quickSize.trim() || 'Custom Spec',
       quantity: Number(quickQty) || 1,
       unit: quickUnit,
       vendorName: vendorName || 'Manav Metal',
@@ -888,14 +1046,35 @@ export const ProjectMaterialEntry: React.FC = () => {
       projectName: targetProject,
     };
 
+    if (machineName) {
+      learnMachine(machineName);
+    }
+    if (vendorName) {
+      learnVendor(vendorName);
+    }
+    if (quickDesc.trim()) {
+      learnDescription(quickDesc.trim());
+    }
+    if (quickSize.trim()) {
+      learnSize(quickSize.trim());
+    }
+    if (quickUnit) {
+      learnUnit(quickUnit);
+    }
+
     setRows((prev) => normalizeSrNumbers([...prev, newRow]));
     setQuickDesc('');
     setQuickSize('');
+
     setQuickQty(1);
 
-    quickDescInputRef.current?.focus();
-    setSaveToast(`Added: ${newRow.description} (${newRow.sizeSpecs}) for Project "${targetProject}"`);
-    setTimeout(() => setSaveToast(null), 3000);
+    // Smoothly refocus back to description for continuous rapid-fire entry
+    setTimeout(() => {
+      quickDescInputRef.current?.focus();
+    }, 40);
+
+    setSaveToast(`Added row #${rows.length + 1}: ${newRow.description}`);
+    setTimeout(() => setSaveToast(null), 2000);
   };
 
   // Duplicate Row
@@ -919,53 +1098,24 @@ export const ProjectMaterialEntry: React.FC = () => {
 
   // Delete Row
   const handleDeleteRow = (rowId: string) => {
-    isUserManuallyEditingRef.current = false;
-    const targetRow = rows.find((r) => r.id === rowId);
-    setRows((prev) => {
-      const next = normalizeSrNumbers(prev.filter((r) => r.id !== rowId));
-      if (next.length === 0) {
-        localStorage.removeItem(DRAFT_STORAGE_KEY);
-      }
-      return next;
-    });
-    deleteProjectRequirement(rowId);
-    if (targetRow) {
-      const matched = projectRequirements.find(
-        (pr) =>
-          pr.id === rowId ||
-          (pr.description === targetRow.description &&
-            pr.sizeSpecs === targetRow.sizeSpecs &&
-            pr.projectName === (targetRow.projectName || selectedProjectName))
-      );
-      if (matched) {
-        deleteProjectRequirement(matched.id);
-      }
+    const row = rows.find((r) => r.id === rowId);
+    if (row && projectRequirements.some((pr) => pr.id === row.id)) {
+      deleteProjectRequirement(row.id);
     }
-    setSaveToast('🗑️ Deleted row • Moved to Trash & purged from DB');
-    setTimeout(() => setSaveToast(null), 2500);
+    setRows((prev) => normalizeSrNumbers(prev.filter((r) => r.id !== rowId)));
+    setSaveToast('Deleted row');
+    setTimeout(() => setSaveToast(null), 2000);
   };
 
-  // Cell Change (Ordered By is strictly locked)
-  const handleCellChange = (id: string, field: keyof EntryRow, value: any) => {
-    if (field === 'orderedBy') return; // Read-only
-    isUserManuallyEditingRef.current = true;
-    setRows((prev) =>
-      prev.map((r) => {
-        if (r.id === id) {
-          return { ...r, [field]: value };
-        }
-        return r;
-      })
-    );
-  };
-
-  // Bulk Delete
-  const handleBulkDelete = () => {
+  // Delete Selected Rows in Bulk
+  const handleDeleteSelectedRows = () => {
     if (selectedRowIds.length === 0) return;
-    if (confirm(`Delete ${selectedRowIds.length} selected rows?`)) {
-      isUserManuallyEditingRef.current = false;
+    if (
+      confirm(
+        `Are you sure you want to delete ${selectedRowIds.length} selected row(s)? This will move them to Trash and delete permanently from DB.`
+      )
+    ) {
       selectedRowIds.forEach((id) => {
-        deleteProjectRequirement(id);
         const row = rows.find((r) => r.id === id);
         if (row) {
           const matched = projectRequirements.find(
@@ -987,22 +1137,41 @@ export const ProjectMaterialEntry: React.FC = () => {
     }
   };
 
+  // Cell Change (Ordered By is strictly locked)
+  const handleCellChange = (id: string, field: keyof EntryRow, value: any) => {
+    if (field === 'orderedBy') return; // Read-only
+    isUserManuallyEditingRef.current = true;
+    setRows((prev) =>
+      prev.map((r) => {
+        if (r.id === id) {
+          return { ...r, [field]: value };
+        }
+        return r;
+      })
+    );
+  };
+
   // Save Project (Synchronizes all materials and project headers directly to Database & Cloud)
   const handleSaveProject = async () => {
     isUserManuallyEditingRef.current = false;
-    const targetProject = selectedProjectName || (projects.length > 0 ? projects[0].name : '16 HD');
+    const targetProject = selectedProjectName || (projects.length > 0 ? projects[0].name : 'Project-1');
     setIsSavingOrder(true);
 
     try {
+      const existingProject = projects.find(
+        (p) => p.name.trim().toLowerCase() === targetProject.trim().toLowerCase()
+      );
+      const custName = existingProject?.customer || existingProject?.clientName || 'General Client';
+
       const itemsToSave: Partial<ProjectMaterialRequirementItem>[] = rows.map((r) => ({
         id: r.id,
         projectName: r.projectName || targetProject,
-        customerName: 'Cadila Healthcare Ltd (Zydus)',
+        customerName: custName,
         poNumber: r.poNo || poNo,
         poDate: r.date || entryDate,
         date: r.date || entryDate,
-        machineType: (r.machineName || machineName) as any,
-        machineName: r.machineName || machineName,
+        machineType: (r.machineName || machineName || targetProject) as any,
+        machineName: r.machineName || machineName || targetProject,
         poNo: r.poNo || poNo,
         vendorName: r.vendorName || vendorName,
         vendor: r.vendorName || vendorName,
@@ -1025,13 +1194,28 @@ export const ProjectMaterialEntry: React.FC = () => {
         notes: `RSB Machine Workflow | Ordered by ${activeOrderedBy}`,
       }));
 
+      // Auto-learn machine, vendor, and customer on order save
+      if (machineName) {
+        learnMachine(machineName);
+      }
+      if (vendorName) {
+        learnVendor(vendorName);
+      }
+      rows.forEach((r) => {
+        if (r.machineName) learnMachine(r.machineName);
+        if (r.vendorName) learnVendor(r.vendorName);
+        if (r.description) learnDescription(r.description);
+        if (r.sizeSpecs) learnSize(r.sizeSpecs);
+        if (r.unit) learnUnit(r.unit);
+      });
+      if (custName) {
+        learnCustomer(custName);
+      }
+
       // Replace and update requirements in state and database
       replaceProjectRequirements(targetProject, itemsToSave);
 
       // Update project header in state and database
-      const existingProject = projects.find(
-        (p) => p.name.trim().toLowerCase() === targetProject.trim().toLowerCase()
-      );
       if (existingProject) {
         updateProject(existingProject.id, {
           machineName: machineName || existingProject.machineName,
@@ -1109,13 +1293,13 @@ export const ProjectMaterialEntry: React.FC = () => {
 
       const importedRows: EntryRow[] = parsedData.map((it: any, idx: number) => ({
         id: `imp-${Date.now()}-${idx}`,
-        projectName: it['Project Name'] || it['Project'] || selectedProjectName || machineName || '16 HD',
-        machineName: it['Machine Name'] || it['Machine'] || machineName || '16 HD',
-        date: it['Date'] || entryDate || '01-09-2026',
+        projectName: it['Project Name'] || it['Project'] || selectedProjectName || machineName || 'Project-1',
+        machineName: it['Machine Name'] || it['Machine'] || machineName || selectedProjectName || 'Custom Assembly',
+        date: it['Date'] || entryDate || new Date().toISOString().split('T')[0],
         poNo: it['PO No'] || it['PO'] || it['poNumber'] || poNo || '36',
         srNo: idx + 1,
         materialType: (it['Material Type'] || it['materialType'] || 'SS Flat') as MaterialType,
-        sizeSpecs: it['Size Specification'] || it['Size Specs'] || it['sizeSpecs'] || '80 x 6 x 485',
+        sizeSpecs: it['Size Specification'] || it['Size Specs'] || it['sizeSpecs'] || 'Custom Spec',
         quantity: Number(it['Quantity'] || it['Qty'] || it['quantity']) || 1,
         unit: it['Unit'] || it['unit'] || 'Nos',
         vendorName: it['Vendor Name'] || it['Vendor'] || it['vendor'] || vendorName || 'Manav Metal',
@@ -1147,86 +1331,39 @@ export const ProjectMaterialEntry: React.FC = () => {
         r.orderedBy.toLowerCase().includes(searchTerm.toLowerCase());
 
       const matchMat = filterMaterialType === 'ALL' || r.materialType === filterMaterialType;
-      const matchVen = filterVendor === 'ALL' || r.vendorName === filterVendor;
-
-      return matchSearch && matchMat && matchVen;
+      return matchSearch && matchMat;
     });
-  }, [rows, searchTerm, filterMaterialType, filterVendor]);
+  }, [rows, searchTerm, filterMaterialType]);
 
-  // View Mode Switcher
+  // View Mode Switcher: Procurement Basket
+  if (activeViewMode === 'procurement') {
+    return <ProcurementBasket initialProjectFilter={basketProjectFilter} />;
+  }
+
+  // View Mode Switcher: Projects Directory
   if (activeViewMode === 'projects' || isStoreIncharge) {
-    return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-          <div className="flex items-center gap-2">
-            {!isStoreIncharge && (
-              <button
-                type="button"
-                onClick={() => setActiveViewMode('entry')}
-                className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
-              >
-                <Zap className="w-3.5 h-3.5 text-amber-500" />
-                <span>Fast Material Entry</span>
-              </button>
-            )}
+    if (activeViewMode === 'details' && selectedDetailProject) {
+      return (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 pb-2 border-b border-slate-200">
             <button
               type="button"
-              className="px-3.5 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
+              onClick={() => setActiveViewMode('projects')}
+              className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
             >
-              <FolderKanban className="w-3.5 h-3.5 text-blue-400" />
-              <span>Projects Directory ({projects.length})</span>
+              <FolderKanban className="w-3.5 h-3.5 text-blue-600" />
+              <span>← Back to All Projects</span>
             </button>
+            <span className="px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-bold shadow-xs flex items-center gap-1.5">
+              <Layers className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Project: {selectedDetailProject.name}</span>
+            </span>
           </div>
 
-          {isStoreIncharge && (
-            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-semibold">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Stores Inspector Mode • Vendor Material Arrival Verification</span>
-            </div>
-          )}
-        </div>
-
-        {activeViewMode === 'details' && selectedDetailProject ? (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 pb-2 border-b border-slate-200">
-              <button
-                type="button"
-                onClick={() => setActiveViewMode('projects')}
-                className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
-              >
-                <FolderKanban className="w-3.5 h-3.5 text-blue-600" />
-                <span>← Back to All Projects</span>
-              </button>
-              <button
-                type="button"
-                className="px-3.5 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
-              >
-                <Layers className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Project: {selectedDetailProject.name}</span>
-              </button>
-            </div>
-
-            <ProjectDetailsView
-              project={selectedDetailProject}
-              onBack={() => setActiveViewMode('projects')}
-              onOpenInEntrySheet={
-                !isStoreIncharge
-                  ? (pName) => {
-                      const found = projects.find((p) => p.name === pName);
-                      if (found) handleUsePreviousOrder(found);
-                      setActiveViewMode('entry');
-                    }
-                  : undefined
-              }
-            />
-          </div>
-        ) : (
-          <ProjectsDirectory
-            onSelectProject={(prj) => {
-              setSelectedDetailProject(prj);
-              setActiveViewMode('details');
-            }}
-            onOpenEntrySheetWithProject={
+          <ProjectDetailsView
+            project={selectedDetailProject}
+            onBack={() => setActiveViewMode('projects')}
+            onOpenInEntrySheet={
               !isStoreIncharge
                 ? (pName) => {
                     const found = projects.find((p) => p.name === pName);
@@ -1236,8 +1373,34 @@ export const ProjectMaterialEntry: React.FC = () => {
                 : undefined
             }
           />
-        )}
-      </div>
+        </div>
+      );
+    }
+
+    return (
+      <ProjectsDirectory
+        onSelectProject={(prj) => {
+          setSelectedDetailProject(prj);
+          setActiveViewMode('details');
+        }}
+        onOpenEntrySheetWithProject={
+          !isStoreIncharge
+            ? (pName) => {
+                const found = projects.find((p) => p.name === pName);
+                if (found) handleUsePreviousOrder(found);
+                setActiveViewMode('entry');
+              }
+            : undefined
+        }
+        onOpenProcurementBasket={() => {
+          setBasketProjectFilter(undefined);
+          setActiveViewMode('procurement');
+        }}
+        onOpenProcurementBasketWithProject={(pName) => {
+          setBasketProjectFilter(pName);
+          setActiveViewMode('procurement');
+        }}
+      />
     );
   }
 
@@ -1247,27 +1410,16 @@ export const ProjectMaterialEntry: React.FC = () => {
         <div className="flex items-center gap-2 pb-2 border-b border-slate-200">
           <button
             type="button"
-            onClick={() => setActiveViewMode('entry')}
-            className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
-          >
-            <Zap className="w-3.5 h-3.5 text-amber-500" />
-            <span>Material Entry Workstation</span>
-          </button>
-          <button
-            type="button"
             onClick={() => setActiveViewMode('projects')}
-            className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+            className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
           >
             <FolderKanban className="w-3.5 h-3.5 text-blue-600" />
-            <span>Projects Directory</span>
+            <span>← Back to All Projects</span>
           </button>
-          <button
-            type="button"
-            className="px-3.5 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
-          >
+          <span className="px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-bold shadow-xs flex items-center gap-1.5">
             <Layers className="w-3.5 h-3.5 text-cyan-400" />
             <span>Machine: {selectedDetailProject.machineName || selectedDetailProject.name}</span>
-          </button>
+          </span>
         </div>
 
         <ProjectDetailsView
@@ -1284,37 +1436,7 @@ export const ProjectMaterialEntry: React.FC = () => {
   }
 
   if (activeViewMode === 'members') {
-    return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 pb-2 border-b border-slate-200">
-          <button
-            type="button"
-            onClick={() => setActiveViewMode('entry')}
-            className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
-          >
-            <Zap className="w-3.5 h-3.5 text-amber-500" />
-            <span>Project Material Entry</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveViewMode('projects')}
-            className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
-          >
-            <FolderKanban className="w-3.5 h-3.5 text-blue-600" />
-            <span>Projects Directory ({projects.length})</span>
-          </button>
-          <button
-            type="button"
-            className="px-3.5 py-1.5 rounded-xl bg-purple-900 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 border border-purple-700"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-            <span>Member Authorization Matrix (Super Admin)</span>
-          </button>
-        </div>
-
-        <MemberAuthorizationManager />
-      </div>
-    );
+    return <MemberAuthorizationManager />;
   }
 
   return (
@@ -1329,25 +1451,25 @@ export const ProjectMaterialEntry: React.FC = () => {
       </datalist>
 
       <datalist id="machine-suggestions">
-        {MACHINE_SUGGESTIONS.map((m) => (
+        {allMachineOptions.map((m) => (
           <option key={m} value={m} />
         ))}
       </datalist>
 
       <datalist id="vendor-suggestions">
-        {COMMON_VENDORS.map((v) => (
+        {allVendorOptions.map((v) => (
           <option key={v} value={v} />
         ))}
       </datalist>
 
       <datalist id="description-suggestions">
-        {COMMON_DESCRIPTIONS.map((d) => (
+        {allDescriptionOptions.map((d) => (
           <option key={d} value={d} />
         ))}
       </datalist>
 
       <datalist id="size-suggestions">
-        {COMMON_SIZES.map((s) => (
+        {allSizeOptions.map((s) => (
           <option key={s} value={s} />
         ))}
       </datalist>
@@ -1430,41 +1552,6 @@ export const ProjectMaterialEntry: React.FC = () => {
               <span className="text-xs font-black text-emerald-400">{activeOrderedBy}</span>
             </div>
           </div>
-
-          <button
-            type="button"
-            onClick={() => setActiveViewMode('projects')}
-            className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
-          >
-            <FolderKanban className="w-4 h-4 text-blue-600" />
-            <span>Projects Directory ({projects.length})</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setIsTrashModalOpen(true)}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 border ${
-              trashItems.length > 0
-                ? 'bg-rose-50 text-rose-750 border-rose-300 hover:bg-rose-100 shadow-2xs'
-                : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
-            }`}
-            title="Open Trash Bin to restore deleted projects or material items"
-          >
-            <Trash2 className={`w-4 h-4 ${trashItems.length > 0 ? 'text-rose-600 animate-bounce' : 'text-slate-500'}`} />
-            <span>Trash Bin ({trashItems.length})</span>
-          </button>
-
-          {currentUser.role === 'super_admin' && (
-            <button
-              type="button"
-              onClick={() => setActiveViewMode('members')}
-              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-700 via-purple-800 to-indigo-800 hover:from-purple-600 hover:to-indigo-700 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm cursor-pointer active:scale-95 border border-purple-500/40"
-              title="Super Admin: Edit and alter member authorization tiers and permissions"
-            >
-              <ShieldCheck className="w-4 h-4 text-amber-300" />
-              <span>🛡️ Member Authorizations</span>
-            </button>
-          )}
         </div>
       </div>
 
@@ -1496,7 +1583,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                   Select Project
                 </label>
                 <span className="text-[11px] font-medium text-slate-400 block">
-                  Auto-configures 4-step order workflow & synchronizes material list
+                  Auto-configures 3-step order workflow & synchronizes material list
                 </span>
               </div>
             </div>
@@ -1538,13 +1625,13 @@ export const ProjectMaterialEntry: React.FC = () => {
           </div>
         </div>
 
-        {/* TOP PART: 4-STEP FACTORY ORDER WORKFLOW */}
+        {/* TOP PART: 3-STEP FACTORY ORDER WORKFLOW */}
         <div>
           <div className="flex items-center justify-between pb-3 mb-3.5 border-b border-slate-800/80">
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-amber-400" />
               <h2 className="text-xs font-black uppercase tracking-wider text-slate-200">
-                4-Step Factory Order Workflow
+                3-Step Factory Order Workflow
               </h2>
             </div>
             <span className="text-[11px] text-slate-400 font-mono">
@@ -1552,7 +1639,7 @@ export const ProjectMaterialEntry: React.FC = () => {
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
             {/* STEP 1: Select Machine Name */}
             <div className="space-y-1.5 bg-slate-800/60 p-3 rounded-xl border border-slate-700/60">
               <div className="flex items-center justify-between">
@@ -1571,77 +1658,76 @@ export const ProjectMaterialEntry: React.FC = () => {
                 </button>
               </div>
               <input
+                ref={machineInputRef}
                 type="text"
                 list="machine-suggestions"
                 value={machineName}
-                onChange={(e) => setMachineName(e.target.value)}
-                placeholder="e.g. 16 HD, 20 HD, Mono Conveyor"
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setMachineName(val);
+                  if (val.trim()) learnMachine(val.trim());
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (machineName.trim()) learnMachine(machineName.trim());
+                    poNoInputRef.current?.focus();
+                  }
+                }}
+                placeholder="Type or select machine (e.g. 60 HD, Mono Conveyor)..."
                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs font-bold text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all font-mono"
               />
             </div>
 
-            {/* STEP 2: Select Vendor */}
-            <div className="space-y-1.5 bg-slate-800/60 p-3 rounded-xl border border-slate-700/60">
-              <div className="flex items-center justify-between">
-                <label className="text-[11px] font-bold text-blue-300 uppercase tracking-wider flex items-center gap-1">
-                  <span className="w-4 h-4 rounded-full bg-blue-400/20 text-blue-300 inline-flex items-center justify-center text-[10px]">
-                    2
-                  </span>
-                  Vendor Name
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setIsCustomVendorModalOpen(true)}
-                  className="text-[10px] text-blue-300 hover:text-white underline cursor-pointer"
-                >
-                  + Custom
-                </button>
-              </div>
-              <input
-                type="text"
-                list="vendor-suggestions"
-                value={vendorName}
-                onChange={(e) => setVendorName(e.target.value)}
-                placeholder="e.g. Manav Metal"
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs font-bold text-white placeholder-slate-500 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition-all"
-              />
-            </div>
-
-            {/* STEP 3: Enter PO Number */}
+            {/* STEP 2: Enter PO Number & Date */}
             <div className="space-y-1.5 bg-slate-800/60 p-3 rounded-xl border border-slate-700/60">
               <div className="flex items-center justify-between">
                 <label className="text-[11px] font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1">
                   <span className="w-4 h-4 rounded-full bg-emerald-400/20 text-emerald-300 inline-flex items-center justify-center text-[10px]">
-                    3
+                    2
                   </span>
                   PO Number & Date
                 </label>
-                <span className="text-[10px] text-slate-400">PO / Date</span>
+                <span className="text-[10px] text-slate-400 font-mono">PO / Date</span>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <input
+                  ref={poNoInputRef}
                   type="text"
                   value={poNo}
                   onChange={(e) => setPoNo(e.target.value)}
-                  placeholder="PO No (e.g. 36)"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      entryDateInputRef.current?.focus();
+                    }
+                  }}
+                  placeholder="PO-2026-1"
                   className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-2 text-xs font-black text-indigo-300 placeholder-slate-500 focus:outline-none focus:border-emerald-400 font-mono"
                 />
                 <input
+                  ref={entryDateInputRef}
                   type="text"
                   value={entryDate}
                   onChange={(e) => setEntryDate(e.target.value)}
-                  placeholder="01-09-2026"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      quickDescInputRef.current?.focus();
+                    }
+                  }}
+                  placeholder="2026-09-13"
                   className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-[11px] font-medium text-slate-300 focus:outline-none focus:border-emerald-400 font-mono"
                 />
               </div>
             </div>
 
-            {/* STEP 4: Materials Count & Save Action */}
+            {/* STEP 3: Materials Count & Save Action */}
             <div className="space-y-1.5 bg-slate-800/60 p-3 rounded-xl border border-slate-700/60 flex flex-col justify-between">
               <div>
                 <label className="text-[11px] font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1">
                   <span className="w-4 h-4 rounded-full bg-purple-400/20 text-purple-300 inline-flex items-center justify-center text-[10px]">
-                    4
+                    3
                   </span>
                   Materials Count
                 </label>
@@ -1685,7 +1771,7 @@ export const ProjectMaterialEntry: React.FC = () => {
               </h3>
             </div>
             <span className="text-[11px] text-slate-400 font-medium">
-              Type description or size, then click Add
+              Type description or size, then click Add or press Enter ↵
             </span>
           </div>
 
@@ -1709,7 +1795,17 @@ export const ProjectMaterialEntry: React.FC = () => {
                 type="text"
                 list="description-suggestions"
                 value={quickDesc}
-                onChange={(e) => setQuickDesc(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setQuickDesc(val);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (quickDesc.trim()) learnDescription(quickDesc.trim());
+                    quickMatTypeRef.current?.focus();
+                  }
+                }}
                 placeholder="e.g. Mono Conveyor Inlet Patti"
                 className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-semibold text-white placeholder-slate-500 focus:bg-slate-900 focus:outline-none focus:border-blue-500 shadow-2xs"
               />
@@ -1730,6 +1826,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                 </button>
               </div>
               <select
+                ref={quickMatTypeRef}
                 value={quickMatType}
                 onChange={(e) => {
                   if (e.target.value === '__CUSTOM__') {
@@ -1738,7 +1835,13 @@ export const ProjectMaterialEntry: React.FC = () => {
                     setQuickMatType(e.target.value);
                   }
                 }}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs font-bold text-white focus:bg-slate-900 focus:outline-none focus:border-blue-500 shadow-2xs"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    quickSizeInputRef.current?.focus();
+                  }
+                }}
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs font-bold text-white focus:bg-slate-900 focus:outline-none focus:border-blue-500 shadow-2xs cursor-pointer"
               >
                 {allMaterialTypes.map((m) => (
                   <option key={m} value={m}>
@@ -1764,10 +1867,21 @@ export const ProjectMaterialEntry: React.FC = () => {
                 </button>
               </div>
               <input
+                ref={quickSizeInputRef}
                 type="text"
                 list="size-suggestions"
                 value={quickSize}
-                onChange={(e) => setQuickSize(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setQuickSize(val);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (quickSize.trim()) learnSize(quickSize.trim());
+                    quickQtyInputRef.current?.focus();
+                  }
+                }}
                 placeholder="e.g. 80 x 6 x 485"
                 className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-blue-400 placeholder-slate-500 focus:bg-slate-900 focus:outline-none focus:border-blue-500 shadow-2xs"
               />
@@ -1780,22 +1894,37 @@ export const ProjectMaterialEntry: React.FC = () => {
               </label>
               <div className="flex items-center rounded-lg border border-slate-700 bg-slate-800 shadow-2xs overflow-hidden focus-within:ring-1 focus-within:ring-blue-500 focus-within:border-blue-500">
                 <input
+                  ref={quickQtyInputRef}
                   type="number"
                   min="0.1"
                   step="any"
                   value={quickQty}
                   onChange={(e) => setQuickQty(parseFloat(e.target.value) || 1)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      quickUnitRef.current?.focus();
+                    }
+                  }}
                   className="w-1/2 bg-transparent px-2 py-1.5 text-xs font-mono font-black text-white text-center focus:outline-none"
                   placeholder="Qty"
                 />
                 <div className="h-4 w-px bg-slate-700" />
                 <select
+                  ref={quickUnitRef}
                   value={quickUnit}
                   onChange={(e) => {
                     if (e.target.value === '__CUSTOM__') {
                       setIsCustomUnitModalOpen(true);
                     } else {
                       setQuickUnit(e.target.value);
+                      learnUnit(e.target.value);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddMaterialRow();
                     }
                   }}
                   className="w-1/2 bg-transparent px-1 py-1.5 text-xs font-bold text-slate-300 text-center focus:outline-none cursor-pointer"
@@ -1998,7 +2127,7 @@ export const ProjectMaterialEntry: React.FC = () => {
           {selectedRowIds.length > 0 && (
             <button
               type="button"
-              onClick={handleBulkDelete}
+              onClick={handleDeleteSelectedRows}
               className="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-800 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
             >
               <Trash2 className="w-3.5 h-3.5 text-rose-600" />
@@ -2096,11 +2225,9 @@ export const ProjectMaterialEntry: React.FC = () => {
                 <th className="p-2.5 min-w-[160px] whitespace-nowrap">Size Specification</th>
                 {/* 8. Qty */}
                 <th className="p-2.5 min-w-[90px] text-center whitespace-nowrap">Qty</th>
-                {/* 9. Vendor Name */}
-                <th className="p-2.5 min-w-[140px] whitespace-nowrap">Vendor Name</th>
-                {/* 10. Description */}
+                {/* 9. Description */}
                 <th className="p-2.5 min-w-[200px] whitespace-nowrap">Description</th>
-                {/* 11. Ordered By (NON-EDITABLE) */}
+                {/* 10. Ordered By (NON-EDITABLE) */}
                 <th className="p-2.5 min-w-[120px] whitespace-nowrap">Ordered By</th>
                 {/* Actions */}
                 <th className="p-2.5 w-20 text-center whitespace-nowrap">Actions</th>
@@ -2109,7 +2236,7 @@ export const ProjectMaterialEntry: React.FC = () => {
             <tbody className="divide-y divide-slate-200 font-medium">
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="p-8 text-center text-slate-500 font-medium">
+                  <td colSpan={12} className="p-8 text-center text-slate-500 font-medium">
                     No material rows found. Click "Add Material" or choose a smart suggestion above.
                   </td>
                 </tr>
@@ -2226,18 +2353,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                         </div>
                       </td>
 
-                      {/* 8. Vendor Name */}
-                      <td className="p-2">
-                        <input
-                          type="text"
-                          list="vendor-suggestions"
-                          value={row.vendorName}
-                          onChange={(e) => handleCellChange(row.id, 'vendorName', e.target.value)}
-                          className="w-full bg-transparent px-2 py-1 rounded border border-transparent hover:border-slate-300 focus:border-slate-900 focus:bg-white text-xs font-semibold text-amber-800 transition-colors"
-                        />
-                      </td>
-
-                      {/* 9. Description */}
+                      {/* 8. Description */}
                       <td className="p-2">
                         <input
                           type="text"
@@ -2298,15 +2414,15 @@ export const ProjectMaterialEntry: React.FC = () => {
             <button
               type="button"
               onClick={() => {
-                const targetProject = selectedProjectName || (projects.length > 0 ? projects[0].name : 'FOHA');
+                const targetProject = selectedProjectName || (projects.length > 0 ? projects[0].name : 'Project-1');
                 const emptyRow: EntryRow = {
                   id: `empty-${Date.now()}`,
-                  machineName: machineName || '16 HD',
-                  date: entryDate || '01-09-2026',
+                  machineName: machineName || targetProject,
+                  date: entryDate || new Date().toISOString().split('T')[0],
                   poNo: poNo || '36',
                   srNo: rows.length + 1,
                   materialType: 'SS Flat',
-                  sizeSpecs: '80 x 6 x 485',
+                  sizeSpecs: 'Custom Spec',
                   quantity: 1,
                   unit: 'Nos',
                   vendorName: vendorName || 'Manav Metal',
@@ -2331,10 +2447,21 @@ export const ProjectMaterialEntry: React.FC = () => {
         isOpen={isAddProjectModalOpen}
         onClose={() => setIsAddProjectModalOpen(false)}
         title="Create New Project"
-        subtitle="Establish dedicated project with client details and project timeline"
+        subtitle="Establish dedicated project with self-learning client memory & automatic BOM generation"
         maxWidth="md"
       >
         <form onSubmit={handleCreateProject} className="space-y-4 text-xs font-sans">
+          {/* Smart Self-Learning Notice */}
+          <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-blue-900 font-bold text-xs">
+              <Sparkles className="w-4 h-4 text-blue-600 shrink-0" />
+              <span>Auto-Learns Customer & Links Project BOM</span>
+            </div>
+            <span className="px-2 py-0.5 rounded-md bg-blue-600 text-white font-black text-[10px] uppercase tracking-wider shrink-0">
+              Live Sync
+            </span>
+          </div>
+
           {/* 1. Project Name */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
@@ -2345,26 +2472,62 @@ export const ProjectMaterialEntry: React.FC = () => {
               required
               value={newProjectForm.name}
               onChange={(e) => setNewProjectForm({ ...newProjectForm, name: e.target.value })}
-              placeholder="e.g. Mahalaxmi 2, FOHA, 24 HD Automation"
+              placeholder="e.g. Mahalaxmi 2, FOHA, Rotary Line 1"
               className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-bold focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm"
               autoFocus
             />
           </div>
 
-          {/* 2. Client Name & 3. Client Number (Separate Inputs) */}
+          {/* Machine / Assembly Name */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+              Machine / Assembly Name (Optional)
+            </label>
+            <input
+              type="text"
+              list="entry-learned-machines"
+              value={newProjectForm.machineName}
+              onChange={(e) => setNewProjectForm({ ...newProjectForm, machineName: e.target.value })}
+              placeholder="e.g. Liquid Filling Line, Conveyor Cell, Washing System"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-semibold focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm"
+            />
+            <datalist id="entry-learned-machines">
+              {allMachineOptions.map((m) => (
+                <option key={m} value={m} />
+              ))}
+            </datalist>
+          </div>
+
+          {/* 2. Client Name & 3. Client Number (Self-Learning Combobox) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
-                Client Name *
+                Client / Customer Name *
               </label>
               <input
                 type="text"
                 required
+                list="entry-learned-customers"
                 value={newProjectForm.clientName}
-                onChange={(e) => setNewProjectForm({ ...newProjectForm, clientName: e.target.value })}
-                placeholder="e.g. Cadila Healthcare Ltd"
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const matched = customers.find(c => c.name.toLowerCase() === val.toLowerCase());
+                  setNewProjectForm({
+                    ...newProjectForm,
+                    clientName: val,
+                    clientNumber: matched?.mobile || newProjectForm.clientNumber,
+                  });
+                }}
+                placeholder="Type new or select existing"
                 className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-semibold focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm"
               />
+              <datalist id="entry-learned-customers">
+                {customers.map((c) => (
+                  <option key={c.id} value={c.name}>
+                    {c.mobile ? `${c.name} (${c.mobile})` : c.name}
+                  </option>
+                ))}
+              </datalist>
             </div>
 
             <div className="space-y-1.5">

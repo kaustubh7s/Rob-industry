@@ -27,6 +27,8 @@ export const ProjectManager: React.FC = () => {
     <ProjectsDirectory
       onSelectProject={(project) => setSelectedProject(project)}
       onOpenEntrySheetWithProject={handleOpenInEntrySheet}
+      onOpenProcurementBasket={() => setActiveTab('procurement')}
+      onOpenProcurementBasketWithProject={() => setActiveTab('procurement')}
     />
   );
 };
