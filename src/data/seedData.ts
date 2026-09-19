@@ -408,6 +408,28 @@ export const INITIAL_VENDORS: VendorItem[] = [
     reliabilityScore: 94.2,
     rank: 4,
   },
+  {
+    id: 'vnd-5',
+    name: 'kaustubh',
+    contactPerson: 'Kaustubh',
+    mobile: '+91 7276939301',
+    email: 'kaustubh@rsbindustry.com',
+    gstin: '27AABCK7276P1Z8',
+    address: 'Plot 18, MIDC Waluj, Chhatrapati Sambhajinagar - 431136',
+    materialSupplied: 'Precision Machined Parts & SS Components',
+    rating: 5.0,
+    paymentTerms: 'Immediate / 15 Days',
+    totalOrders: 35,
+    totalPurchaseValue: 1250000,
+    onTimeDeliveries: 35,
+    delayedDeliveries: 0,
+    averageDeliveryDays: 1.5,
+    rejectionRate: 0.0,
+    qualityRating: 100.0,
+    costCompetitiveness: 9.8,
+    reliabilityScore: 99.5,
+    rank: 1,
+  },
 ];
 
 export const INITIAL_CUSTOMERS: CustomerItem[] = [

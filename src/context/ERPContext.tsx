@@ -329,7 +329,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     try {
-      const sessionUser = sessionStorage.getItem(AUTH_SESSION_KEY);
+      const sessionUser = sessionStorage.getItem(AUTH_SESSION_KEY) || localStorage.getItem(AUTH_SESSION_KEY);
       return Boolean(sessionUser);
     } catch {
       return false;
@@ -338,9 +338,13 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [currentUser, setCurrentUser] = useState<User>(() => {
     try {
-      const sessionUser = sessionStorage.getItem(AUTH_SESSION_KEY);
+      const sessionUser = sessionStorage.getItem(AUTH_SESSION_KEY) || localStorage.getItem(AUTH_SESSION_KEY);
       if (sessionUser) {
-        const found = INITIAL_USERS.find((u) => u.id === sessionUser || u.role === sessionUser);
+        const savedUsersRaw = localStorage.getItem(LOCAL_STORAGE_KEY + '_users');
+        const userPool: User[] = savedUsersRaw ? JSON.parse(savedUsersRaw) : INITIAL_USERS;
+        const found =
+          userPool.find((u) => u.id === sessionUser || u.role === sessionUser || u.email === sessionUser) ||
+          INITIAL_USERS.find((u) => u.id === sessionUser || u.role === sessionUser || u.email === sessionUser);
         if (found) return found;
       }
     } catch {
@@ -350,7 +354,20 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [activeVendorId, setActiveVendorId] = useState<string>('vnd-1');
-  const [activeTab, setActiveTab] = useState<string>('requirements'); // Default to heart of ERP
+  const [activeTab, setActiveTabState] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('RSB_ACTIVE_TAB');
+      if (saved) return saved;
+    } catch (e) {}
+    return 'requirements';
+  });
+
+  const setActiveTab = (tab: string) => {
+    setActiveTabState(tab);
+    try {
+      localStorage.setItem('RSB_ACTIVE_TAB', tab);
+    } catch (e) {}
+  };
 
   const [materials, setMaterials] = useState<MaterialItem[]>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_materials');
@@ -747,7 +764,19 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const pullRes = await pullAllDataFromSupabase();
         if (isMounted && pullRes.success && pullRes.data) {
           if (pullRes.data.projects) {
-            setProjects(pullRes.data.projects);
+            const remoteProjects = pullRes.data.projects;
+            setProjects((prev) => {
+              const remoteIdSet = new Set(remoteProjects.map((p: ProjectItem) => p.id));
+              const remoteNameSet = new Set(remoteProjects.map((p: ProjectItem) => (p.name || '').trim().toLowerCase()));
+              const localOnly = prev.filter(
+                (p) => !remoteIdSet.has(p.id) && !remoteNameSet.has((p.name || '').trim().toLowerCase())
+              );
+              const merged = [...remoteProjects, ...localOnly];
+              try {
+                localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(merged));
+              } catch (e) {}
+              return merged;
+            });
           }
           if (pullRes.data.requirements) {
             const remoteReqs = pullRes.data.requirements;
@@ -756,8 +785,14 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               const updatedFromRemote = remoteReqs.map((remoteReq: ProjectMaterialRequirementItem) => {
                 const local = localMap.get(remoteReq.id);
                 const isArrived = Boolean(remoteReq.isReceived || local?.isReceived);
+                const finalVendor = local?.vendor || local?.vendorName || remoteReq.vendor || remoteReq.vendorName || 'Manav Metal';
+                const finalVendorName = local?.vendorName || local?.vendor || remoteReq.vendorName || remoteReq.vendor || finalVendor;
+                const finalVendorStatus = local?.vendorStatus || remoteReq.vendorStatus || (finalVendor && finalVendor !== 'Unassigned' ? 'Assigned' : 'Unassigned');
                 return {
                   ...remoteReq,
+                  vendor: finalVendor,
+                  vendorName: finalVendorName,
+                  vendorStatus: finalVendorStatus,
                   isReceived: isArrived,
                   receivedAt: (remoteReq.isReceived ? remoteReq.receivedAt : undefined) || local?.receivedAt || (isArrived ? (remoteReq.receivedAt || new Date().toISOString()) : undefined),
                   receivedBy: (remoteReq.isReceived ? remoteReq.receivedBy : undefined) || local?.receivedBy || (isArrived ? (local?.receivedBy || 'Kaustubh') : undefined),
@@ -946,7 +981,21 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (event.data?.type === 'SYNC_ALL' || event.data?.type === 'PROJECTS_UPDATED') {
           const pullRes = await pullAllDataFromSupabase();
           if (pullRes.success && pullRes.data) {
-            if (pullRes.data.projects && pullRes.data.projects.length > 0) setProjects(pullRes.data.projects);
+            if (pullRes.data.projects && pullRes.data.projects.length > 0) {
+              const remoteProjects = pullRes.data.projects;
+              setProjects((prev) => {
+                const remoteIdSet = new Set(remoteProjects.map((p: ProjectItem) => p.id));
+                const remoteNameSet = new Set(remoteProjects.map((p: ProjectItem) => (p.name || '').trim().toLowerCase()));
+                const localOnly = prev.filter(
+                  (p) => !remoteIdSet.has(p.id) && !remoteNameSet.has((p.name || '').trim().toLowerCase())
+                );
+                const merged = [...remoteProjects, ...localOnly];
+                try {
+                  localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(merged));
+                } catch (e) {}
+                return merged;
+              });
+            }
             if (pullRes.data.requirements && pullRes.data.requirements.length > 0) {
               const remoteReqs = pullRes.data.requirements;
               setProjectRequirements((prev) => {
@@ -954,8 +1003,14 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 const updatedFromRemote = remoteReqs.map((remoteReq: ProjectMaterialRequirementItem) => {
                   const local = localMap.get(remoteReq.id);
                   const isArrived = Boolean(remoteReq.isReceived || local?.isReceived);
+                  const finalVendor = local?.vendor || local?.vendorName || remoteReq.vendor || remoteReq.vendorName || 'Manav Metal';
+                  const finalVendorName = local?.vendorName || local?.vendor || remoteReq.vendorName || remoteReq.vendor || finalVendor;
+                  const finalVendorStatus = local?.vendorStatus || remoteReq.vendorStatus || (finalVendor && finalVendor !== 'Unassigned' ? 'Assigned' : 'Unassigned');
                   return {
                     ...remoteReq,
+                    vendor: finalVendor,
+                    vendorName: finalVendorName,
+                    vendorStatus: finalVendorStatus,
                     isReceived: isArrived,
                     receivedAt: (remoteReq.isReceived ? remoteReq.receivedAt : undefined) || local?.receivedAt || (isArrived ? (remoteReq.receivedAt || new Date().toISOString()) : undefined),
                     receivedBy: (remoteReq.isReceived ? remoteReq.receivedBy : undefined) || local?.receivedBy || (isArrived ? (local?.receivedBy || 'Kaustubh') : undefined),
@@ -985,7 +1040,19 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const pullRes = await pullAllDataFromSupabase();
         if (pullRes.success && pullRes.data) {
           if (pullRes.data.projects) {
-            setProjects(pullRes.data.projects);
+            const remoteProjects = pullRes.data.projects;
+            setProjects((prev) => {
+              const remoteIdSet = new Set(remoteProjects.map((p: ProjectItem) => p.id));
+              const remoteNameSet = new Set(remoteProjects.map((p: ProjectItem) => (p.name || '').trim().toLowerCase()));
+              const localOnly = prev.filter(
+                (p) => !remoteIdSet.has(p.id) && !remoteNameSet.has((p.name || '').trim().toLowerCase())
+              );
+              const merged = [...remoteProjects, ...localOnly];
+              try {
+                localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(merged));
+              } catch (e) {}
+              return merged;
+            });
           }
           if (pullRes.data.requirements) {
             const remoteReqs = pullRes.data.requirements;
@@ -994,8 +1061,14 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               const updatedFromRemote = remoteReqs.map((remoteReq: ProjectMaterialRequirementItem) => {
                 const local = localMap.get(remoteReq.id);
                 const isArrived = Boolean(remoteReq.isReceived || local?.isReceived);
+                const finalVendor = local?.vendor || local?.vendorName || remoteReq.vendor || remoteReq.vendorName || 'Manav Metal';
+                const finalVendorName = local?.vendorName || local?.vendor || remoteReq.vendorName || remoteReq.vendor || finalVendor;
+                const finalVendorStatus = local?.vendorStatus || remoteReq.vendorStatus || (finalVendor && finalVendor !== 'Unassigned' ? 'Assigned' : 'Unassigned');
                 return {
                   ...remoteReq,
+                  vendor: finalVendor,
+                  vendorName: finalVendorName,
+                  vendorStatus: finalVendorStatus,
                   isReceived: isArrived,
                   receivedAt: (remoteReq.isReceived ? remoteReq.receivedAt : undefined) || local?.receivedAt || (isArrived ? (remoteReq.receivedAt || new Date().toISOString()) : undefined),
                   receivedBy: (remoteReq.isReceived ? remoteReq.receivedBy : undefined) || local?.receivedBy || (isArrived ? (local?.receivedBy || 'Kaustubh') : undefined),
@@ -2367,7 +2440,13 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     newPrj.bomId = projectBOM.id;
 
-    setProjects((prev) => [newPrj, ...prev]);
+    setProjects((prev) => {
+      const merged = [newPrj, ...prev.filter((p) => p.id !== newPrj.id && p.name !== newPrj.name)];
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(merged));
+      } catch (e) {}
+      return merged;
+    });
     setBoms((prev) => [
       projectBOM,
       ...prev.filter((b) => b.projectId !== newPrj.id && b.bomNumber !== projectBOM.bomNumber),
@@ -2389,6 +2468,11 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       'projects'
     );
     dbUpsertProject(newPrj);
+    try {
+      const bc = new BroadcastChannel('rsb_erp_live_sync');
+      bc.postMessage({ type: 'PROJECTS_UPDATED', projectName: newPrj.name });
+      bc.close();
+    } catch (e) {}
   };
 
   const updateProject = (id: string, updates: Partial<ProjectItem>) => {
@@ -3219,10 +3303,12 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setProjectRequirements((prev) => {
         const updated = prev.map((r) => {
           if (linkedIds.includes(r.id)) {
+            const itemVendor = r.vendor && r.vendor !== 'Unassigned' ? r.vendor : vendor;
+            const itemVendorName = r.vendorName && r.vendorName !== 'Unassigned' ? r.vendorName : (r.vendor || vendor);
             const mod: ProjectMaterialRequirementItem = {
               ...r,
-              vendor,
-              vendorName: vendor,
+              vendor: itemVendor,
+              vendorName: itemVendorName,
               vendorStatus: 'Assigned',
               poStatus: 'Issued',
               poNumberAssigned: poNumber,

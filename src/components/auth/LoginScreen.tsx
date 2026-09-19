@@ -29,13 +29,17 @@ export const LoginScreen: React.FC = () => {
     setError(null);
     setIsLoading(true);
 
-    setTimeout(() => {
+    try {
       const result = login(loginId, password);
       if (!result.success) {
         setError(result.error || 'Invalid Login ID or Password. Access Denied.');
         setIsLoading(false);
       }
-    }, 150);
+    } catch (err: any) {
+      console.error('Login error:', err);
+      setError(err?.message || 'Login failed. Please try again.');
+      setIsLoading(false);
+    }
   };
 
   return (

@@ -31,6 +31,8 @@ import {
   FolderTree,
   ChevronRight,
   Filter,
+  ShoppingCart,
+  Send,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 import { ProjectItem, ProjectMaterialRequirementItem, MaterialType, MachineCategory } from '../../types/erp';
@@ -39,11 +41,18 @@ import { StatusBadge } from '../common/StatusBadge';
 import { Modal } from '../common/Modal';
 import { dbBulkUpsertRequirements } from '../../services/supabaseService';
 import { getMaterialsForProject } from '../../utils/projectMaterialsHelper';
+import {
+  formatWhatsAppPOMessage,
+  createWhatsAppUrl,
+  generatePurchaseOrderPDF,
+  WhatsAppPOMessageOptions,
+} from '../../utils/whatsappHelper';
 
 interface ProjectDetailsViewProps {
   project: ProjectItem;
   onBack: () => void;
   onOpenInEntrySheet?: (projectName: string) => void;
+  onOpenOrderBasket?: (projectName: string) => void;
 }
 
 const MATERIAL_TYPES: MaterialType[] = [
@@ -81,6 +90,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   project,
   onBack,
   onOpenInEntrySheet,
+  onOpenOrderBasket,
 }) => {
   const {
     projectRequirements,
@@ -549,6 +559,109 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
           {/* Action Hub */}
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const targetItems = filteredMaterials.length > 0 ? filteredMaterials : displayMaterials;
+                if (targetItems.length === 0) {
+                  alert('No materials available to share on WhatsApp.');
+                  return;
+                }
+
+                const targetV = project.vendor || targetItems[0]?.vendor || 'Manav Metal';
+
+                // Strict Vendor Isolation: Filter items assigned to this vendor only
+                const vendorAssignedItems = targetItems.filter((i) => {
+                  const v = (i.vendor || (i as any).vendorName || '').trim().toLowerCase();
+                  return !v || v === targetV.trim().toLowerCase();
+                });
+
+                const finalItems = vendorAssignedItems.length > 0 ? vendorAssignedItems : targetItems;
+
+                const matchedVendor = vendors.find(
+                  (v) => (v.name || '').trim().toLowerCase() === targetV.trim().toLowerCase()
+                );
+
+                const phone = matchedVendor?.mobile || '+91 98250 12345';
+                const finalPONum = project.poNumber || `PO-RSB-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+                const dateStr = new Date().toISOString().split('T')[0];
+                const targetDelDate = project.targetCompletionDate || new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+
+                const poPayload: WhatsAppPOMessageOptions = {
+                  poNumber: finalPONum,
+                  vendorName: targetV,
+                  vendorMobile: phone,
+                  vendorContactPerson: matchedVendor?.contactPerson,
+                  vendorAddress: matchedVendor?.address,
+                  vendorGstin: matchedVendor?.gstin,
+                  paymentTerms: matchedVendor?.paymentTerms || '30 Days Net',
+                  status: 'Sent',
+                  projectName: project.name,
+                  machineName: selectedMachineFolder !== 'ALL' ? selectedMachineFolder : (project.machineName || project.name),
+                  dateOfIssue: dateStr,
+                  expectedDeliveryDate: targetDelDate,
+                  notes: project.notes || 'Supply with Material Test Certificate (MTC SS 304). High precision cutting required.',
+                  items: finalItems.map((m) => ({
+                    id: m.id,
+                    projectName: project.name,
+                    machineName: selectedMachineFolder !== 'ALL' ? selectedMachineFolder : (project.machineName || 'Standard Machine'),
+                    description: m.description,
+                    materialType: m.materialType,
+                    materialGrade: m.materialGrade || 'SS 304',
+                    sizeSpecs: m.sizeSpecs,
+                    quantity: Number(m.quantity) || 1,
+                    unit: m.unit || 'Nos',
+                    vendor: m.vendor || (m as any).vendorName || targetV,
+                    vendorName: m.vendor || (m as any).vendorName || targetV,
+                    notes: m.notes,
+                  })),
+                };
+
+                // 1. Generate & download official PDF directly
+                const pdfName = generatePurchaseOrderPDF(poPayload);
+
+                // 2. Format concise message
+                const msg = formatWhatsAppPOMessage(poPayload);
+
+                // 3. Copy message to clipboard
+                try {
+                  navigator.clipboard.writeText(msg);
+                } catch (e) {
+                  const textArea = document.createElement('textarea');
+                  textArea.value = msg;
+                  document.body.appendChild(textArea);
+                  textArea.select();
+                  document.execCommand('copy');
+                  document.body.removeChild(textArea);
+                }
+
+                // 4. Directly open WhatsApp Web / App
+                const url = createWhatsAppUrl(phone, msg);
+                window.open(url, '_blank', 'noopener,noreferrer');
+
+                if (logAudit) {
+                  logAudit('WhatsApp PO PDF Dispatched', 'Projects', `Dispatched PO PDF "${pdfName}" for vendor ${targetV}`);
+                }
+              }}
+              className="px-3.5 py-2 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-slate-950 text-xs font-black shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+              title="1-Click WhatsApp Purchase Order / Specification List to Vendor"
+            >
+              <Send className="w-3.5 h-3.5 fill-slate-950" />
+              <span>WhatsApp PO</span>
+            </button>
+
+            {onOpenOrderBasket && (
+              <button
+                type="button"
+                onClick={() => onOpenOrderBasket(project.name)}
+                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                title="Open Order Basket for this project"
+              >
+                <ShoppingCart className="w-3.5 h-3.5 text-blue-200" />
+                <span>Order Basket</span>
+              </button>
+            )}
+
             {onOpenInEntrySheet && !isStoreIncharge && (
               <button
                 type="button"

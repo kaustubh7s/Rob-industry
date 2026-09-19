@@ -1215,7 +1215,7 @@ export const ProjectMaterialEntry: React.FC = () => {
       // Replace and update requirements in state and database
       replaceProjectRequirements(targetProject, itemsToSave);
 
-      // Update project header in state and database
+      // Update project header in state and database (or auto-create if new)
       if (existingProject) {
         updateProject(existingProject.id, {
           machineName: machineName || existingProject.machineName,
@@ -1228,6 +1228,29 @@ export const ProjectMaterialEntry: React.FC = () => {
           materialsCount: rows.length,
           totalQuantity: rows.reduce((s, r) => s + (Number(r.quantity) || 0), 0),
         });
+      } else {
+        const autoProject: Omit<ProjectItem, 'id'> = {
+          projectNumber: `PRJ-2026-${String(projects.length + 1).padStart(3, '0')}`,
+          name: targetProject.trim(),
+          customer: custName || 'General Client',
+          orderSource: 'Customer PO',
+          machineType: (machineName || targetProject) as any,
+          machineName: machineName || targetProject,
+          vendor: vendorName || 'Manav Metal',
+          vendorName: vendorName || 'Manav Metal',
+          poNumber: poNo || '36',
+          poNo: poNo || '36',
+          startDate: entryDate || new Date().toISOString().split('T')[0],
+          targetCompletionDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+          priority: 'medium',
+          status: 'Production',
+          projectValue: 450000,
+          progressPct: 10,
+          materialsCount: rows.length,
+          totalQuantity: rows.reduce((s, r) => s + (Number(r.quantity) || 0), 0),
+          notes: `Project ${targetProject.trim()} auto-created on Material Entry save`,
+        };
+        addProject(autoProject);
       }
 
       localStorage.removeItem(DRAFT_STORAGE_KEY);
@@ -1335,9 +1358,22 @@ export const ProjectMaterialEntry: React.FC = () => {
     });
   }, [rows, searchTerm, filterMaterialType]);
 
+  const handleSwitchView = (mode: 'entry' | 'projects' | 'procurement') => {
+    setActiveViewMode(mode);
+    setActiveTab(mode);
+  };
+
   // View Mode Switcher: Procurement Basket
   if (activeViewMode === 'procurement') {
-    return <ProcurementBasket initialProjectFilter={basketProjectFilter} />;
+    return (
+      <div className="space-y-4">
+        <ProcurementBasket
+          initialProjectFilter={basketProjectFilter}
+          onNavigateToEntry={() => handleSwitchView('entry')}
+          onNavigateToProjects={() => handleSwitchView('projects')}
+        />
+      </div>
+    );
   }
 
   // View Mode Switcher: Projects Directory
@@ -1368,39 +1404,45 @@ export const ProjectMaterialEntry: React.FC = () => {
                 ? (pName) => {
                     const found = projects.find((p) => p.name === pName);
                     if (found) handleUsePreviousOrder(found);
-                    setActiveViewMode('entry');
+                    handleSwitchView('entry');
                   }
                 : undefined
             }
+            onOpenOrderBasket={(pName) => {
+              setBasketProjectFilter(pName);
+              handleSwitchView('procurement');
+            }}
           />
         </div>
       );
     }
 
     return (
-      <ProjectsDirectory
-        onSelectProject={(prj) => {
-          setSelectedDetailProject(prj);
-          setActiveViewMode('details');
-        }}
-        onOpenEntrySheetWithProject={
-          !isStoreIncharge
-            ? (pName) => {
-                const found = projects.find((p) => p.name === pName);
-                if (found) handleUsePreviousOrder(found);
-                setActiveViewMode('entry');
-              }
-            : undefined
-        }
-        onOpenProcurementBasket={() => {
-          setBasketProjectFilter(undefined);
-          setActiveViewMode('procurement');
-        }}
-        onOpenProcurementBasketWithProject={(pName) => {
-          setBasketProjectFilter(pName);
-          setActiveViewMode('procurement');
-        }}
-      />
+      <div className="space-y-4">
+        <ProjectsDirectory
+          onSelectProject={(prj) => {
+            setSelectedDetailProject(prj);
+            setActiveViewMode('details');
+          }}
+          onOpenEntrySheetWithProject={
+            !isStoreIncharge
+              ? (pName) => {
+                  const found = projects.find((p) => p.name === pName);
+                  if (found) handleUsePreviousOrder(found);
+                  handleSwitchView('entry');
+                }
+              : undefined
+          }
+          onOpenProcurementBasket={() => {
+            setBasketProjectFilter(undefined);
+            handleSwitchView('procurement');
+          }}
+          onOpenProcurementBasketWithProject={(pName) => {
+            setBasketProjectFilter(pName);
+            handleSwitchView('procurement');
+          }}
+        />
+      </div>
     );
   }
 
@@ -1428,7 +1470,11 @@ export const ProjectMaterialEntry: React.FC = () => {
           onOpenInEntrySheet={(pName) => {
             const found = projects.find((p) => p.name === pName);
             if (found) handleUsePreviousOrder(found);
-            setActiveViewMode('entry');
+            handleSwitchView('entry');
+          }}
+          onOpenOrderBasket={(pName) => {
+            setBasketProjectFilter(pName);
+            handleSwitchView('procurement');
           }}
         />
       </div>
@@ -1436,7 +1482,11 @@ export const ProjectMaterialEntry: React.FC = () => {
   }
 
   if (activeViewMode === 'members') {
-    return <MemberAuthorizationManager />;
+    return (
+      <div className="space-y-4">
+        <MemberAuthorizationManager />
+      </div>
+    );
   }
 
   return (

@@ -1,23 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import {
   FolderKanban,
   ShoppingCart,
   Trash2,
   ShieldCheck,
   Zap,
-  Menu,
   X,
-  ChevronDown,
   Layers,
-  Sparkles,
-  Lock,
-  Cpu,
-  Truck,
-  Wrench,
-  Send,
-  FileCheck,
-  Activity,
-  Table,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 
@@ -36,9 +25,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenTutoria
     projectRequirements,
     trashItems,
   } = useERP();
-
-  // Expandable secondary modules accordion inside drawer
-  const [isExtraModulesOpen, setIsExtraModulesOpen] = useState(false);
 
   // Close drawer on Escape key
   useEffect(() => {
@@ -69,6 +55,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenTutoria
       label: 'Material Entry',
       sub: 'Machine Workstation',
       icon: Zap,
+      shortcut: '1',
       badge: 'Active',
       badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
       roles: ['super_admin', 'kaustubh', 'admin', 'operator', 'store_incharge', 'store_manager', 'production_manager', 'purchase_manager'],
@@ -78,6 +65,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenTutoria
       label: 'Projects Directory',
       sub: 'Machines & BOM Archive',
       icon: FolderKanban,
+      shortcut: '2',
       badge: String(projects.length),
       badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/40',
       roles: ['super_admin', 'kaustubh', 'admin', 'operator', 'store_incharge', 'store_manager', 'production_manager', 'purchase_manager'],
@@ -87,6 +75,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenTutoria
       label: 'Order Basket',
       sub: 'Vendor Allocation & RFQ',
       icon: ShoppingCart,
+      shortcut: '3',
       badge: String(projectRequirements.length),
       badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40',
       roles: ['super_admin', 'kaustubh', 'admin', 'store_incharge', 'store_manager', 'purchase_manager'],
@@ -96,6 +85,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenTutoria
       label: 'Trash Bin',
       sub: 'Deleted Items & Recovery',
       icon: Trash2,
+      shortcut: '4',
       badge: String(trashItems.length),
       badgeColor:
         trashItems.length > 0
@@ -108,20 +98,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenTutoria
       label: 'Member Authorizations',
       sub: 'Admin Security Matrix',
       icon: ShieldCheck,
+      shortcut: '5',
       badge: currentUser.role === 'super_admin' ? 'Super Admin' : 'Admin',
       badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/40',
       roles: ['super_admin', 'admin', 'kaustubh'],
     },
-  ];
-
-  // Secondary Factory Operations
-  const secondaryNavItems = [
-    { id: 'inward', label: 'Inward & Gate (आवक)', icon: Truck },
-    { id: 'production', label: 'Production & Jobs (कारखाना)', icon: Wrench },
-    { id: 'quality', label: 'Quality Inspection (QC)', icon: FileCheck },
-    { id: 'outward', label: 'Outward & Dispatch (जावक)', icon: Send },
-    { id: 'dispatcher', label: 'Shopfloor Dispatcher', icon: Activity },
-    { id: 'terminal', label: 'Machinist Terminal', icon: Cpu },
   ];
 
   if (!isOpen) return null;
@@ -216,60 +197,28 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenTutoria
                       </span>
                     )}
                   </div>
-                  {item.badge && (
-                    <span
-                      className={`ml-2 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider border shrink-0 ${item.badgeColor}`}
-                    >
-                      {item.badge}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-1.5 ml-2 shrink-0">
+                    {item.shortcut && (
+                      <kbd className="px-1.5 py-0.2 rounded bg-slate-900 text-amber-300 font-mono text-[10px] font-bold border border-slate-700">
+                        {item.shortcut}
+                      </kbd>
+                    )}
+                    {item.badge && (
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider border shrink-0 ${item.badgeColor}`}
+                      >
+                        {item.badge}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </button>
             );
           })}
 
-          {/* 3. COLLAPSIBLE SECONDARY FACTORY REGISTERS */}
-          <div className="pt-4 mt-4 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={() => setIsExtraModulesOpen(!isExtraModulesOpen)}
-              className="w-full px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:text-slate-200 flex items-center justify-between cursor-pointer rounded-lg transition-colors"
-            >
-              <span>Plant Daily Registers</span>
-              <ChevronDown
-                className={`w-3.5 h-3.5 transition-transform duration-200 ${
-                  isExtraModulesOpen ? 'rotate-180 text-blue-400' : 'text-slate-500'
-                }`}
-              />
-            </button>
-
-            {isExtraModulesOpen && (
-              <div className="mt-1.5 space-y-1 pl-1 animate-fadeIn">
-                {secondaryNavItems.map((sec) => {
-                  const SecIcon = sec.icon;
-                  const isSecActive = activeTab === sec.id;
-                  return (
-                    <button
-                      key={sec.id}
-                      type="button"
-                      onClick={() => handleNavClick(sec.id)}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer text-left ${
-                        isSecActive
-                          ? 'bg-slate-800 text-white font-bold border border-slate-700'
-                          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 border border-transparent'
-                      }`}
-                    >
-                      <SecIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span className="truncate">{sec.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
         </div>
 
-        {/* 4. DRAWER FOOTER */}
+        {/* 3. DRAWER FOOTER */}
         <div className="p-3.5 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between text-xs text-slate-400">
           <span>RSB ERP Workstation</span>
           <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono text-[10px] border border-slate-700">

@@ -34,10 +34,19 @@ import {
   Package,
   Cpu,
   Folder,
+  MessageSquare,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 import { ProjectMaterialRequirementItem, VendorItem, PurchaseOrder, RFQRecord, ProjectItem } from '../../types/erp';
 import { exportToExcel } from '../../utils/excelIntegration';
+import {
+  formatWhatsAppPOMessage,
+  createWhatsAppUrl,
+  generatePurchaseOrderPDF,
+  getVendorMobile,
+  cleanVendorName,
+  WhatsAppPOMessageOptions,
+} from '../../utils/whatsappHelper';
 
 interface ProcurementBasketProps {
   initialProjectFilter?: string;
@@ -47,7 +56,13 @@ interface ProcurementBasketProps {
   onOpenTrashBin?: () => void;
 }
 
-export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({ initialProjectFilter }) => {
+export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
+  initialProjectFilter,
+  onNavigateToEntry,
+  onNavigateToProjects,
+  onNavigateToMembers,
+  onOpenTrashBin,
+}) => {
   const {
     projectRequirements,
     projects,
@@ -72,10 +87,14 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({ initialPro
 
   // Filtering & Search
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterProject, setFilterProject] = useState(initialProjectFilter || 'ALL');
+  const [filterProject, setFilterProject] = useState(
+    initialProjectFilter && initialProjectFilter !== 'ALL'
+      ? initialProjectFilter
+      : ''
+  );
 
   React.useEffect(() => {
-    if (initialProjectFilter) {
+    if (initialProjectFilter && initialProjectFilter !== 'ALL') {
       setFilterProject(initialProjectFilter);
     }
   }, [initialProjectFilter]);
@@ -164,8 +183,121 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({ initialPro
     return d.toISOString().split('T')[0];
   });
   const [poNotes, setPoNotes] = useState('Immediate dispatch as per RSB specifications.');
+  const [poCandidateItems, setPoCandidateItems] = useState<ProjectMaterialRequirementItem[]>([]);
   const [poItemsToGenerate, setPoItemsToGenerate] = useState<ProjectMaterialRequirementItem[]>([]);
   const [generatedPOPreview, setGeneratedPOPreview] = useState<PurchaseOrder | null>(null);
+
+  // Available Vendors in PO Candidate Selection
+  const availableVendorsInPO = useMemo(() => {
+    const vSet = new Set<string>();
+    poCandidateItems.forEach((i) => {
+      const v = (i.vendor || i.vendorName || '').trim();
+      if (v && v !== 'Unassigned' && v !== 'Standard Vendor') {
+        vSet.add(v);
+      }
+    });
+    return Array.from(vSet);
+  }, [poCandidateItems]);
+
+  // Group candidate PO items by vendor with subtotals for clean enterprise hierarchy
+  const vendorGroupsInPO = useMemo(() => {
+    const map = new Map<string, { vendorName: string; items: ProjectMaterialRequirementItem[]; totalQty: number }>();
+    poItemsToGenerate.forEach((item) => {
+      const vName = cleanVendorName(item.vendor || item.vendorName);
+      if (!map.has(vName)) {
+        map.set(vName, { vendorName: vName, items: [], totalQty: 0 });
+      }
+      const entry = map.get(vName)!;
+      entry.items.push(item);
+      entry.totalQty += (Number(item.quantity) || 0);
+    });
+    return Array.from(map.values());
+  }, [poItemsToGenerate]);
+
+  // Robust Multi-Page A4 Chunking Engine (Pins 3-tier signatures strictly to footer of the last page)
+  interface POPageChunk {
+    pageIndex: number;
+    totalPages: number;
+    isFirstPage: boolean;
+    isLastPage: boolean;
+    items: { item: ProjectMaterialRequirementItem; globalIndex: number }[];
+  }
+
+  const chunkPOItems = (items: ProjectMaterialRequirementItem[]): POPageChunk[] => {
+    const indexed = items.map((item, idx) => ({ item, globalIndex: idx + 1 }));
+    const SINGLE_PAGE_MAX = 24;
+    const FIRST_PAGE_MAX = 27;
+    const MIDDLE_PAGE_MAX = 33;
+    const LAST_PAGE_MAX = 26;
+
+    if (indexed.length <= SINGLE_PAGE_MAX) {
+      return [
+        {
+          pageIndex: 1,
+          totalPages: 1,
+          isFirstPage: true,
+          isLastPage: true,
+          items: indexed,
+        },
+      ];
+    }
+
+    const rawPages: { isFirstPage: boolean; isLastPage: boolean; items: typeof indexed }[] = [];
+    let remaining = [...indexed];
+
+    // First page: if remaining is between 15 and 20, split between page 1 and page 2 so page 2 has the signatures
+    let p1Count = FIRST_PAGE_MAX;
+    if (remaining.length <= FIRST_PAGE_MAX) {
+      p1Count = Math.ceil(remaining.length / 2);
+    } else {
+      p1Count = Math.min(remaining.length, FIRST_PAGE_MAX);
+    }
+
+    rawPages.push({
+      isFirstPage: true,
+      isLastPage: false,
+      items: remaining.slice(0, p1Count),
+    });
+    remaining = remaining.slice(p1Count);
+
+    // Subsequent pages
+    while (remaining.length > 0) {
+      if (remaining.length <= LAST_PAGE_MAX) {
+        rawPages.push({
+          isFirstPage: false,
+          isLastPage: true,
+          items: remaining,
+        });
+        break;
+      }
+
+      let takeCount = MIDDLE_PAGE_MAX;
+      if (remaining.length <= MIDDLE_PAGE_MAX) {
+        takeCount = Math.ceil(remaining.length / 2);
+      }
+
+      const chunk = remaining.slice(0, takeCount);
+      remaining = remaining.slice(takeCount);
+      rawPages.push({
+        isFirstPage: false,
+        isLastPage: remaining.length === 0,
+        items: chunk,
+      });
+    }
+
+    const totalPages = rawPages.length;
+    return rawPages.map((p, idx) => ({
+      pageIndex: idx + 1,
+      totalPages,
+      isFirstPage: p.isFirstPage,
+      isLastPage: idx === totalPages - 1,
+      items: p.items,
+    }));
+  };
+
+  const paginatedPOPages = useMemo(() => {
+    return chunkPOItems(poItemsToGenerate);
+  }, [poItemsToGenerate]);
 
   // Selectable PO Columns Configuration
   const [poColumnConfig, setPoColumnConfig] = useState({
@@ -177,6 +309,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({ initialPro
     sizeSpecs: true,
     quantity: true,
     unit: true,
+    vendor: true,
     requiredDate: false,
     notes: false,
   });
@@ -530,17 +663,36 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({ initialPro
     setSelectedIds([]);
   };
 
-  // Open PO Generation Modal
+  // Open Master PO Generation Modal with All Items Categorized Sequentially by Vendor
   const handleOpenPOModal = (vendorName?: string, presetItems?: ProjectMaterialRequirementItem[]) => {
-    const items = presetItems || filteredItems.filter((i) => selectedIds.includes(i.id));
+    const items = presetItems || (selectedIds.length > 0 ? filteredItems.filter((i) => selectedIds.includes(i.id)) : filteredItems);
     if (items.length === 0) {
       alert('Please select at least 1 material item to generate Purchase Order.');
       return;
     }
 
-    const targetV = vendorName && vendorName !== 'Unassigned' ? vendorName : items[0]?.vendor || allVendorsList[0] || 'Manav Metal';
+    // Strict sequential grouping by vendor (Vendor A all items first, then Vendor B all items, then Vendor C, etc.)
+    const sortedByVendor = [...items].sort((a, b) => {
+      const vA = cleanVendorName(a.vendor || a.vendorName);
+      const vB = cleanVendorName(b.vendor || b.vendorName);
+      const vComp = vA.localeCompare(vB);
+      if (vComp !== 0) return vComp;
+      const mA = (a.machineName || a.machineType || '').toLowerCase();
+      const mB = (b.machineName || b.machineType || '').toLowerCase();
+      const mComp = mA.localeCompare(mB);
+      if (mComp !== 0) return mComp;
+      return (a.description || '').localeCompare(b.description || '');
+    });
+
+    setPoCandidateItems(sortedByVendor);
+    setPoItemsToGenerate(sortedByVendor);
+
+    const targetV =
+      vendorName && vendorName !== 'Unassigned'
+        ? vendorName
+        : 'Kaustubh (Master Material PO)';
+
     setPoTargetVendor(targetV);
-    setPoItemsToGenerate(items);
     setPoCustomNumber(`PO-RSB-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`);
     setGeneratedPOPreview(null);
     setIsPOModalOpen(true);
@@ -548,7 +700,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({ initialPro
 
   const handleConfirmGeneratePO = () => {
     if (!poTargetVendor) {
-      alert('Please select a supplier vendor for this PO.');
+      alert('Please select or specify a recipient vendor for this PO.');
       return;
     }
 
@@ -560,15 +712,91 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({ initialPro
       requirementId: i.id,
       projectName: i.projectName,
       machineName: i.machineName || i.machineType || 'Machine',
+      vendor: i.vendor || i.vendorName,
     }));
 
     const newPO = generateProcurementPO(poTargetVendor, poItems, poExpectedDate, poNotes, poCustomNumber);
 
     if (newPO) {
       setGeneratedPOPreview(newPO);
-      showToast(`Purchase Order ${newPO.poNumber} generated successfully!`);
+      showToast(`Master Purchase Order ${newPO.poNumber} generated successfully with all ${poItemsToGenerate.length} items!`);
       setSelectedIds([]);
     }
+  };
+
+  // 1-Click Direct WhatsApp Master Purchase Order & PDF Dispatch (Direct PDF Download & WhatsApp Web/App Link to Kaustubh: 7276939301)
+  const handleOpenWhatsAppForItems = (
+    vendorName?: string,
+    items?: ProjectMaterialRequirementItem[],
+    poNum?: string,
+    pName?: string
+  ) => {
+    const targetItems = items || (selectedIds.length > 0 ? filteredItems.filter((i) => selectedIds.includes(i.id)) : filteredItems);
+    if (targetItems.length === 0) {
+      alert('Please select at least 1 material item to share on WhatsApp.');
+      return;
+    }
+
+    // Default target phone is strictly Kaustubh: +91 7276939301
+    const targetV = vendorName || 'Kaustubh (RSB Manufacturing)';
+    const phone = '+91 7276939301';
+    const finalPONum = poNum || `PO-RSB-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+    const dateStr = new Date().toISOString().split('T')[0];
+    const targetDelDate = poExpectedDate || new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+
+    const poPayload: WhatsAppPOMessageOptions = {
+      poNumber: finalPONum,
+      vendorName: targetV,
+      vendorMobile: phone,
+      vendorContactPerson: 'Kaustubh',
+      vendorAddress: 'Plot 18, MIDC Waluj, Chhatrapati Sambhajinagar - 431136',
+      vendorGstin: '27AABCK7276P1Z8',
+      paymentTerms: 'Immediate / 30 Days',
+      status: 'Sent',
+      projectName: pName || targetItems[0]?.projectName || filterProject || 'jkjdsasds',
+      machineName: targetItems[0]?.machineName || targetItems[0]?.machineType || 'Standard Machine',
+      dateOfIssue: dateStr,
+      expectedDeliveryDate: targetDelDate,
+      notes: poNotes || 'Supply with Material Test Certificate (MTC SS 304). High precision cutting required.',
+      items: targetItems.map((i) => ({
+        id: i.id,
+        projectName: i.projectName || pName || filterProject || 'jkjdsasds',
+        machineName: i.machineName || i.machineType || 'Standard Machine',
+        description: i.description,
+        materialType: i.materialType,
+        materialGrade: i.materialGrade || 'SS 304',
+        sizeSpecs: i.sizeSpecs,
+        quantity: Number(i.quantity) || 1,
+        unit: i.unit || 'Nos',
+        vendor: i.vendor || i.vendorName || 'Unassigned',
+        vendorName: i.vendor || i.vendorName || 'Unassigned',
+        notes: i.notes,
+      })),
+    };
+
+    // 1. Generate & auto-download official RSB Purchase Order PDF directly
+    const pdfName = generatePurchaseOrderPDF(poPayload);
+
+    // 2. Format concise message
+    const msg = formatWhatsAppPOMessage(poPayload);
+
+    // 3. Copy message to clipboard
+    try {
+      navigator.clipboard.writeText(msg);
+    } catch (e) {
+      const textArea = document.createElement('textarea');
+      textArea.value = msg;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+    }
+
+    // 4. Directly open WhatsApp Web / App to 7276939301
+    const url = createWhatsAppUrl(phone, msg);
+    window.open(url, '_blank', 'noopener,noreferrer');
+
+    showToast(`✓ Master PO PDF "${pdfName}" downloaded & WhatsApp opened for ${phone}!`);
   };
 
   // Manual Basket Item Removals (Marks as Ordered / Fulfilled so it leaves the basket without deleting the project or BOM)
@@ -642,6 +870,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({ initialPro
       if (poColumnConfig.sizeSpecs) rowData['Size Specification'] = item.sizeSpecs;
       if (poColumnConfig.quantity) rowData['Quantity'] = Number(item.quantity) || 1;
       if (poColumnConfig.unit) rowData['Unit'] = item.unit || 'Nos';
+      if (poColumnConfig.vendor) rowData['Assigned Vendor'] = item.vendor || item.vendorName || 'Unassigned';
       if (poColumnConfig.requiredDate) rowData['Required Date'] = poExpectedDate;
       if (poColumnConfig.notes) rowData['Notes / Remarks'] = item.notes || poNotes;
       return rowData;
@@ -652,6 +881,128 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({ initialPro
       `PO_${generatedPOPreview.poNumber}_${generatedPOPreview.vendor.replace(/\s+/g, '_')}`,
       `PURCHASE ORDER: ${generatedPOPreview.poNumber}`
     );
+  };
+
+  // Dedicated Isolated Print Engine (Guarantees crisp, non-blank A4 print output across all browsers)
+  const handlePrintPOSlip = () => {
+    const printContent = document.querySelector('.printable-po-document');
+    if (!printContent) {
+      window.print();
+      return;
+    }
+
+    let iframe = document.getElementById('po-print-frame') as HTMLIFrameElement;
+    if (!iframe) {
+      iframe = document.createElement('iframe');
+      iframe.id = 'po-print-frame';
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      document.body.appendChild(iframe);
+    }
+
+    const doc = iframe.contentWindow?.document || iframe.contentDocument;
+    if (!doc) {
+      window.print();
+      return;
+    }
+
+    const styleTags = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+      .map((el) => el.outerHTML)
+      .join('\n');
+
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>RSB Material Purchase Order - ${generatedPOPreview?.poNumber || 'PO'}</title>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          ${styleTags}
+          <style>
+            @page {
+              size: A4 portrait;
+              margin: 8mm 8mm 8mm 8mm;
+            }
+            html, body {
+              background: #ffffff !important;
+              color: #000000 !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            .printable-po-document {
+              width: 100% !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #ffffff !important;
+            }
+            .po-page-sheet {
+              width: 100% !important;
+              height: 279mm !important;
+              min-height: 279mm !important;
+              max-height: 279mm !important;
+              box-sizing: border-box !important;
+              display: flex !important;
+              flex-direction: column !important;
+              justify-content: space-between !important;
+              padding: 5mm 5mm 5mm 5mm !important;
+              margin: 0 auto !important;
+              border: 1.5px solid #0f172a !important;
+              page-break-after: always !important;
+              break-after: page !important;
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+              background: #ffffff !important;
+              overflow: hidden !important;
+            }
+            .po-page-sheet:last-child {
+              page-break-after: auto !important;
+              break-after: auto !important;
+            }
+            .po-page-sheet table {
+              width: 100% !important;
+              border-collapse: collapse !important;
+              border: 1px solid #1e293b !important;
+              font-size: 8.5pt !important;
+              line-height: 1.2 !important;
+            }
+            .po-page-sheet th,
+            .po-page-sheet td {
+              border: 1px solid #cbd5e1 !important;
+              color: #000000 !important;
+              padding: 2.5px 4.5px !important;
+            }
+            .po-page-sheet thead tr {
+              background-color: #f1f5f9 !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            .po-signatures-footer {
+              margin-top: auto !important;
+              padding-top: 6px !important;
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+          </style>
+        </head>
+        <body>
+          ${printContent.outerHTML}
+        </body>
+      </html>
+    `);
+    doc.close();
+
+    setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    }, 250);
   };
 
   return (
@@ -884,238 +1235,379 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({ initialPro
       {/* ======================== 4A. PROJECT & MACHINE FOLDERS VIEW ============================ */}
       {viewMode === 'projectFolders' && (
         <div className="space-y-4">
-          {projectMachineFolders.length === 0 ? (
-            <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 shadow-xs">
-              <Folder className="w-12 h-12 mx-auto text-slate-300 mb-3" />
-              <h3 className="text-base font-bold text-slate-800">No project material folders found</h3>
-              <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                No active project materials match your current search or filters.
-              </p>
-            </div>
-          ) : (
-            projectMachineFolders.map((pFolder) => {
-              const allPItems: ProjectMaterialRequirementItem[] = [];
-              pFolder.machineGroups.forEach((items) => allPItems.push(...items));
-              const isAllPSelected = allPItems.length > 0 && allPItems.every((i) => selectedIds.includes(i.id));
-
+          {(() => {
+            // When no project is selected yet, render a clean project selection grid (Don't auto-open any project)
+            if (!filterProject) {
               return (
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                    <div>
+                      <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                        <Folder className="w-4 h-4 text-indigo-600" />
+                        <span>Select a Project to View in Order Basket</span>
+                      </h3>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Choose a project below to manage materials, assign vendors, and generate purchase orders.
+                      </p>
+                    </div>
+                    {onNavigateToProjects && (
+                      <button
+                        type="button"
+                        onClick={onNavigateToProjects}
+                        className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                      >
+                        <ArrowLeft className="w-3.5 h-3.5 text-blue-600" />
+                        <span>← Go to Projects Directory</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {projectMachineFolders.length === 0 ? (
+                    <div className="p-10 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                      <ShoppingCart className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+                      <p className="text-xs font-bold text-slate-700">No project materials awaiting procurement in Order Basket</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                      {projectMachineFolders.map((p) => {
+                        const allItems: ProjectMaterialRequirementItem[] = [];
+                        p.machineGroups.forEach((items) => allItems.push(...items));
+                        const assignedCount = allItems.filter((i) => i.vendor && i.vendor !== 'Unassigned').length;
+                        const unassignedCount = allItems.length - assignedCount;
+
+                        return (
+                          <div
+                            key={p.projectName}
+                            onClick={() => setFilterProject(p.projectName)}
+                            className="p-4 rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 hover:to-white hover:border-indigo-500/60 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+                          >
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 font-mono text-[10px] font-bold">
+                                  {p.project?.projectNumber || 'PRJ'}
+                                </span>
+                                <span className="text-[11px] font-black text-slate-900 bg-slate-100 px-2 py-0.5 rounded-md">
+                                  {allItems.length} Items
+                                </span>
+                              </div>
+
+                              <h4 className="text-sm font-black text-slate-900 group-hover:text-indigo-600 transition-colors">
+                                {p.projectName}
+                              </h4>
+
+                              <div className="text-[11px] text-slate-500">
+                                Machines:{' '}
+                                <span className="font-semibold text-slate-700">
+                                  {Array.from(p.machineGroups.keys()).join(', ') || 'General'}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="pt-3 mt-3 border-t border-slate-200/80 flex items-center justify-between">
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                                  unassignedCount === 0
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                }`}
+                              >
+                                {unassignedCount === 0 ? `✓ All Assigned (${assignedCount})` : `⚠️ ${unassignedCount} Needs Vendor`}
+                              </span>
+
+                              <span className="text-xs font-bold text-indigo-600 group-hover:translate-x-1 transition-transform inline-flex items-center gap-1">
+                                <span>Open Order Basket</span>
+                                <span>→</span>
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            const currentPFolder = projectMachineFolders.find((p) => p.projectName === filterProject);
+
+            if (!currentPFolder) {
+              return (
+                <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 shadow-xs">
+                  <ShoppingCart className="w-12 h-12 mx-auto text-slate-300 mb-3" />
+                  <h3 className="text-base font-bold text-slate-800">Project "{filterProject}" has no pending materials</h3>
+                  <button
+                    type="button"
+                    onClick={() => setFilterProject('')}
+                    className="mt-4 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer inline-flex items-center gap-1.5"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    <span>← Back to Project List</span>
+                  </button>
+                </div>
+              );
+            }
+
+            const pFolder = currentPFolder;
+            const allPItems: ProjectMaterialRequirementItem[] = [];
+            pFolder.machineGroups.forEach((items) => allPItems.push(...items));
+            const isAllPSelected = allPItems.length > 0 && allPItems.every((i) => selectedIds.includes(i.id));
+
+            return (
+              <div className="space-y-4">
+                {/* Project Navigation Bar */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-4 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setFilterProject('')}
+                      className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                      title="Back to all projects list in basket"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5 text-blue-600" />
+                      <span>← Back to Projects List</span>
+                    </button>
+
+                    <span className="px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-bold shadow-xs flex items-center gap-1.5">
+                      <Folder className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Project: {pFolder.projectName}</span>
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs font-semibold text-slate-500">Switch Project:</label>
+                    <select
+                      value={pFolder.projectName}
+                      onChange={(e) => setFilterProject(e.target.value)}
+                      className="bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                    >
+                      <option value="">-- Choose a Project --</option>
+                      {allProjectNames.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Project Folder Card */}
                 <div
                   key={pFolder.projectName}
                   className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden transition-all"
                 >
                   {/* Project Folder Header Bar */}
-                  <div className="p-3.5 sm:p-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-2">
-                        <Folder className="w-5 h-5 text-amber-400 fill-amber-400/20 shrink-0" />
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="text-sm font-black text-white tracking-wide">
-                              {pFolder.projectName}
-                            </h3>
-                            {pFolder.project?.projectNumber && (
-                              <span className="px-2 py-0.5 rounded-md bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 text-[10px] font-mono font-bold">
-                                {pFolder.project.projectNumber}
-                              </span>
-                            )}
+                        <div className="p-3.5 sm:p-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2">
+                              <Folder className="w-5 h-5 text-amber-400 fill-amber-400/20 shrink-0" />
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <h3 className="text-sm font-black text-white tracking-wide">
+                                    {pFolder.projectName}
+                                  </h3>
+                                  {pFolder.project?.projectNumber && (
+                                    <span className="px-2 py-0.5 rounded-md bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 text-[10px] font-mono font-bold">
+                                      {pFolder.project.projectNumber}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-slate-300 font-medium">
+                                  📁 {pFolder.totalItems} Total Materials • ✓ {pFolder.assignedCount} Allocated •{' '}
+                                  {pFolder.unassignedCount > 0 ? (
+                                    <span className="text-amber-300 font-bold">⚠️ {pFolder.unassignedCount} Needs Vendor</span>
+                                  ) : (
+                                    <span className="text-emerald-300 font-bold">All Assigned</span>
+                                  )}
+                                </p>
+                              </div>
+                            </div>
                           </div>
-                          <p className="text-[11px] text-slate-300 font-medium">
-                            📁 {pFolder.totalItems} Total Materials • ✓ {pFolder.assignedCount} Allocated •{' '}
-                            {pFolder.unassignedCount > 0 ? (
-                              <span className="text-amber-300 font-bold">⚠️ {pFolder.unassignedCount} Needs Vendor</span>
-                            ) : (
-                              <span className="text-emerald-300 font-bold">All Assigned</span>
-                            )}
-                          </p>
+
+                          {/* Project Level Quick Actions */}
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleSelectProjectItems(allPItems)}
+                              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                                isAllPSelected
+                                  ? 'bg-amber-500 text-slate-950 border-amber-400 font-black'
+                                  : 'bg-white/10 hover:bg-white/20 text-white border-white/20'
+                              }`}
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              <span>{isAllPSelected ? 'Deselect Project' : 'Select All In Project'}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleOpenPOModal(undefined, allPItems)}
+                              className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              <span>Generate PO</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveProjectItems(allPItems, pFolder.projectName)}
+                              className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-600 text-rose-200 hover:text-white border border-rose-500/40 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                              title={`Remove all materials in project ${pFolder.projectName} from basket`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Remove Project</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Machine Sections Inside Project */}
+                        <div className="p-3 sm:p-4 space-y-4 bg-slate-50/50">
+                          {Array.from(pFolder.machineGroups.entries()).map(([machineName, mItems]) => {
+                            const allMachineSelected = mItems.length > 0 && mItems.every((i) => selectedIds.includes(i.id));
+
+                            return (
+                              <div
+                                key={machineName}
+                                className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden"
+                              >
+                                {/* Machine Sub-Header */}
+                                <div className="px-3.5 py-2.5 bg-slate-100 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                                      <input
+                                        type="checkbox"
+                                        checked={allMachineSelected}
+                                        onChange={() => handleSelectProjectItems(mItems)}
+                                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-3.5 h-3.5"
+                                      />
+                                      <Cpu className="w-4 h-4 text-indigo-600" />
+                                      <span className="text-xs font-black text-slate-800 uppercase tracking-wide">
+                                        MACHINE: {machineName}
+                                      </span>
+                                    </label>
+                                  </div>
+
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[11px] font-bold text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">
+                                      {mItems.length} Parts
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveMachineItems(mItems, machineName)}
+                                      className="px-2 py-0.5 rounded-md bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer"
+                                      title={`Remove machine ${machineName} materials from basket`}
+                                    >
+                                      <Trash2 className="w-3 h-3 text-rose-500" />
+                                      <span>Remove Machine</span>
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* Machine Materials Table */}
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-left text-xs border-collapse">
+                                    <thead>
+                                      <tr className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
+                                        <th className="py-2.5 px-3 w-10 text-center">#</th>
+                                        <th className="py-2.5 px-3">Material Description</th>
+                                        <th className="py-2.5 px-3">Type</th>
+                                        <th className="py-2.5 px-3 font-mono">Size Specification</th>
+                                        <th className="py-2.5 px-3 text-center">Qty</th>
+                                        <th className="py-2.5 px-3">Assigned Vendor</th>
+                                        <th className="py-2.5 px-3 text-center w-14">Action</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                      {mItems.map((item) => {
+                                        const isSelected = selectedIds.includes(item.id);
+                                        const isAssigned =
+                                          item.vendor &&
+                                          item.vendor !== 'Unassigned' &&
+                                          item.vendor !== 'Standard Vendor' &&
+                                          item.vendor.trim() !== '';
+
+                                        return (
+                                          <tr
+                                            key={item.id}
+                                            className={`transition-all hover:bg-indigo-50/40 ${
+                                              isSelected ? 'bg-indigo-50/80' : 'bg-white'
+                                            }`}
+                                          >
+                                            {/* Checkbox */}
+                                            <td className="py-2 px-3 text-center">
+                                              <input
+                                                type="checkbox"
+                                                checked={isSelected}
+                                                onChange={() => handleToggleSelectRow(item.id)}
+                                                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                              />
+                                            </td>
+
+                                            {/* Description */}
+                                            <td className="py-2 px-3 font-bold text-slate-800">
+                                              {item.description}
+                                            </td>
+
+                                            {/* Material Type */}
+                                            <td className="py-2 px-3">
+                                              <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[10px] font-bold border border-slate-200">
+                                                {item.materialType}
+                                              </span>
+                                            </td>
+
+                                            {/* Size Specs */}
+                                            <td className="py-2 px-3 font-mono font-bold text-blue-700">
+                                              {item.sizeSpecs}
+                                            </td>
+
+                                            {/* Qty & Unit */}
+                                            <td className="py-2 px-3 text-center">
+                                              <span className="font-black text-slate-900">{item.quantity}</span>{' '}
+                                              <span className="text-[10px] text-slate-500 font-semibold">{item.unit || 'Nos'}</span>
+                                            </td>
+
+                                            {/* Assigned Vendor */}
+                                            <td className="py-2 px-3">
+                                              {isAssigned ? (
+                                                <div className="flex items-center gap-1.5">
+                                                  <span className="font-bold text-slate-900">{item.vendor}</span>
+                                                </div>
+                                              ) : (
+                                                <span className="text-amber-600 font-bold text-[11px] bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md inline-block">
+                                                  ⚠️ Unassigned
+                                                </span>
+                                              )}
+                                            </td>
+
+                                            {/* Row Action */}
+                                            <td className="py-2 px-3 text-center">
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  updateProjectRequirement(item.id, { poStatus: 'Issued', poNumberAssigned: 'MANUAL-ORDERED' });
+                                                  showToast(`"${item.description}" removed from basket.`);
+                                                }}
+                                                className="p-1 rounded-md hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                                                title="Remove from Order Basket (Marks as ordered/fulfilled, project remains intact)"
+                                              >
+                                                <X className="w-3.5 h-3.5" />
+                                              </button>
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     </div>
-
-                    {/* Project Level Quick Actions */}
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleSelectProjectItems(allPItems)}
-                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
-                          isAllPSelected
-                            ? 'bg-amber-500 text-slate-950 border-amber-400 font-black'
-                            : 'bg-white/10 hover:bg-white/20 text-white border-white/20'
-                        }`}
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                        <span>{isAllPSelected ? 'Deselect Project' : 'Select All In Project'}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleOpenPOModal(undefined, allPItems)}
-                        className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
-                      >
-                        <FileText className="w-3.5 h-3.5" />
-                        <span>Generate PO</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveProjectItems(allPItems, pFolder.projectName)}
-                        className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-600 text-rose-200 hover:text-white border border-rose-500/40 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
-                        title={`Remove all materials in project ${pFolder.projectName} from basket`}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>Remove Project</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Machine Sections Inside Project */}
-                  <div className="p-3 sm:p-4 space-y-4 bg-slate-50/50">
-                    {Array.from(pFolder.machineGroups.entries()).map(([machineName, mItems]) => {
-                      const allMachineSelected = mItems.length > 0 && mItems.every((i) => selectedIds.includes(i.id));
-
-                      return (
-                        <div
-                          key={machineName}
-                          className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden"
-                        >
-                          {/* Machine Sub-Header */}
-                          <div className="px-3.5 py-2.5 bg-slate-100 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                                <input
-                                  type="checkbox"
-                                  checked={allMachineSelected}
-                                  onChange={() => handleSelectProjectItems(mItems)}
-                                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-3.5 h-3.5"
-                                />
-                                <Cpu className="w-4 h-4 text-indigo-600" />
-                                <span className="text-xs font-black text-slate-800 uppercase tracking-wide">
-                                  MACHINE: {machineName}
-                                </span>
-                              </label>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                              <span className="text-[11px] font-bold text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">
-                                {mItems.length} Parts
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveMachineItems(mItems, machineName)}
-                                className="px-2 py-0.5 rounded-md bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer"
-                                title={`Remove machine ${machineName} materials from basket`}
-                              >
-                                <Trash2 className="w-3 h-3 text-rose-500" />
-                                <span>Remove Machine</span>
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Machine Materials Table */}
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-left text-xs border-collapse">
-                              <thead>
-                                <tr className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
-                                  <th className="py-2.5 px-3 w-10 text-center">#</th>
-                                  <th className="py-2.5 px-3">Material Description</th>
-                                  <th className="py-2.5 px-3">Type</th>
-                                  <th className="py-2.5 px-3 font-mono">Size Specification</th>
-                                  <th className="py-2.5 px-3 text-center">Qty</th>
-                                  <th className="py-2.5 px-3">Assigned Vendor</th>
-                                  <th className="py-2.5 px-3 text-center w-14">Action</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-slate-100">
-                                {mItems.map((item, idx) => {
-                                  const isSelected = selectedIds.includes(item.id);
-                                  const isAssigned =
-                                    item.vendor &&
-                                    item.vendor !== 'Unassigned' &&
-                                    item.vendor !== 'Standard Vendor' &&
-                                    item.vendor.trim() !== '';
-
-                                  return (
-                                    <tr
-                                      key={item.id}
-                                      className={`transition-all hover:bg-indigo-50/40 ${
-                                        isSelected ? 'bg-indigo-50/80' : 'bg-white'
-                                      }`}
-                                    >
-                                      {/* Checkbox */}
-                                      <td className="py-2 px-3 text-center">
-                                        <input
-                                          type="checkbox"
-                                          checked={isSelected}
-                                          onChange={() => handleToggleSelectRow(item.id)}
-                                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                        />
-                                      </td>
-
-                                      {/* Description */}
-                                      <td className="py-2 px-3 font-bold text-slate-800">
-                                        {item.description}
-                                      </td>
-
-                                      {/* Material Type */}
-                                      <td className="py-2 px-3">
-                                        <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[10px] font-bold border border-slate-200">
-                                          {item.materialType}
-                                        </span>
-                                      </td>
-
-                                      {/* Size Specs */}
-                                      <td className="py-2 px-3 font-mono font-bold text-blue-700">
-                                        {item.sizeSpecs}
-                                      </td>
-
-                                      {/* Qty & Unit */}
-                                      <td className="py-2 px-3 text-center">
-                                        <span className="font-black text-slate-900">{item.quantity}</span>{' '}
-                                        <span className="text-[10px] text-slate-500 font-semibold">{item.unit || 'Nos'}</span>
-                                      </td>
-
-                                      {/* Assigned Vendor */}
-                                      <td className="py-2 px-3">
-                                        {isAssigned ? (
-                                          <div className="flex items-center gap-1.5">
-                                            <span className="font-bold text-slate-900">{item.vendor}</span>
-                                          </div>
-                                        ) : (
-                                          <span className="text-amber-600 font-bold text-[11px] bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md inline-block">
-                                            ⚠️ Unassigned
-                                          </span>
-                                        )}
-                                      </td>
-
-                                      {/* Row Action */}
-                                      <td className="py-2 px-3 text-center">
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            updateProjectRequirement(item.id, { poStatus: 'Issued', poNumberAssigned: 'MANUAL-ORDERED' });
-                                            showToast(`"${item.description}" removed from basket.`);
-                                          }}
-                                          className="p-1 rounded-md hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
-                                          title="Remove from Order Basket (Marks as ordered/fulfilled, project remains intact)"
-                                        >
-                                          <X className="w-3.5 h-3.5" />
-                                        </button>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      )}
+                  );
+                })()}
+              </div>
+            )}
 
       {/* ======================== 4B. GROUP BY VENDOR VIEW ============================ */}
       {viewMode === 'vendorGroups' && (
@@ -1190,7 +1682,16 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({ initialPro
                     Allocate All {group.items.length} Materials
                   </button>
                 ) : (
-                  <div className="flex items-center gap-2 w-full">
+                  <div className="flex items-center gap-1.5 w-full">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenWhatsAppForItems(group.vendorName, group.items)}
+                      className="px-2.5 py-1.5 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-slate-950 text-xs font-black transition-all shadow-xs flex items-center justify-center gap-1 cursor-pointer active:scale-95"
+                      title={`Send WhatsApp PO to ${group.vendorName}`}
+                    >
+                      <Send className="w-3 h-3 fill-slate-950" />
+                      <span>WhatsApp</span>
+                    </button>
                     <button
                       type="button"
                       onClick={() => handleOpenRFQModal(group.vendorName, group.items)}
@@ -1742,8 +2243,8 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({ initialPro
 
       {/* 5E. ZERO-RATE PURCHASE ORDER / PURCHASE SLIP MODAL */}
       {isPOModalOpen && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-4xl w-full p-4 sm:p-6 space-y-4 shadow-2xl border border-slate-300 my-auto max-h-[92vh] overflow-y-auto">
+        <div className="printable-po-modal-overlay fixed inset-0 bg-slate-950/80 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="printable-po-modal-wrapper bg-white rounded-2xl max-w-4xl w-full p-4 sm:p-6 space-y-4 shadow-2xl border border-slate-300 my-auto max-h-[92vh] overflow-y-auto">
             {/* Modal Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 no-print">
               <div className="flex items-center gap-2.5">
@@ -1771,22 +2272,49 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({ initialPro
               </button>
             </div>
 
+            {/* Master Material PO Summary Ribbon */}
+            <div className="bg-slate-900 text-white p-3 rounded-xl border border-slate-800 flex flex-wrap items-center justify-between gap-2 no-print">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                <div>
+                  <span className="text-xs font-black tracking-wide block">
+                    Master Material Purchase Order • All {poItemsToGenerate.length} Parts Included
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    Categorized by assigned vendors • Direct dispatch to Kaustubh (+91 7276939301)
+                  </span>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {availableVendorsInPO.map((v) => {
+                  const count = poItemsToGenerate.filter(
+                    (i) => (i.vendor || i.vendorName || '').trim().toLowerCase() === v.trim().toLowerCase()
+                  ).length;
+                  return (
+                    <span
+                      key={v}
+                      className="px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-xs font-bold text-slate-200 flex items-center gap-1.5 shadow-2xs"
+                    >
+                      <span className="text-amber-400 font-bold">{cleanVendorName(v)}:</span>
+                      <span className="text-emerald-300 font-mono font-black">{count} {count === 1 ? 'Part' : 'Parts'}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* PO Parameter Controls */}
             {!generatedPOPreview && (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs font-bold no-print">
                 <div>
-                  <label className="block text-slate-700 mb-1">Target Supplier Vendor:</label>
-                  <select
+                  <label className="block text-slate-700 mb-1">Target Recipient / Vendor:</label>
+                  <input
+                    type="text"
                     value={poTargetVendor}
                     onChange={(e) => setPoTargetVendor(e.target.value)}
                     className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-500"
-                  >
-                    {allVendorsList.map((v) => (
-                      <option key={v} value={v}>
-                        {v}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder="Kaustubh (Master Material PO)"
+                  />
                 </div>
 
                 <div>
@@ -1831,6 +2359,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({ initialPro
                         sizeSpecs: true,
                         quantity: true,
                         unit: true,
+                        vendor: true,
                         requiredDate: true,
                         notes: true,
                       })
@@ -1852,6 +2381,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({ initialPro
                         sizeSpecs: true,
                         quantity: true,
                         unit: true,
+                        vendor: true,
                         requiredDate: false,
                         notes: false,
                       })
@@ -1874,6 +2404,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({ initialPro
                   { key: 'sizeSpecs' as const, label: 'Size Spec' },
                   { key: 'quantity' as const, label: 'Quantity' },
                   { key: 'unit' as const, label: 'Unit' },
+                  { key: 'vendor' as const, label: 'Assigned Vendor' },
                   { key: 'requiredDate' as const, label: 'Required Date' },
                   { key: 'notes' as const, label: 'Notes' },
                 ].map(({ key, label }) => {
@@ -1913,177 +2444,245 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({ initialPro
                   </span>
                 </div>
 
-                {/* Professional Printable PO Sheet */}
-                <div className="printable-po-document bg-white rounded-xl p-5 sm:p-6 border-2 border-slate-400 shadow-sm text-slate-900 font-sans flex flex-col justify-between min-h-[250mm] space-y-4">
-                  {/* Top Header & Table Area */}
-                  <div className="space-y-4">
-                    {/* Company Header Block */}
-                    <div className="border-b-2 border-slate-800 pb-3 text-left flex flex-row items-start justify-between gap-2">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="px-2 py-0.5 bg-slate-950 text-white font-black text-xs rounded">RSB</span>
-                          <h4 className="text-xl font-black text-slate-950 tracking-tight uppercase">
-                            RSB PRIVATE LIMITED
-                          </h4>
-                        </div>
-                        <p className="text-xs font-semibold text-slate-700 mt-0.5">
-                          Manufacturing Industry
-                        </p>
-                        <p className="text-[10px] text-slate-500">
-                          F, 16/4, Naregaon Main Rd, Naregaon, Chilkalthana, Chhatrapati Sambhajinagar, Maharashtra 431007
-                        </p>
-                      </div>
-                      <div className="text-right bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-300 shrink-0">
-                        <span className="text-[10px] uppercase font-black text-slate-600 block">
-                          DOCUMENT TYPE
-                        </span>
-                        <strong className="text-xs font-black text-slate-950 block tracking-wide">
-                          MATERIAL PURCHASE ORDER
-                        </strong>
-                        <span className="text-[10px] font-bold text-emerald-800 font-mono">
-                          STATUS: {generatedPOPreview.status}
-                        </span>
-                      </div>
-                    </div>
+                {/* Professional Printable PO Sheets (Paginated & Pinned Bottom Signatures) */}
+                <div className="printable-po-document space-y-6">
+                  {paginatedPOPages.map((pageChunk) => (
+                    <div
+                      key={pageChunk.pageIndex}
+                      className="po-page-sheet bg-white rounded-xl p-5 sm:p-6 border-2 border-slate-800 shadow-sm text-slate-900 font-sans flex flex-col justify-between min-h-[275mm] space-y-4"
+                    >
+                      {/* Top Header & Table Area */}
+                      <div className="space-y-4 flex-1">
+                        {pageChunk.isFirstPage ? (
+                          <>
+                            {/* Company Header Block */}
+                            <div className="border-b-2 border-slate-900 pb-3 text-left flex flex-row items-start justify-between gap-2">
+                              <div className="flex items-start gap-3">
+                                <div className="w-10 h-10 bg-slate-950 text-amber-400 font-black text-sm rounded-lg flex items-center justify-center tracking-tight border border-amber-400/30 shrink-0">
+                                  RSB
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <h4 className="text-xl font-black text-slate-950 tracking-tight uppercase">
+                                      RSB PRIVATE LIMITED
+                                    </h4>
+                                  </div>
+                                  <p className="text-xs font-bold text-slate-700 mt-0.5">
+                                    Manufacturing Industry
+                                  </p>
+                                  <p className="text-[10px] text-slate-500">
+                                    F, 16/4, Naregaon Main Rd, Naregaon, Chilkalthana, Chhatrapati Sambhajinagar, Maharashtra 431007
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="text-right bg-slate-100 px-3.5 py-2 rounded-lg border border-slate-300 shrink-0">
+                                <span className="text-[9.5px] uppercase font-black text-slate-600 block">
+                                  DOCUMENT TYPE
+                                </span>
+                                <strong className="text-xs font-black text-slate-950 block tracking-wide">
+                                  MATERIAL PURCHASE ORDER
+                                </strong>
+                                <span className="text-[10px] font-bold text-emerald-800 font-mono">
+                                  STATUS: {generatedPOPreview.status.toUpperCase()}
+                                </span>
+                              </div>
+                            </div>
 
-                    {/* Metadata 2-Column Excel Info Grid */}
-                    <div className="grid grid-cols-2 gap-3 text-xs">
-                      <div className="border border-slate-300 rounded-lg p-3 bg-slate-50/50 space-y-1">
-                        <span className="text-[10px] font-black uppercase text-slate-600 tracking-wider block border-b border-slate-200 pb-1">
-                          SUPPLIER / VENDOR DETAILS:
-                        </span>
-                        <div className="pt-0.5">
-                          <strong className="text-sm font-black text-slate-900 block">
-                            {generatedPOPreview.vendor}
-                          </strong>
-                          <span className="text-[11px] text-slate-600 block">
-                            Terms: {generatedPOPreview.paymentTerms || '30 Days Net'}
+                            {/* Metadata 2-Column Excel Info Grid */}
+                            <div className="grid grid-cols-2 gap-3 text-xs">
+                              <div className="border border-slate-300 rounded-lg p-3 bg-slate-50/70 space-y-1">
+                                <span className="text-[9.5px] font-black uppercase text-slate-600 tracking-wider block border-b border-slate-200 pb-1">
+                                  PROJECT & PROCUREMENT DETAILS:
+                                </span>
+                                <div className="pt-0.5 space-y-0.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] font-bold text-slate-500">Project:</span>
+                                    <strong className="text-sm font-black text-slate-900 block">
+                                      {poItemsToGenerate[0]?.projectName || filterProject || 'jkjdsasds'}
+                                    </strong>
+                                  </div>
+                                  <div className="text-[11px] text-slate-700">
+                                    <span className="font-bold text-slate-500 text-[10px]">Assigned Vendors: </span>
+                                    <span className="font-bold text-indigo-900">
+                                      {Array.from(new Set(poItemsToGenerate.map((i) => cleanVendorName(i.vendor || i.vendorName)).filter((v) => v !== 'Unassigned'))).join(', ') || 'All Assigned Vendors'}
+                                    </span>
+                                  </div>
+                                  <div className="text-[10px] text-slate-500">
+                                    Scope: All {poItemsToGenerate.length} Materials (Sequential Vendor Grouping)
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="border border-slate-300 rounded-lg p-3 bg-slate-50/70 space-y-1">
+                                <span className="text-[9.5px] font-black uppercase text-slate-600 tracking-wider block border-b border-slate-200 pb-1">
+                                  ORDER REFERENCES:
+                                </span>
+                                <div className="grid grid-cols-3 gap-2 text-[11px] pt-0.5">
+                                  <div>
+                                    <span className="text-slate-500 text-[10px] block">PO Number:</span>
+                                    <strong className="font-mono font-black text-slate-900">
+                                      {generatedPOPreview.poNumber}
+                                    </strong>
+                                  </div>
+                                  <div>
+                                    <span className="text-slate-500 text-[10px] block">Date of Issue:</span>
+                                    <strong className="text-slate-900">
+                                      {generatedPOPreview.date}
+                                    </strong>
+                                  </div>
+                                  <div>
+                                    <span className="text-slate-500 text-[10px] block">Target Delivery:</span>
+                                    <strong className="text-emerald-800 font-bold">
+                                      {poExpectedDate}
+                                    </strong>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          /* Continuation Header on Page 2+ */
+                          <div className="border-b-2 border-slate-900 pb-2.5 text-left flex flex-row items-center justify-between gap-2">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 bg-slate-950 text-amber-400 font-black text-xs rounded-lg flex items-center justify-center border border-amber-400/30 shrink-0">
+                                RSB
+                              </div>
+                              <div>
+                                <h4 className="text-sm font-black text-slate-950 uppercase tracking-tight">
+                                  RSB PRIVATE LIMITED — PURCHASE ORDER CONTINUATION
+                                </h4>
+                                <p className="text-[10px] text-slate-600 font-bold mt-0.5">
+                                  Project: <span className="text-slate-900">{poItemsToGenerate[0]?.projectName || filterProject || 'Project'}</span> | PO No: <span className="font-mono text-slate-950">{generatedPOPreview.poNumber}</span>
+                                </p>
+                              </div>
+                            </div>
+                            <div className="text-right bg-slate-100 px-3 py-1 rounded-lg border border-slate-300 shrink-0">
+                              <span className="text-[9.5px] font-black text-slate-800 uppercase block">
+                                PAGE {pageChunk.pageIndex} OF {pageChunk.totalPages}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Professional Excel-Style Grid Table */}
+                        <div className="border border-slate-400 overflow-x-auto rounded-lg">
+                          <table className="w-full text-left text-[11px] border-collapse font-sans">
+                            <thead>
+                              <tr className="bg-slate-200 text-slate-950 font-black border-b border-slate-400 uppercase text-[9.5px]">
+                                {poColumnConfig.srNo && <th className="px-1.5 py-1 w-8 text-center border-r border-slate-300">#</th>}
+                                {poColumnConfig.projectName && <th className="px-2 py-1 border-r border-slate-300">Project Name</th>}
+                                {poColumnConfig.machineName && <th className="px-2 py-1 border-r border-slate-300">Machine Name</th>}
+                                {poColumnConfig.description && <th className="px-2 py-1 border-r border-slate-300">Material Description</th>}
+                                {poColumnConfig.materialType && <th className="px-2 py-1 border-r border-slate-300">Material Type</th>}
+                                {poColumnConfig.sizeSpecs && <th className="px-2 py-1 border-r border-slate-300 font-mono">Size Specification</th>}
+                                {poColumnConfig.quantity && <th className="px-1.5 py-1 text-center border-r border-slate-300">Qty</th>}
+                                {poColumnConfig.unit && <th className="px-1.5 py-1 text-center border-r border-slate-300">Unit</th>}
+                                {poColumnConfig.vendor && <th className="px-2 py-1 border-r border-slate-300">Assigned Vendor</th>}
+                                {poColumnConfig.requiredDate && <th className="px-1.5 py-1 text-center border-r border-slate-300">Target Date</th>}
+                                {poColumnConfig.notes && <th className="px-2 py-1">Notes / Remarks</th>}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-300 bg-white text-[10.5px]">
+                              {pageChunk.items.map(({ item, globalIndex }, rIdx) => (
+                                <tr
+                                  key={item.id || globalIndex}
+                                  className={rIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'}
+                                >
+                                  {poColumnConfig.srNo && (
+                                    <td className="px-1.5 py-1 text-center font-bold text-slate-700 border-r border-slate-300">
+                                      {globalIndex}
+                                    </td>
+                                  )}
+                                  {poColumnConfig.projectName && (
+                                    <td className="px-2 py-1 font-bold text-slate-900 border-r border-slate-300">
+                                      {item.projectName}
+                                    </td>
+                                  )}
+                                  {poColumnConfig.machineName && (
+                                    <td className="px-2 py-1 font-bold text-indigo-950 border-r border-slate-300">
+                                      {item.machineName || item.machineType || 'Machine'}
+                                    </td>
+                                  )}
+                                  {poColumnConfig.description && (
+                                    <td className="px-2 py-1 font-bold text-slate-900 border-r border-slate-300">
+                                      {item.description}
+                                    </td>
+                                  )}
+                                  {poColumnConfig.materialType && (
+                                    <td className="px-2 py-1 font-semibold text-slate-800 border-r border-slate-300">
+                                      {item.materialType}
+                                    </td>
+                                  )}
+                                  {poColumnConfig.sizeSpecs && (
+                                    <td className="px-2 py-1 font-mono font-bold text-blue-900 border-r border-slate-300">
+                                      {item.sizeSpecs}
+                                    </td>
+                                  )}
+                                  {poColumnConfig.quantity && (
+                                    <td className="px-1.5 py-1 text-center font-black text-slate-950 border-r border-slate-300">
+                                      {item.quantity}
+                                    </td>
+                                  )}
+                                  {poColumnConfig.unit && (
+                                    <td className="px-1.5 py-1 text-center font-semibold text-slate-700 border-r border-slate-300">
+                                      {item.unit || 'Nos'}
+                                    </td>
+                                  )}
+                                  {poColumnConfig.vendor && (
+                                    <td className="px-2 py-1 font-black text-slate-900 border-r border-slate-300">
+                                      {cleanVendorName(item.vendor || item.vendorName)}
+                                    </td>
+                                  )}
+                                  {poColumnConfig.requiredDate && (
+                                    <td className="px-1.5 py-1 text-center font-mono text-slate-800 border-r border-slate-300">
+                                      {poExpectedDate}
+                                    </td>
+                                  )}
+                                  {poColumnConfig.notes && (
+                                    <td className="px-2 py-1 text-slate-700 italic">
+                                      {item.notes || poNotes}
+                                    </td>
+                                  )}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      {/* Footer Area: If not last page, show continuation bar. If last page, show 3-Tier Signatures Block pinned to bottom */}
+                      {!pageChunk.isLastPage ? (
+                        <div className="border-t border-slate-300 pt-1.5 text-center text-[9.5px] text-slate-500 font-semibold flex items-center justify-between mt-auto shrink-0">
+                          <span>RSB Private Limited • Purchase Order: {generatedPOPreview.poNumber}</span>
+                          <span className="font-black text-indigo-700 uppercase tracking-wide">
+                            Page {pageChunk.pageIndex} of {pageChunk.totalPages} — Continued on Next Page →
                           </span>
                         </div>
-                      </div>
-
-                      <div className="border border-slate-300 rounded-lg p-3 bg-slate-50/50 space-y-1">
-                        <span className="text-[10px] font-black uppercase text-slate-600 tracking-wider block border-b border-slate-200 pb-1">
-                          ORDER REFERENCES:
-                        </span>
-                        <div className="grid grid-cols-3 gap-2 text-[11px] pt-0.5">
-                          <div>
-                            <span className="text-slate-500 text-[10px] block">PO Number:</span>
-                            <strong className="font-mono font-black text-slate-900">
-                              {generatedPOPreview.poNumber}
-                            </strong>
+                      ) : (
+                        <div className="po-signatures-footer space-y-2 mt-auto shrink-0 break-inside-avoid">
+                          <div className="grid grid-cols-3 gap-4 pt-2 text-center text-xs text-slate-700 border-t-2 border-slate-900">
+                            <div className="border-t border-dashed border-slate-600 pt-1.5">
+                              <span className="block font-black text-slate-950 text-[11px] leading-tight">Prepared By</span>
+                              <span className="text-[9.5px] text-slate-600 font-semibold leading-tight block mt-0.5">Material Planning Dept</span>
+                            </div>
+                            <div className="border-t border-dashed border-slate-600 pt-1.5">
+                              <span className="block font-black text-slate-950 text-[11px] leading-tight">Verified By</span>
+                              <span className="text-[9.5px] text-slate-600 font-semibold leading-tight block mt-0.5">Stores & Procurement Head</span>
+                            </div>
+                            <div className="border-t border-dashed border-slate-600 pt-1.5">
+                              <span className="block font-black text-slate-950 text-[11px] leading-tight">Authorized Signatory</span>
+                              <span className="text-[9.5px] text-slate-600 font-semibold leading-tight block mt-0.5">Director / Plant Operations</span>
+                            </div>
                           </div>
-                          <div>
-                            <span className="text-slate-500 text-[10px] block">Date of Issue:</span>
-                            <strong className="text-slate-900">
-                              {generatedPOPreview.date}
-                            </strong>
-                          </div>
-                          <div>
-                            <span className="text-slate-500 text-[10px] block">Target Delivery:</span>
-                            <strong className="text-emerald-800 font-bold">
-                              {poExpectedDate}
-                            </strong>
+                          <div className="border-t border-slate-200 pt-1 text-center text-[9px] text-slate-400 font-medium flex items-center justify-between">
+                            <span>RSB ERP System • Ref: {generatedPOPreview.poNumber}</span>
+                            <span>Generated: {new Date().toLocaleDateString('en-GB')} {new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+                            <span className="font-bold text-slate-600">Page {pageChunk.pageIndex} of {pageChunk.totalPages} (End of Order)</span>
                           </div>
                         </div>
-                      </div>
+                      )}
                     </div>
-
-                    {/* Professional Excel-Style Grid Table (Pure Non-Rate Engineering Spec) */}
-                    <div className="border border-slate-400 overflow-x-auto rounded-lg">
-                      <table className="w-full text-left text-xs border-collapse font-sans">
-                        <thead>
-                          <tr className="bg-slate-200 text-slate-950 font-black border-b border-slate-400 uppercase text-[10px]">
-                            {poColumnConfig.srNo && <th className="p-2 w-8 text-center border-r border-slate-300">#</th>}
-                            {poColumnConfig.projectName && <th className="p-2 border-r border-slate-300">Project Name</th>}
-                            {poColumnConfig.machineName && <th className="p-2 border-r border-slate-300">Machine Name</th>}
-                            {poColumnConfig.description && <th className="p-2 border-r border-slate-300">Material Description</th>}
-                            {poColumnConfig.materialType && <th className="p-2 border-r border-slate-300">Material Type</th>}
-                            {poColumnConfig.sizeSpecs && <th className="p-2 border-r border-slate-300 font-mono">Size Specification</th>}
-                            {poColumnConfig.quantity && <th className="p-2 text-center border-r border-slate-300">Qty</th>}
-                            {poColumnConfig.unit && <th className="p-2 text-center border-r border-slate-300">Unit</th>}
-                            {poColumnConfig.requiredDate && <th className="p-2 text-center border-r border-slate-300">Target Date</th>}
-                            {poColumnConfig.notes && <th className="p-2">Notes / Remarks</th>}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-300 bg-white text-xs">
-                          {poItemsToGenerate.map((item, idx) => (
-                            <tr
-                              key={item.id || idx}
-                              className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'}
-                            >
-                              {poColumnConfig.srNo && (
-                                <td className="p-2 text-center font-bold text-slate-700 border-r border-slate-300">
-                                  {idx + 1}
-                                </td>
-                              )}
-                              {poColumnConfig.projectName && (
-                                <td className="p-2 font-bold text-slate-900 border-r border-slate-300">
-                                  {item.projectName}
-                                </td>
-                              )}
-                              {poColumnConfig.machineName && (
-                                <td className="p-2 font-bold text-indigo-950 border-r border-slate-300">
-                                  {item.machineName || item.machineType || 'Machine'}
-                                </td>
-                              )}
-                              {poColumnConfig.description && (
-                                <td className="p-2 font-bold text-slate-900 border-r border-slate-300">
-                                  {item.description}
-                                </td>
-                              )}
-                              {poColumnConfig.materialType && (
-                                <td className="p-2 font-semibold text-slate-800 border-r border-slate-300">
-                                  {item.materialType}
-                                </td>
-                              )}
-                              {poColumnConfig.sizeSpecs && (
-                                <td className="p-2 font-mono font-bold text-blue-900 border-r border-slate-300">
-                                  {item.sizeSpecs}
-                                </td>
-                              )}
-                              {poColumnConfig.quantity && (
-                                <td className="p-2 text-center font-black text-slate-950 border-r border-slate-300">
-                                  {item.quantity}
-                                </td>
-                              )}
-                              {poColumnConfig.unit && (
-                                <td className="p-2 text-center font-semibold text-slate-700 border-r border-slate-300">
-                                  {item.unit || 'Nos'}
-                                </td>
-                              )}
-                              {poColumnConfig.requiredDate && (
-                                <td className="p-2 text-center font-mono text-slate-800 border-r border-slate-300">
-                                  {poExpectedDate}
-                                </td>
-                              )}
-                              {poColumnConfig.notes && (
-                                <td className="p-2 text-slate-700 italic">
-                                  {item.notes || poNotes}
-                                </td>
-                              )}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {/* Signatures 3-Column Footer Pinned to Bottom */}
-                  <div className="po-signatures-footer grid grid-cols-3 gap-6 pt-6 text-center text-xs text-slate-700 border-t-2 border-slate-800 mt-auto break-inside-avoid">
-                    <div className="border-t border-dashed border-slate-600 pt-2">
-                      <span className="block font-black text-slate-950 text-xs">Prepared By</span>
-                      <span className="text-[10px] text-slate-600 font-semibold">Material Planning Dept</span>
-                    </div>
-                    <div className="border-t border-dashed border-slate-600 pt-2">
-                      <span className="block font-black text-slate-950 text-xs">Verified By</span>
-                      <span className="text-[10px] text-slate-600 font-semibold">Stores & Procurement Head</span>
-                    </div>
-                    <div className="border-t border-dashed border-slate-600 pt-2">
-                      <span className="block font-black text-slate-950 text-xs">Authorized Signatory</span>
-                      <span className="text-[10px] text-slate-600 font-semibold">Director / Plant Operations</span>
-                    </div>
-                  </div>
+                  ))}
                 </div>
 
                 {/* Print, Download & Close Actions */}
@@ -2103,6 +2702,23 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({ initialPro
                   <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                     <button
                       type="button"
+                      onClick={() => {
+                        handleOpenWhatsAppForItems(
+                          poTargetVendor,
+                          poItemsToGenerate,
+                          generatedPOPreview?.poNumber,
+                          poItemsToGenerate[0]?.projectName
+                        );
+                      }}
+                      className="px-4 py-2 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-slate-950 text-xs font-black transition-all flex items-center gap-1.5 shadow-md shadow-emerald-900/30 cursor-pointer active:scale-95"
+                      title="Send formatted Purchase Order directly to Vendor via WhatsApp"
+                    >
+                      <Send className="w-3.5 h-3.5 fill-slate-950" />
+                      <span>Share on WhatsApp</span>
+                    </button>
+
+                    <button
+                      type="button"
                       onClick={handleExportPOToExcel}
                       className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
                     >
@@ -2112,7 +2728,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({ initialPro
 
                     <button
                       type="button"
-                      onClick={() => window.print()}
+                      onClick={handlePrintPOSlip}
                       className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
                     >
                       <Printer className="w-3.5 h-3.5" />

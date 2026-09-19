@@ -30,6 +30,7 @@ import {
   Cloud,
   ChevronDown,
   Plus,
+  ShoppingCart,
   User as UserIcon,
   Settings as SettingsIcon,
   LogOut,
@@ -186,44 +187,6 @@ export const Header: React.FC<HeaderProps> = ({
                 RSB PRIVATE LIMITED
               </h1>
             </div>
-          </div>
-
-          <div className="h-5 w-px bg-slate-800 hidden md:block" />
-
-          {/* Core Action Buttons: [ Live SS Rates ] [ Load BOM ] [ Add Project ] */}
-          <div className="flex items-center gap-2">
-            {/* 🌐 Live SS Rates */}
-            <button
-              type="button"
-              onClick={() => setIsWorldRatesOpen(true)}
-              className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 to-amber-600/20 hover:from-amber-500/30 hover:to-amber-600/30 border border-amber-500/40 text-amber-300 text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
-              title="Live World Stainless Steel Market Rates & LME Price Index"
-            >
-              <Globe className="w-3.5 h-3.5 text-amber-400 animate-spin-slow" />
-              <span className="whitespace-nowrap">🌐 Live SS Rates</span>
-            </button>
-
-            {/* ⚡ Load Machine BOM */}
-            <button
-              type="button"
-              onClick={handleTriggerLoadBOM}
-              className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600/20 to-teal-600/20 hover:from-emerald-600/30 hover:to-teal-600/30 border border-emerald-500/40 text-emerald-300 text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
-              title="1-Click Load Standard BOM Template for Current Machine"
-            >
-              <Zap className="w-3.5 h-3.5 text-amber-300" />
-              <span className="whitespace-nowrap">⚡ Load Machine BOM</span>
-            </button>
-
-            {/* + Add Project */}
-            <button
-              type="button"
-              onClick={handleTriggerAddProject}
-              className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 border border-blue-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
-              title="Register and initialize a new machine project"
-            >
-              <Plus className="w-3.5 h-3.5 text-white" />
-              <span className="whitespace-nowrap">+ Add Project</span>
-            </button>
           </div>
         </div>
 

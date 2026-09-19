@@ -37,10 +37,12 @@ import { Modal } from './components/common/Modal';
 import { MobileAdminApp } from './components/mobile/MobileAdminApp';
 import { MobileStoreInwardApp } from './components/mobile/MobileStoreInwardApp';
 import { LoginScreen } from './components/auth/LoginScreen';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 const ERPAppContent: React.FC = () => {
   const { activeTab, setActiveTab, currentUser, isAuthenticated } = useERP();
 
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isExcelOpen, setIsExcelOpen] = useState(false);
   const [isQuickActionOpen, setIsQuickActionOpen] = useState(false);
@@ -65,28 +67,105 @@ const ERPAppContent: React.FC = () => {
   }, []);
 
   const isProductionWorkstation =
-    currentUser.role === 'super_admin' ||
-    currentUser.role === 'kaustubh' ||
-    currentUser.role === 'operator' ||
-    currentUser.role === 'store_incharge' ||
-    currentUser.role === 'admin';
+    currentUser?.role === 'super_admin' ||
+    currentUser?.role === 'kaustubh' ||
+    currentUser?.role === 'operator' ||
+    currentUser?.role === 'store_incharge' ||
+    currentUser?.role === 'admin' ||
+    true;
 
   const handleOpenQuickAction = (action?: 'order' | 'inward' | 'outward' | 'job' | 'qc') => {
     if (action) setQuickActionInitial(action);
     setIsQuickActionOpen(true);
   };
 
-  // Keyboard shortcut listener for Ctrl+K / Cmd+K
+  // Easy & Reliable Keyboard Shortcuts for:
+  // 1 / Alt+1 / Ctrl+1 / Alt+M -> Material Entry
+  // 2 / Alt+2 / Ctrl+2 / Alt+P -> Projects Directory
+  // 3 / Alt+3 / Ctrl+3 / Alt+O / Alt+B -> Order Basket
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      const activeEl = document.activeElement;
+      const isInputActive =
+        activeEl instanceof HTMLInputElement ||
+        activeEl instanceof HTMLTextAreaElement ||
+        activeEl instanceof HTMLSelectElement ||
+        (activeEl as HTMLElement)?.isContentEditable;
+
+      // Ctrl+K / Cmd+K Search
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setIsSearchOpen((prev) => !prev);
+        return;
+      }
+
+      // Single-Key Number Navigation (when not typing in an input field)
+      if (!isInputActive && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (e.key === '1') {
+          e.preventDefault();
+          setActiveTab('entry');
+          return;
+        }
+        if (e.key === '2') {
+          e.preventDefault();
+          setActiveTab('projects');
+          return;
+        }
+        if (e.key === '3') {
+          e.preventDefault();
+          setActiveTab('procurement');
+          return;
+        }
+      }
+
+      // Alt / Option Combinations (works anywhere)
+      if (e.altKey) {
+        const key = e.key.toLowerCase();
+        if (key === '1' || key === 'm') {
+          e.preventDefault();
+          setActiveTab('entry');
+          return;
+        }
+        if (key === '2' || key === 'p') {
+          e.preventDefault();
+          setActiveTab('projects');
+          return;
+        }
+        if (key === '3' || key === 'o' || key === 'b') {
+          e.preventDefault();
+          setActiveTab('procurement');
+          return;
+        }
+      }
+
+      // Ctrl + Number & Refresh Combinations (works anywhere)
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
+        if (e.key === '1') {
+          e.preventDefault();
+          setActiveTab('entry');
+          return;
+        }
+        if (e.key === '2') {
+          e.preventDefault();
+          setActiveTab('projects');
+          return;
+        }
+        if (e.key === '3') {
+          e.preventDefault();
+          setActiveTab('procurement');
+          return;
+        }
+        if (e.key === 'r' || e.key === 'R') {
+          // Allow default Ctrl+R / Cmd+R to reload the browser while keeping all assigned vendors intact
+          // Or reload seamlessly
+          return;
+        }
       }
     };
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [setActiveTab]);
 
   // Screen Lock / Unauthenticated Gate
   if (!isAuthenticated) {
@@ -95,13 +174,11 @@ const ERPAppContent: React.FC = () => {
 
   // On Phone View: Render dedicated mobile apps
   if (isMobile) {
-    if (currentUser.role === 'store_incharge') {
+    if (currentUser?.role === 'store_incharge') {
       return <MobileStoreInwardApp />;
     }
     return <MobileAdminApp />;
   }
-
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   return (
     <div className={`min-h-screen flex flex-col ${isProductionWorkstation ? 'bg-[#f8fafc] text-slate-900' : 'bg-slate-950 text-slate-100'} selection:bg-slate-900 selection:text-white`}>
@@ -170,6 +247,18 @@ const ERPAppContent: React.FC = () => {
             {activeTab === 'costing' && <CostingAnalysis />}
             {activeTab === 'reports' && <ReportCenter />}
             {activeTab === 'admin' && <SuperAdminPanel />}
+
+            {/* Robust Fallback for Unrecognized / Dynamic Tabs */}
+            {![
+              'entry', 'requirements', 'projects', 'details', 'procurement', 'members',
+              'dashboard', 'orders', 'bom', 'mrp', 'dispatcher', 'terminal',
+              'subcontracting', 'traceability', 'vendor_performance', 'vendor_portal',
+              'materials', 'calculator', 'inward', 'outward', 'production',
+              'quality', 'vendors', 'customers', 'machines', 'purchase',
+              'sales', 'costing', 'reports', 'admin'
+            ].includes(activeTab) && (
+              <ProjectMaterialEntry />
+            )}
           </div>
         </main>
       </div>
@@ -204,9 +293,11 @@ const ERPAppContent: React.FC = () => {
 
 export function App() {
   return (
-    <ERPProvider>
-      <ERPAppContent />
-    </ERPProvider>
+    <ErrorBoundary>
+      <ERPProvider>
+        <ERPAppContent />
+      </ERPProvider>
+    </ErrorBoundary>
   );
 }
 
