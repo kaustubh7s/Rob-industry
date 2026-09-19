@@ -1544,14 +1544,13 @@ export const ProjectMaterialEntry: React.FC = () => {
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-lg font-black text-slate-900 tracking-tight">
-                RSB Machine Material Entry Workstation
+                RSB Material Entry Workstation
               </h1>
-              <span className="px-2.5 py-0.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 text-xs font-black">
-                📁 {selectedProjectName}
-              </span>
-              <span className="px-2.5 py-0.5 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold font-mono">
-                ⚙️ {machineName}
-              </span>
+              {selectedProjectName && (
+                <span className="px-2.5 py-0.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 text-xs font-black">
+                  📁 {selectedProjectName}
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-500 font-medium">
               Repetitive order templates, smart auto-fill suggestions, and auto-locked creator auditing.
