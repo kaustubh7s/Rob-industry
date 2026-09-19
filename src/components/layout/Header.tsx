@@ -177,17 +177,28 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {/* Company Brand Logo */}
-          <div className="flex items-center gap-2.5 shrink-0">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 text-white flex items-center justify-center font-black text-xs tracking-tight shadow-sm ring-1 ring-white/10 shrink-0">
+          {/* Company Brand Logo & Home Navigation Shortcut */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('entry');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            className="flex items-center gap-2.5 shrink-0 group cursor-pointer text-left bg-transparent border-0 p-1 -m-1 rounded-xl hover:bg-slate-800/80 transition-all focus:outline-hidden focus:ring-1 focus:ring-blue-500/50"
+            title="Go to Home / Primary Workstation (Material Entry)"
+          >
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 text-white flex items-center justify-center font-black text-xs tracking-tight shadow-sm ring-1 ring-white/10 shrink-0 group-hover:scale-105 group-hover:shadow-md group-hover:shadow-blue-500/25 transition-all">
               RSB
             </div>
             <div className="hidden sm:flex items-center gap-2">
-              <h1 className="text-xs md:text-sm font-black tracking-wide text-white whitespace-nowrap">
+              <h1 className="text-xs md:text-sm font-black tracking-wide text-white whitespace-nowrap group-hover:text-blue-300 transition-colors">
                 RSB PRIVATE LIMITED
               </h1>
+              <span className="text-[9px] px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 font-bold opacity-0 group-hover:opacity-100 transition-opacity">
+                Home
+              </span>
             </div>
-          </div>
+          </button>
         </div>
 
         {/* ========================================================================= */}

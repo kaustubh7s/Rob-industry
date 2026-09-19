@@ -99,27 +99,8 @@ const ERPAppContent: React.FC = () => {
         return;
       }
 
-      // Single-Key Number Navigation (when not typing in an input field)
-      if (!isInputActive && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        if (e.key === '1') {
-          e.preventDefault();
-          setActiveTab('entry');
-          return;
-        }
-        if (e.key === '2') {
-          e.preventDefault();
-          setActiveTab('projects');
-          return;
-        }
-        if (e.key === '3') {
-          e.preventDefault();
-          setActiveTab('procurement');
-          return;
-        }
-      }
-
       // Alt / Option Combinations (works anywhere)
-      if (e.altKey) {
+      if (e.altKey && !e.ctrlKey && !e.metaKey) {
         const key = e.key.toLowerCase();
         if (key === '1' || key === 'm') {
           e.preventDefault();
@@ -136,9 +117,20 @@ const ERPAppContent: React.FC = () => {
           setActiveTab('procurement');
           return;
         }
+        if (key === '4' || key === 't') {
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent('rsb:open-trash'));
+          setActiveTab('entry');
+          return;
+        }
+        if (key === '5') {
+          e.preventDefault();
+          setActiveTab('members');
+          return;
+        }
       }
 
-      // Ctrl + Number & Refresh Combinations (works anywhere)
+      // Ctrl / Cmd + Number Combinations (Ctrl+1, Ctrl+2, Ctrl+3, Ctrl+4, Ctrl+5)
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
         if (e.key === '1') {
           e.preventDefault();
@@ -155,9 +147,19 @@ const ERPAppContent: React.FC = () => {
           setActiveTab('procurement');
           return;
         }
+        if (e.key === '4') {
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent('rsb:open-trash'));
+          setActiveTab('entry');
+          return;
+        }
+        if (e.key === '5') {
+          e.preventDefault();
+          setActiveTab('members');
+          return;
+        }
         if (e.key === 'r' || e.key === 'R') {
-          // Allow default Ctrl+R / Cmd+R to reload the browser while keeping all assigned vendors intact
-          // Or reload seamlessly
+          // Allow default browser reload
           return;
         }
       }

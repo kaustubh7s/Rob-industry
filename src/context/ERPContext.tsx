@@ -291,6 +291,8 @@ const ERPContext = createContext<ERPContextType | undefined>(undefined);
 
 const LOCAL_STORAGE_KEY = 'RSB_ERP_STATE_V3';
 const AUTH_SESSION_KEY = 'RSB_ERP_AUTH_USER_ID';
+const LAST_ACTIVITY_KEY = 'RSB_ERP_LAST_ACTIVITY';
+const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes session inactivity timeout
 
 export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [users, setUsers] = useState<User[]>(() => {
@@ -330,7 +332,21 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     try {
       const sessionUser = sessionStorage.getItem(AUTH_SESSION_KEY) || localStorage.getItem(AUTH_SESSION_KEY);
-      return Boolean(sessionUser);
+      if (!sessionUser) return false;
+
+      // Check for inactivity timeout on page load / refresh
+      const lastActivity = Number(
+        sessionStorage.getItem(LAST_ACTIVITY_KEY) || localStorage.getItem(LAST_ACTIVITY_KEY) || '0'
+      );
+      if (lastActivity > 0 && Date.now() - lastActivity > INACTIVITY_TIMEOUT_MS) {
+        // Session expired - clear all auth keys
+        sessionStorage.removeItem(AUTH_SESSION_KEY);
+        localStorage.removeItem(AUTH_SESSION_KEY);
+        sessionStorage.removeItem(LAST_ACTIVITY_KEY);
+        localStorage.removeItem(LAST_ACTIVITY_KEY);
+        return false;
+      }
+      return true;
     } catch {
       return false;
     }
@@ -1261,9 +1277,12 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isValidPassword) {
       setCurrentUser(targetUser);
       setIsAuthenticated(true);
+      const now = Date.now().toString();
       try {
         sessionStorage.setItem(AUTH_SESSION_KEY, targetUser.id);
         localStorage.setItem(AUTH_SESSION_KEY, targetUser.id);
+        sessionStorage.setItem(LAST_ACTIVITY_KEY, now);
+        localStorage.setItem(LAST_ACTIVITY_KEY, now);
       } catch {}
       if (targetUser.vendorId) {
         setActiveVendorId(targetUser.vendorId);
@@ -1294,9 +1313,65 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsAuthenticated(false);
     try {
       sessionStorage.removeItem(AUTH_SESSION_KEY);
+      localStorage.removeItem(AUTH_SESSION_KEY);
+      sessionStorage.removeItem(LAST_ACTIVITY_KEY);
+      localStorage.removeItem(LAST_ACTIVITY_KEY);
     } catch {}
     logAudit('System Logout', 'Authentication', `${currentUser.name} locked screen & logged out.`);
   };
+
+  // Automatic Inactivity Session Timeout & Activity Listener (15 minutes)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const recordActivity = () => {
+      try {
+        const now = Date.now().toString();
+        localStorage.setItem(LAST_ACTIVITY_KEY, now);
+        sessionStorage.setItem(LAST_ACTIVITY_KEY, now);
+      } catch {}
+    };
+
+    // Record initial activity
+    recordActivity();
+
+    // Throttled activity listener (records at most once per 5 seconds)
+    let lastRecorded = Date.now();
+    const handleUserActivity = () => {
+      const now = Date.now();
+      if (now - lastRecorded > 5000) {
+        lastRecorded = now;
+        recordActivity();
+      }
+    };
+
+    const activityEvents = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
+    activityEvents.forEach((evt) => {
+      window.addEventListener(evt, handleUserActivity, { passive: true });
+    });
+
+    // Inactivity heartbeat check every 10 seconds
+    const interval = setInterval(() => {
+      try {
+        const lastActivity = Number(
+          sessionStorage.getItem(LAST_ACTIVITY_KEY) || localStorage.getItem(LAST_ACTIVITY_KEY) || '0'
+        );
+        if (lastActivity > 0 && Date.now() - lastActivity > INACTIVITY_TIMEOUT_MS) {
+          console.warn('[RSB ERP] Session expired due to inactivity. Auto-logging out.');
+          logout();
+        }
+      } catch (e) {
+        console.error('Session timeout check error:', e);
+      }
+    }, 10000);
+
+    return () => {
+      activityEvents.forEach((evt) => {
+        window.removeEventListener(evt, handleUserActivity);
+      });
+      clearInterval(interval);
+    };
+  }, [isAuthenticated, currentUser.name]);
 
   // Stock Delta Adjuster
   const adjustStock = (materialId: string, deltaQty: number, reason: string) => {
