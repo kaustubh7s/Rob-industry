@@ -26,6 +26,10 @@ import {
   ArrowUp,
   ArrowLeft,
   ArrowRight,
+  RotateCcw,
+  MoveHorizontal,
+  MoveVertical,
+  Settings2,
 } from 'lucide-react';
 import { ExcelColumnFilterMenu } from './ExcelColumnFilterMenu';
 
@@ -110,12 +114,28 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
   }, [selection, onSelectionChange]);
 
   // Column resizing state
-  const [resizingCol, setResizingCol] = useState<{ colIdx: number; startX: number; startW: number } | null>(null);
+  const [resizingCol, setResizingCol] = useState<{ colIdx: number; startX: number; startW: number; currentW: number } | null>(null);
   const [colWidths, setColWidths] = useState<Record<string, number>>(() => sheet.col_widths || {});
 
   useEffect(() => {
     setColWidths(sheet.col_widths || {});
   }, [sheet.col_widths]);
+
+  // Row resizing state
+  const [resizingRow, setResizingRow] = useState<{ rowIdx: number; startY: number; startH: number; currentH: number } | null>(null);
+  const [rowHeights, setRowHeights] = useState<Record<number, number>>(() => sheet.row_heights || {});
+
+  useEffect(() => {
+    setRowHeights(sheet.row_heights || {});
+  }, [sheet.row_heights]);
+
+  // Custom Size Modal
+  const [customSizeModal, setCustomSizeModal] = useState<{
+    type: 'col' | 'row';
+    targetIndex: number;
+    currentSize: number;
+  } | null>(null);
+  const [customSizeInput, setCustomSizeInput] = useState<string>('');
 
   // Virtual Scrolling Viewport
   const [scrollTop, setScrollTop] = useState(0);
@@ -209,9 +229,9 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
 
   const getRowHeight = useCallback(
     (rIdx: number) => {
-      return sheet.row_heights?.[rIdx] || DEFAULT_ROW_HEIGHT;
+      return rowHeights[rIdx] || sheet.row_heights?.[rIdx] || DEFAULT_ROW_HEIGHT;
     },
-    [sheet.row_heights]
+    [rowHeights, sheet.row_heights]
   );
 
   // Cumulative positions
@@ -508,24 +528,6 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       onBatchCellsChange(newCells);
     },
     [sheet.cells, onBatchCellsChange]
-  );
-
-  const handleAutoFitCol = useCallback(
-    (targetCol: number) => {
-      const colLetter = colIndexToName(targetCol);
-      let maxLen = 8;
-      for (let r = 0; r < Math.min(totalRawRows, 150); r++) {
-        const cid = coordsToCellId(targetCol, r);
-        const cell = sheet.cells[cid];
-        const text = String(cell?.calced !== undefined ? cell.calced : cell?.v || '');
-        if (text.length > maxLen) maxLen = text.length;
-      }
-      const calculatedWidth = Math.max(90, Math.min(420, maxLen * 8.5 + 32));
-      const nextWidths = { ...colWidths, [colLetter]: calculatedWidth };
-      setColWidths(nextWidths);
-      onUpdateSheetMeta?.({ col_widths: nextWidths });
-    },
-    [totalRawRows, sheet.cells, colWidths, onUpdateSheetMeta]
   );
 
   // ---------------------------------------------------------------------------
@@ -951,12 +953,16 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     ]
   );
 
+  // --- COLUMN STRETCH / RESIZING ---
   const handleColResizeMouseDown = (e: React.MouseEvent, cIdx: number) => {
     e.stopPropagation();
+    e.preventDefault();
+    const curW = getColWidth(cIdx);
     setResizingCol({
       colIdx: cIdx,
       startX: e.clientX,
-      startW: getColWidth(cIdx),
+      startW: curW,
+      currentW: curW,
     });
   };
 
@@ -965,13 +971,21 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
 
     const handleMouseMove = (e: MouseEvent) => {
       const deltaX = e.clientX - resizingCol.startX;
-      const newWidth = Math.max(60, resizingCol.startW + deltaX);
+      const newWidth = Math.max(45, Math.min(900, Math.round(resizingCol.startW + deltaX)));
       const colLetter = colIndexToName(resizingCol.colIdx);
       setColWidths((prev) => ({ ...prev, [colLetter]: newWidth }));
+      setResizingCol((prev) => (prev ? { ...prev, currentW: newWidth } : null));
     };
 
     const handleMouseUp = () => {
-      setResizingCol(null);
+      if (resizingCol) {
+        const colLetter = colIndexToName(resizingCol.colIdx);
+        const finalWidth = resizingCol.currentW;
+        const nextColWidths = { ...colWidths, [colLetter]: finalWidth };
+        setColWidths(nextColWidths);
+        onUpdateSheetMeta?.({ col_widths: nextColWidths });
+        setResizingCol(null);
+      }
     };
 
     window.addEventListener('mousemove', handleMouseMove);
@@ -980,7 +994,104 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [resizingCol]);
+  }, [resizingCol, colWidths, onUpdateSheetMeta]);
+
+  // --- ROW STRETCH / RESIZING ---
+  const handleRowResizeMouseDown = (e: React.MouseEvent, rIdx: number) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const curH = getRowHeight(rIdx);
+    setResizingRow({
+      rowIdx: rIdx,
+      startY: e.clientY,
+      startH: curH,
+      currentH: curH,
+    });
+  };
+
+  useEffect(() => {
+    if (!resizingRow) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaY = e.clientY - resizingRow.startY;
+      const newHeight = Math.max(20, Math.min(500, Math.round(resizingRow.startH + deltaY)));
+      setRowHeights((prev) => ({ ...prev, [resizingRow.rowIdx]: newHeight }));
+      setResizingRow((prev) => (prev ? { ...prev, currentH: newHeight } : null));
+    };
+
+    const handleMouseUp = () => {
+      if (resizingRow) {
+        const finalHeight = resizingRow.currentH;
+        const nextRowHeights = { ...rowHeights, [resizingRow.rowIdx]: finalHeight };
+        setRowHeights(nextRowHeights);
+        onUpdateSheetMeta?.({ row_heights: nextRowHeights });
+        setResizingRow(null);
+      }
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [resizingRow, rowHeights, onUpdateSheetMeta]);
+
+  // Auto-fit & Reset Helpers
+  const handleAutoFitCol = (cIdx: number) => {
+    const colName = colIndexToName(cIdx);
+    let maxChars = (sheet.custom_col_headers?.[colName] || colName).length;
+    for (let r = 0; r < Math.min(totalRawRows, 200); r++) {
+      const val = sheet.cells[coordsToCellId(cIdx, r)]?.v;
+      if (val !== undefined && val !== null) {
+        maxChars = Math.max(maxChars, String(val).length);
+      }
+    }
+    const autoWidth = Math.max(80, Math.min(450, Math.round(maxChars * 9 + 40)));
+    const nextWidths = { ...colWidths, [colName]: autoWidth };
+    setColWidths(nextWidths);
+    onUpdateSheetMeta?.({ col_widths: nextWidths });
+  };
+
+  const handleResetColWidth = (cIdx: number) => {
+    const colName = colIndexToName(cIdx);
+    const nextWidths = { ...colWidths };
+    delete nextWidths[colName];
+    setColWidths(nextWidths);
+    onUpdateSheetMeta?.({ col_widths: nextWidths });
+  };
+
+  const handleAutoFitRow = (rIdx: number) => {
+    const autoHeight = DEFAULT_ROW_HEIGHT;
+    const nextHeights = { ...rowHeights, [rIdx]: autoHeight };
+    setRowHeights(nextHeights);
+    onUpdateSheetMeta?.({ row_heights: nextHeights });
+  };
+
+  const handleResetRowHeight = (rIdx: number) => {
+    const nextHeights = { ...rowHeights };
+    delete nextHeights[rIdx];
+    setRowHeights(nextHeights);
+    onUpdateSheetMeta?.({ row_heights: nextHeights });
+  };
+
+  const handleApplyCustomSize = () => {
+    if (!customSizeModal) return;
+    const num = parseInt(customSizeInput, 10);
+    if (isNaN(num) || num <= 0) return;
+
+    if (customSizeModal.type === 'col') {
+      const colLetter = colIndexToName(customSizeModal.targetIndex);
+      const nextWidths = { ...colWidths, [colLetter]: Math.max(40, Math.min(1000, num)) };
+      setColWidths(nextWidths);
+      onUpdateSheetMeta?.({ col_widths: nextWidths });
+    } else {
+      const nextHeights = { ...rowHeights, [customSizeModal.targetIndex]: Math.max(20, Math.min(600, num)) };
+      setRowHeights(nextHeights);
+      onUpdateSheetMeta?.({ row_heights: nextHeights });
+    }
+    setCustomSizeModal(null);
+  };
 
   const handleContextMenu = (e: React.MouseEvent, cellId: string) => {
     e.preventDefault();
@@ -1172,9 +1283,11 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                     e.stopPropagation();
                     handleAutoFitCol(cIdx);
                   }}
-                  className="absolute right-0 top-0 bottom-0 w-1.5 hover:w-2 hover:bg-[#107c41] cursor-col-resize z-30"
-                  title="Double-click to Auto-Fit Width"
-                />
+                  className="absolute right-0 top-0 bottom-0 w-2.5 hover:w-3 hover:bg-[#107c41] cursor-col-resize z-30 transition-all group flex items-center justify-end"
+                  title="Drag left/right to stretch column width | Double-click to auto-fit"
+                >
+                  <div className="h-full w-0.5 bg-slate-300 group-hover:bg-[#107c41]" />
+                </div>
               </div>
             );
           })}
@@ -1245,9 +1358,22 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                   height: rowHeight,
                   zIndex,
                 }}
-                title={`Row ${origRowIndex + 1} (Right-click for options)`}
+                title={`Row ${origRowIndex + 1} (Right-click for options | Drag bottom line to stretch)`}
               >
-                {origRowIndex + 1}
+                <span>{origRowIndex + 1}</span>
+
+                {/* Row Resize Handle for stretching row height */}
+                <div
+                  onMouseDown={(e) => handleRowResizeMouseDown(e, origRowIndex)}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    handleAutoFitRow(origRowIndex);
+                  }}
+                  className="absolute left-0 right-0 bottom-0 h-2 hover:h-2.5 hover:bg-[#107c41] cursor-row-resize z-30 transition-all group flex flex-col justify-end"
+                  title="Drag up/down to stretch row height | Double-click to reset"
+                >
+                  <div className="w-full h-0.5 bg-slate-300 group-hover:bg-[#107c41]" />
+                </div>
               </div>
             );
           })}
@@ -1716,8 +1842,53 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
           {contextMenu.targetType === 'row' && contextMenu.rowIndex !== undefined && (
             <>
               <div className="px-3 py-1 font-bold text-[11px] text-slate-400 uppercase tracking-wider">
-                Row {contextMenu.rowIndex + 1} Actions
+                Row {contextMenu.rowIndex + 1} ({getRowHeight(contextMenu.rowIndex)}px)
               </div>
+              
+              <button
+                type="button"
+                onClick={() => {
+                  const rIdx = contextMenu.rowIndex!;
+                  setCustomSizeModal({
+                    type: 'row',
+                    targetIndex: rIdx,
+                    currentSize: getRowHeight(rIdx),
+                  });
+                  setCustomSizeInput(String(getRowHeight(rIdx)));
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[#f3f4f6] flex items-center gap-2 text-blue-700 font-medium"
+              >
+                <MoveVertical className="w-3.5 h-3.5 text-blue-600" />
+                <span>Stretch / Set Row Height...</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  handleAutoFitRow(contextMenu.rowIndex!);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[#f3f4f6] flex items-center gap-2"
+              >
+                <Maximize2 className="w-3.5 h-3.5 text-slate-600" />
+                <span>Auto-Fit Row Height</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  handleResetRowHeight(contextMenu.rowIndex!);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[#f3f4f6] flex items-center gap-2"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+                <span>Reset to Default Height (28px)</span>
+              </button>
+
+              <div className="my-1 border-t border-slate-200" />
+
               <button
                 type="button"
                 onClick={() => {
@@ -1778,8 +1949,27 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
           {contextMenu.targetType === 'col' && contextMenu.colIndex !== undefined && (
             <>
               <div className="px-3 py-1 font-bold text-[11px] text-slate-400 uppercase tracking-wider">
-                Column {colIndexToName(contextMenu.colIndex)} Actions
+                Column {colIndexToName(contextMenu.colIndex)} ({getColWidth(contextMenu.colIndex)}px)
               </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const cIdx = contextMenu.colIndex!;
+                  setCustomSizeModal({
+                    type: 'col',
+                    targetIndex: cIdx,
+                    currentSize: getColWidth(cIdx),
+                  });
+                  setCustomSizeInput(String(getColWidth(cIdx)));
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[#f3f4f6] flex items-center gap-2 text-blue-700 font-medium"
+              >
+                <MoveHorizontal className="w-3.5 h-3.5 text-blue-600" />
+                <span>Stretch / Set Column Width...</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => {
@@ -1788,8 +1978,20 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                 }}
                 className="w-full text-left px-3 py-1.5 hover:bg-[#f3f4f6] flex items-center gap-2"
               >
-                <Maximize2 className="w-3.5 h-3.5 text-blue-600" />
+                <Maximize2 className="w-3.5 h-3.5 text-slate-600" />
                 <span>Auto-Fit Column Width</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  handleResetColWidth(contextMenu.colIndex!);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[#f3f4f6] flex items-center gap-2"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+                <span>Reset to Default Width (135px)</span>
               </button>
 
               <div className="my-1 border-t border-slate-200" />
@@ -1849,6 +2051,185 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
               </button>
             </>
           )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 7. VISUAL RESIZE GUIDELINES WHILE DRAGGING */}
+      {/* ========================================================================= */}
+      {resizingCol && (
+        <div
+          className="absolute top-0 bottom-0 pointer-events-none z-50 border-r-2 border-dashed border-[#107c41]"
+          style={{
+            left: rowHeaderWidth + colPositions[resizingCol.colIdx] + resizingCol.currentW,
+            height: totalContentHeight + HEADER_ROW_HEIGHT,
+          }}
+        >
+          <div className="fixed top-28 bg-[#107c41] text-white font-mono font-bold text-xs px-2.5 py-1 rounded shadow-xl -translate-x-1/2 whitespace-nowrap z-50 flex items-center gap-1.5">
+            <MoveHorizontal className="w-3.5 h-3.5" />
+            <span>Col {colIndexToName(resizingCol.colIdx)}: {resizingCol.currentW}px</span>
+          </div>
+        </div>
+      )}
+
+      {resizingRow && (
+        <div
+          className="absolute left-0 right-0 pointer-events-none z-50 border-b-2 border-dashed border-[#107c41]"
+          style={{
+            top: HEADER_ROW_HEIGHT + (rowPositions[filteredRowIndices.indexOf(resizingRow.rowIdx)] || 0) + resizingRow.currentH,
+            width: totalContentWidth + rowHeaderWidth,
+          }}
+        >
+          <div className="fixed left-20 bg-[#107c41] text-white font-mono font-bold text-xs px-2.5 py-1 rounded shadow-xl -translate-y-1/2 whitespace-nowrap z-50 flex items-center gap-1.5">
+            <MoveVertical className="w-3.5 h-3.5" />
+            <span>Row {resizingRow.rowIdx + 1}: {resizingRow.currentH}px</span>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 8. CUSTOM SIZE (WIDTH / HEIGHT) PROMPT MODAL */}
+      {/* ========================================================================= */}
+      {customSizeModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px] flex items-center justify-center animate-fadeIn">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-300 w-80 overflow-hidden text-slate-800">
+            <div className="bg-gradient-to-r from-emerald-800 to-emerald-700 px-4 py-3 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {customSizeModal.type === 'col' ? (
+                  <MoveHorizontal className="w-4 h-4 text-emerald-300" />
+                ) : (
+                  <MoveVertical className="w-4 h-4 text-emerald-300" />
+                )}
+                <span className="font-semibold text-sm">
+                  {customSizeModal.type === 'col'
+                    ? `Column Width (${colIndexToName(customSizeModal.targetIndex)})`
+                    : `Row Height (Row ${customSizeModal.targetIndex + 1})`}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCustomSizeModal(null)}
+                className="text-emerald-200 hover:text-white text-base leading-none cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleApplyCustomSize();
+              }}
+              className="p-4 space-y-4"
+            >
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">
+                  Enter {customSizeModal.type === 'col' ? 'Width' : 'Height'} (in pixels):
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    autoFocus
+                    min={customSizeModal.type === 'col' ? 40 : 20}
+                    max={customSizeModal.type === 'col' ? 1000 : 600}
+                    value={customSizeInput}
+                    onChange={(e) => setCustomSizeInput(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 pr-10"
+                    placeholder="e.g. 150"
+                  />
+                  <span className="absolute right-3 top-2.5 text-xs text-slate-400 font-mono">px</span>
+                </div>
+              </div>
+
+              {/* Quick Presets */}
+              <div>
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-1.5">
+                  Quick Presets
+                </span>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {customSizeModal.type === 'col' ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setCustomSizeInput('90')}
+                        className="px-2 py-1 text-xs border border-slate-200 rounded hover:bg-emerald-50 hover:border-emerald-300 text-slate-700"
+                      >
+                        90px
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCustomSizeInput('135')}
+                        className="px-2 py-1 text-xs border border-slate-200 rounded hover:bg-emerald-50 hover:border-emerald-300 text-slate-700 font-bold"
+                      >
+                        135px
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCustomSizeInput('220')}
+                        className="px-2 py-1 text-xs border border-slate-200 rounded hover:bg-emerald-50 hover:border-emerald-300 text-slate-700"
+                      >
+                        220px
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCustomSizeInput('320')}
+                        className="px-2 py-1 text-xs border border-slate-200 rounded hover:bg-emerald-50 hover:border-emerald-300 text-slate-700"
+                      >
+                        320px
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setCustomSizeInput('24')}
+                        className="px-2 py-1 text-xs border border-slate-200 rounded hover:bg-emerald-50 hover:border-emerald-300 text-slate-700"
+                      >
+                        24px
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCustomSizeInput('28')}
+                        className="px-2 py-1 text-xs border border-slate-200 rounded hover:bg-emerald-50 hover:border-emerald-300 text-slate-700 font-bold"
+                      >
+                        28px
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCustomSizeInput('45')}
+                        className="px-2 py-1 text-xs border border-slate-200 rounded hover:bg-emerald-50 hover:border-emerald-300 text-slate-700"
+                      >
+                        45px
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCustomSizeInput('70')}
+                        className="px-2 py-1 text-xs border border-slate-200 rounded hover:bg-emerald-50 hover:border-emerald-300 text-slate-700"
+                      >
+                        70px
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setCustomSizeModal(null)}
+                  className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 text-xs font-semibold bg-[#107c41] hover:bg-[#0b5c30] text-white rounded-lg shadow cursor-pointer transition-colors"
+                >
+                  Apply Size
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>
