@@ -112,14 +112,131 @@ function processWorkbook(filePath, wbId, dirId, title, desc, tag) {
   };
 }
 
-const wb1 = processWorkbook(
-  '/Users/kaustubh/Desktop/rsb i/rsb1.xlsx',
-  'wb-rsb1-daily-po',
-  'dir-daily-po',
-  'RSB1 — DAILY PO SHEET RAHUL SIR & 150 BPM',
-  'Official 420+ Row Daily PO tracking register with supplier orders, received/pending status and 150 BPM specs.',
-  'Daily PO'
-);
+function processRSB1Workbook(filePath) {
+  const wb = XLSX.readFile(filePath);
+  const ws0 = wb.Sheets['Sheet1'] || wb.Sheets[wb.SheetNames[0]];
+  const range0 = XLSX.utils.decode_range(ws0['!ref'] || 'A1:P425');
+
+  const sheet0Cells = {
+    A1: { v: 'Sr. No', bold: true, align: 'center', format: 'text', bgColor: '#ffffff', textColor: '#0f172a' },
+    B1: { v: 'Date', bold: true, align: 'center', format: 'text', bgColor: '#ffffff', textColor: '#0f172a' },
+    C1: { v: 'PO NO', bold: true, align: 'center', format: 'text', bgColor: '#ffffff', textColor: '#0f172a' },
+    D1: { v: 'PO Type', bold: true, align: 'center', format: 'text', bgColor: '#ffffff', textColor: '#0f172a' },
+    E1: { v: 'Material', bold: true, align: 'center', format: 'text', bgColor: '#ffffff', textColor: '#0f172a' },
+    F1: { v: 'Specifications', bold: true, align: 'center', format: 'text', bgColor: '#ffffff', textColor: '#0f172a' },
+    G1: { v: 'Qty', bold: true, align: 'center', format: 'text', bgColor: '#ffffff', textColor: '#0f172a' },
+    H1: { v: 'Received', bold: true, align: 'center', format: 'text', bgColor: '#ffffff', textColor: '#0f172a' },
+    I1: { v: 'PENDING', bold: true, align: 'center', format: 'text', bgColor: '#ffffff', textColor: '#0f172a' },
+    J1: { v: 'Supplier Name', bold: true, align: 'center', format: 'text', bgColor: '#ffffff', textColor: '#0f172a' },
+    K1: { v: 'M/C', bold: true, align: 'center', format: 'text', bgColor: '#ffffff', textColor: '#0f172a' },
+    L1: { v: 'Remarks', bold: true, align: 'center', format: 'text', bgColor: '#ffffff', textColor: '#0f172a' },
+    M1: { v: 'COUSTMER CODE', bold: true, align: 'center', format: 'text', bgColor: '#ffffff', textColor: '#0f172a' },
+    N1: { v: 'PO Status', bold: true, align: 'center', format: 'text', bgColor: '#ffffff', textColor: '#0f172a' },
+    O1: { v: 'order by', bold: true, align: 'center', format: 'text', bgColor: '#ffffff', textColor: '#0f172a' },
+    P1: { v: 'COMMENT', bold: true, align: 'center', format: 'text', bgColor: '#ffffff', textColor: '#0f172a' },
+  };
+
+  for (let R = 1; R <= range0.e.r; ++R) {
+    const rowNum = R + 1;
+    sheet0Cells[`A${rowNum}`] = {
+      v: R,
+      bold: false,
+      align: 'center',
+      format: 'number',
+      textColor: '#0f172a',
+    };
+
+    for (let C = 1; C <= Math.max(range0.e.c, 15); ++C) {
+      const origAddr = XLSX.utils.encode_cell({ r: R, c: C });
+      const cell = ws0[origAddr];
+      if (!cell) continue;
+
+      let val = cell.w || cell.v;
+      if (typeof cell.v === 'number' && !cell.w) {
+        val = convertSerialDate(cell.v);
+      }
+      const targetCol = XLSX.utils.encode_col(C);
+      sheet0Cells[`${targetCol}${rowNum}`] = {
+        v: val,
+        bold: false,
+        align: C === 1 ? 'center' : typeof val === 'number' ? 'right' : 'left',
+        format: typeof val === 'number' ? 'number' : 'text',
+        textColor: '#0f172a',
+      };
+    }
+  }
+
+  // Sheet 1 (150 BPM)
+  const ws1 = wb.Sheets['150 BPM '] || wb.Sheets[wb.SheetNames[1]];
+  const sheet1Cells = {
+    A1: { v: 'Sr. No', bold: true, align: 'center', format: 'text', bgColor: '#ffffff', textColor: '#0f172a' },
+    B1: { v: 'TYPE OF MATERIAL', bold: true, align: 'center', format: 'text', bgColor: '#ffffff', textColor: '#0f172a' },
+    C1: { v: 'SIZE OF MATERIAL', bold: true, align: 'center', format: 'text', bgColor: '#ffffff', textColor: '#0f172a' },
+    D1: { v: 'QTY', bold: true, align: 'center', format: 'text', bgColor: '#ffffff', textColor: '#0f172a' },
+    E1: { v: 'REMARK', bold: true, align: 'center', format: 'text', bgColor: '#ffffff', textColor: '#0f172a' },
+  };
+
+  if (ws1) {
+    let dataRowCount = 0;
+    for (let R = 3; R <= 38; R++) {
+      const bVal = ws1[`B${R + 1}`]?.v;
+      if (!bVal) continue;
+      dataRowCount++;
+      const targetRow = dataRowCount + 1;
+      sheet1Cells[`A${targetRow}`] = { v: dataRowCount, bold: false, align: 'center', format: 'number', textColor: '#0f172a' };
+      sheet1Cells[`B${targetRow}`] = { v: ws1[`B${R + 1}`]?.v || '', bold: false, align: 'left', format: 'text', textColor: '#0f172a' };
+      sheet1Cells[`C${targetRow}`] = { v: ws1[`C${R + 1}`]?.v || '', bold: false, align: 'left', format: 'text', textColor: '#0f172a' };
+      sheet1Cells[`D${targetRow}`] = { v: ws1[`D${R + 1}`]?.v || '', bold: false, align: 'center', format: 'text', textColor: '#0f172a' };
+      sheet1Cells[`E${targetRow}`] = { v: ws1[`E${R + 1}`]?.v || '', bold: false, align: 'left', format: 'text', textColor: '#0f172a' };
+    }
+  }
+
+  return {
+    id: 'wb-rsb1-daily-po',
+    directory_id: 'dir-daily-po',
+    title: 'RSB1 — DAILY PO SHEET RAHUL SIR & 150 BPM',
+    description: 'Official 420+ Row Daily PO tracking register with supplier orders, received/pending status and 150 BPM specs.',
+    created_by: 'usr-amit',
+    created_by_name: 'Amit',
+    created_at: '2026-09-01T09:00:00Z',
+    last_edited_by: 'usr-kaustubh',
+    last_edited_by_name: 'Kaustubh',
+    last_edited_at: '2026-10-04T10:45:00Z',
+    is_pinned: true,
+    is_favorite: true,
+    tags: ['Daily PO', 'RSB Live Excel'],
+    sheets: [
+      {
+        id: 'sheet-wb-rsb1-daily-po-0',
+        workbook_id: 'wb-rsb1-daily-po',
+        name: 'Sheet1',
+        tab_color: '#107c41',
+        order_index: 0,
+        row_count: Math.max(range0.e.r + 5, 100),
+        col_count: 26,
+        col_widths: { A: 70, B: 110, C: 90, D: 90, E: 200, F: 240, G: 90, H: 110, I: 100, J: 200, K: 110, L: 220, M: 240, N: 120, O: 130, P: 180 },
+        frozen_rows: 1,
+        frozen_cols: 0,
+        cells: sheet0Cells,
+      },
+      {
+        id: 'sheet-wb-rsb1-daily-po-1',
+        workbook_id: 'wb-rsb1-daily-po',
+        name: '150 BPM',
+        tab_color: '#3b82f6',
+        order_index: 1,
+        row_count: 50,
+        col_count: 26,
+        col_widths: { A: 70, B: 220, C: 260, D: 90, E: 220 },
+        frozen_rows: 1,
+        frozen_cols: 0,
+        cells: sheet1Cells,
+      }
+    ],
+  };
+}
+
+const wb1 = processRSB1Workbook('/Users/kaustubh/Desktop/rsb i/rsb1.xlsx');
 
 const wb2 = processWorkbook(
   '/Users/kaustubh/Desktop/rsb i/rsb2.xlsx',
@@ -141,4 +258,4 @@ const wb3 = processWorkbook(
 
 const outputJson = JSON.stringify([wb1, wb2, wb3], null, 2);
 fs.writeFileSync('/Users/kaustubh/Desktop/rsb i/src/data/realRsbWorkbooks.json', outputJson);
-console.log('Successfully generated realRsbWorkbooks.json with rsb1, rsb2, and rsb3!');
+console.log('Successfully generated realRsbWorkbooks.json with accurate RSB-1 column headers and serial numbers!');

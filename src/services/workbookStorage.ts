@@ -43,9 +43,9 @@ export function saveDirectories(dirs: WorkbookDirectory[]): void {
 }
 
 const BASE_WORKBOOK_IDS = new Set(['wb-rsb1-daily-po', 'wb-rsb2-dc-book', 'wb-rsb3-spare-parts']);
-const CUSTOM_WORKBOOKS_KEY = 'rsb_custom_workbooks_v5';
-const BASE_WORKBOOK_EDITS_KEY = 'rsb_base_workbooks_edits_v5';
-const DELETED_WORKBOOK_IDS_KEY = 'rsb_deleted_workbook_ids_v5';
+const CUSTOM_WORKBOOKS_KEY = 'rsb_custom_workbooks_v6';
+const BASE_WORKBOOK_EDITS_KEY = 'rsb_base_workbooks_edits_v6';
+const DELETED_WORKBOOK_IDS_KEY = 'rsb_deleted_workbook_ids_v6';
 
 // In-memory cache
 let inMemoryWorkbooks: Workbook[] | null = null;
@@ -77,10 +77,13 @@ export function loadWorkbooks(): Workbook[] {
     return inMemoryWorkbooks;
   }
 
-  // Seamless migration from earlier versions if v5 not set
+  // Seamless migration from earlier versions if v6 not set
   try {
     if (!localStorage.getItem(CUSTOM_WORKBOOKS_KEY)) {
-      const prevCustom = localStorage.getItem('rsb_custom_workbooks_v4') || localStorage.getItem('rsb_custom_workbooks_v3');
+      const prevCustom =
+        localStorage.getItem('rsb_custom_workbooks_v5') ||
+        localStorage.getItem('rsb_custom_workbooks_v4') ||
+        localStorage.getItem('rsb_custom_workbooks_v3');
       if (prevCustom) localStorage.setItem(CUSTOM_WORKBOOKS_KEY, prevCustom);
     }
   } catch (_) {}
