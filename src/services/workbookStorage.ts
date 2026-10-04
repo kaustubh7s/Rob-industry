@@ -45,23 +45,49 @@ export function saveDirectories(dirs: WorkbookDirectory[]): void {
 const BASE_WORKBOOK_IDS = new Set(['wb-rsb1-daily-po', 'wb-rsb2-dc-book', 'wb-rsb3-spare-parts']);
 const CUSTOM_WORKBOOKS_KEY = 'rsb_custom_workbooks_v3';
 const BASE_WORKBOOK_EDITS_KEY = 'rsb_base_workbooks_edits_v3';
+const DELETED_WORKBOOK_IDS_KEY = 'rsb_deleted_workbook_ids_v3';
 
 // In-memory cache
 let inMemoryWorkbooks: Workbook[] | null = null;
 
+export function getDeletedWorkbookIds(): Set<string> {
+  try {
+    const saved = localStorage.getItem(DELETED_WORKBOOK_IDS_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) return new Set(parsed);
+    }
+  } catch (err) {
+    console.warn('Error reading deleted workbook ids:', err);
+  }
+  return new Set<string>();
+}
+
+export function saveDeletedWorkbookIds(deletedIds: Set<string>): void {
+  try {
+    localStorage.setItem(DELETED_WORKBOOK_IDS_KEY, JSON.stringify(Array.from(deletedIds)));
+  } catch (err) {
+    console.warn('Error saving deleted workbook ids:', err);
+  }
+}
+
 // 2. WORKBOOKS STORAGE
 export function loadWorkbooks(): Workbook[] {
-  if (inMemoryWorkbooks && inMemoryWorkbooks.length > 0) {
+  if (inMemoryWorkbooks !== null) {
     return inMemoryWorkbooks;
   }
 
-  // 1. Start with base RSB workbooks
+  const deletedIds = getDeletedWorkbookIds();
+
+  // 1. Start with base RSB workbooks (unless explicitly deleted)
   const baseMap = new Map<string, Workbook>();
   INITIAL_WORKBOOKS.forEach((wb) => {
-    baseMap.set(wb.id, JSON.parse(JSON.stringify(wb)));
+    if (!deletedIds.has(wb.id)) {
+      baseMap.set(wb.id, JSON.parse(JSON.stringify(wb)));
+    }
   });
 
-  // 2. Apply any saved edits to base workbooks (titles, modified sheets, pins)
+  // 2. Apply any saved edits to remaining base workbooks
   try {
     const savedBaseEdits = localStorage.getItem(BASE_WORKBOOK_EDITS_KEY);
     if (savedBaseEdits) {
@@ -77,14 +103,18 @@ export function loadWorkbooks(): Workbook[] {
     console.warn('Error applying base workbook edits:', err);
   }
 
-  // 3. Load user-created custom workbooks (like "new", custom sheets, etc.)
+  // 3. Load user-created custom workbooks (unless deleted)
   const customWbs: Workbook[] = [];
   try {
     const savedCustom = localStorage.getItem(CUSTOM_WORKBOOKS_KEY);
     if (savedCustom) {
       const parsedCustom: Workbook[] = JSON.parse(savedCustom);
       if (Array.isArray(parsedCustom)) {
-        customWbs.push(...parsedCustom);
+        parsedCustom.forEach((wb) => {
+          if (!deletedIds.has(wb.id)) {
+            customWbs.push(wb);
+          }
+        });
       }
     }
   } catch (err) {
@@ -99,6 +129,19 @@ export function loadWorkbooks(): Workbook[] {
 
 export function saveWorkbooks(wbs: Workbook[]): void {
   inMemoryWorkbooks = wbs;
+
+  const currentIds = new Set(wbs.map((w) => w.id));
+  const deletedIds = getDeletedWorkbookIds();
+
+  // Any base workbook not in the current list is marked as deleted
+  BASE_WORKBOOK_IDS.forEach((id) => {
+    if (!currentIds.has(id)) {
+      deletedIds.add(id);
+    } else {
+      deletedIds.delete(id);
+    }
+  });
+  saveDeletedWorkbookIds(deletedIds);
 
   // Separate custom vs base workbooks
   const customWbs: Workbook[] = [];
