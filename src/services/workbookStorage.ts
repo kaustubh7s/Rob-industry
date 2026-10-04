@@ -43,9 +43,9 @@ export function saveDirectories(dirs: WorkbookDirectory[]): void {
 }
 
 const BASE_WORKBOOK_IDS = new Set(['wb-rsb1-daily-po', 'wb-rsb2-dc-book', 'wb-rsb3-spare-parts']);
-const CUSTOM_WORKBOOKS_KEY = 'rsb_custom_workbooks_v4';
-const BASE_WORKBOOK_EDITS_KEY = 'rsb_base_workbooks_edits_v4';
-const DELETED_WORKBOOK_IDS_KEY = 'rsb_deleted_workbook_ids_v4';
+const CUSTOM_WORKBOOKS_KEY = 'rsb_custom_workbooks_v5';
+const BASE_WORKBOOK_EDITS_KEY = 'rsb_base_workbooks_edits_v5';
+const DELETED_WORKBOOK_IDS_KEY = 'rsb_deleted_workbook_ids_v5';
 
 // In-memory cache
 let inMemoryWorkbooks: Workbook[] | null = null;
@@ -77,11 +77,11 @@ export function loadWorkbooks(): Workbook[] {
     return inMemoryWorkbooks;
   }
 
-  // Seamless migration from v3 if v4 not set
+  // Seamless migration from earlier versions if v5 not set
   try {
     if (!localStorage.getItem(CUSTOM_WORKBOOKS_KEY)) {
-      const v3Custom = localStorage.getItem('rsb_custom_workbooks_v3');
-      if (v3Custom) localStorage.setItem(CUSTOM_WORKBOOKS_KEY, v3Custom);
+      const prevCustom = localStorage.getItem('rsb_custom_workbooks_v4') || localStorage.getItem('rsb_custom_workbooks_v3');
+      if (prevCustom) localStorage.setItem(CUSTOM_WORKBOOKS_KEY, prevCustom);
     }
   } catch (_) {}
 
@@ -103,12 +103,36 @@ export function loadWorkbooks(): Workbook[] {
       Object.entries(parsedEdits).forEach(([id, edits]) => {
         const existing = baseMap.get(id);
         if (existing) {
+          // If saved sheets lost Row 1 headers, discard the corrupted sheet cache
+          if (id === 'wb-rsb1-daily-po' && edits.sheets && edits.sheets[0]?.cells['B1']?.v !== 'Date') {
+            delete edits.sheets;
+          }
           baseMap.set(id, { ...existing, ...edits });
         }
       });
     }
   } catch (err) {
     console.warn('Error applying base workbook edits:', err);
+  }
+
+  // Defensive validation: ensure RSB-1 always has accurate Row 1 headers
+  const rsb1 = baseMap.get('wb-rsb1-daily-po');
+  if (rsb1 && rsb1.sheets[0]) {
+    const s = rsb1.sheets[0];
+    if (s.cells['B1']?.v !== 'Date') {
+      s.cells['A1'] = { v: 'Sr. No', bold: true, align: 'center', format: 'text', textColor: '#0f172a' };
+      s.cells['B1'] = { v: 'Date', bold: true, align: 'center', format: 'general', bgColor: '#ffffff', textColor: '#0f172a' };
+      s.cells['C1'] = { v: 'PO NO', bold: true, align: 'center', format: 'general', bgColor: '#ffffff', textColor: '#0f172a' };
+      s.cells['D1'] = { v: 'Sr. No', bold: true, align: 'center', format: 'general', bgColor: '#ffffff', textColor: '#0f172a' };
+      s.cells['E1'] = { v: 'Material', bold: true, align: 'center', format: 'general', bgColor: '#ffffff', textColor: '#0f172a' };
+      s.cells['F1'] = { v: 'Specifications', bold: true, align: 'center', format: 'general', bgColor: '#ffffff', textColor: '#0f172a' };
+      s.cells['G1'] = { v: 'Qty', bold: true, align: 'center', format: 'general', bgColor: '#ffffff', textColor: '#0f172a' };
+      s.cells['H1'] = { v: 'Received', bold: true, align: 'center', format: 'general', bgColor: '#ffffff', textColor: '#0f172a' };
+      s.cells['I1'] = { v: 'PENDING', bold: true, align: 'center', format: 'general', bgColor: '#ffffff', textColor: '#0f172a' };
+      s.cells['J1'] = { v: 'Supplier Name', bold: true, align: 'center', format: 'general', bgColor: '#ffffff', textColor: '#0f172a' };
+      s.cells['K1'] = { v: 'M/C', bold: true, align: 'center', format: 'general', bgColor: '#ffffff', textColor: '#0f172a' };
+      s.cells['L1'] = { v: 'Remarks', bold: true, align: 'center', format: 'general', bgColor: '#ffffff', textColor: '#0f172a' };
+    }
   }
 
   // 3. Load user-created custom workbooks (unless deleted)
