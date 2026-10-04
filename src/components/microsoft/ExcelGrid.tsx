@@ -969,6 +969,9 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
   useEffect(() => {
     if (!resizingCol) return;
 
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
     const handleMouseMove = (e: MouseEvent) => {
       const deltaX = e.clientX - resizingCol.startX;
       const newWidth = Math.max(45, Math.min(900, Math.round(resizingCol.startW + deltaX)));
@@ -978,6 +981,8 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     };
 
     const handleMouseUp = () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
       if (resizingCol) {
         const colLetter = colIndexToName(resizingCol.colIdx);
         const finalWidth = resizingCol.currentW;
@@ -991,6 +996,8 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
     return () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
@@ -1012,6 +1019,9 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
   useEffect(() => {
     if (!resizingRow) return;
 
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+
     const handleMouseMove = (e: MouseEvent) => {
       const deltaY = e.clientY - resizingRow.startY;
       const newHeight = Math.max(20, Math.min(500, Math.round(resizingRow.startH + deltaY)));
@@ -1020,6 +1030,8 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     };
 
     const handleMouseUp = () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
       if (resizingRow) {
         const finalHeight = resizingRow.currentH;
         const nextRowHeights = { ...rowHeights, [resizingRow.rowIdx]: finalHeight };
@@ -1032,6 +1044,8 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
     return () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
@@ -1283,10 +1297,10 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                     e.stopPropagation();
                     handleAutoFitCol(cIdx);
                   }}
-                  className="absolute right-0 top-0 bottom-0 w-2.5 hover:w-3 hover:bg-[#107c41] cursor-col-resize z-30 transition-all group flex items-center justify-end"
+                  className="absolute -right-1.5 top-0 bottom-0 w-3 hover:bg-emerald-500/20 active:bg-emerald-600/30 cursor-col-resize z-40 transition-all group flex items-center justify-center"
                   title="Drag left/right to stretch column width | Double-click to auto-fit"
                 >
-                  <div className="h-full w-0.5 bg-slate-300 group-hover:bg-[#107c41]" />
+                  <div className="h-full w-[2px] bg-slate-300 group-hover:bg-[#107c41] transition-colors" />
                 </div>
               </div>
             );
@@ -1369,10 +1383,10 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                     e.stopPropagation();
                     handleAutoFitRow(origRowIndex);
                   }}
-                  className="absolute left-0 right-0 bottom-0 h-2 hover:h-2.5 hover:bg-[#107c41] cursor-row-resize z-30 transition-all group flex flex-col justify-end"
+                  className="absolute left-0 right-0 -bottom-1.5 h-3 hover:bg-emerald-500/20 active:bg-emerald-600/30 cursor-row-resize z-40 transition-all group flex flex-col items-center justify-center"
                   title="Drag up/down to stretch row height | Double-click to reset"
                 >
-                  <div className="w-full h-0.5 bg-slate-300 group-hover:bg-[#107c41]" />
+                  <div className="w-full h-[2px] bg-slate-300 group-hover:bg-[#107c41] transition-colors" />
                 </div>
               </div>
             );
