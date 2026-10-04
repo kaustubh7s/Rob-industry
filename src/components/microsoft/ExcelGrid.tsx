@@ -862,6 +862,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
         }}
       >
         {/* ========================================================================= */}
+        {/* ========================================================================= */}
         {/* 1. TOP-LEFT CORNER SELECT-ALL BOX */}
         {/* ========================================================================= */}
         <div
@@ -873,18 +874,18 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
               endCol: totalCols - 1,
             });
           }}
-          className="sticky top-0 left-0 z-30 bg-[#107c41] border-r border-b border-[#0b5a2f] flex items-center justify-center cursor-pointer hover:bg-[#0b5a2f] transition-colors"
+          className="sticky top-0 left-0 z-30 bg-[#f1f5f9] hover:bg-[#e2e8f0] border-r border-b border-[#cbd5e1] flex items-center justify-center cursor-pointer transition-colors"
           style={{ width: rowHeaderWidth, height: HEADER_ROW_HEIGHT }}
           title="Select All (Ctrl+A)"
         >
-          <div className="w-2.5 h-2.5 border-r border-b border-white/60" />
+          <div className="w-2.5 h-2.5 border-r border-b border-slate-400" />
         </div>
 
         {/* ========================================================================= */}
-        {/* 2. STICKY TOP COLUMN HEADERS (A, B, C...) — CLEAN EXCEL GREEN LETTERS */}
+        {/* 2. STICKY TOP COLUMN HEADERS (A, B, C...) — CLASSIC DISTINCT EXCEL LETTER ROW */}
         {/* ========================================================================= */}
         <div
-          className="sticky top-0 z-20 flex bg-[#107c41] border-b border-[#0b5a2f]"
+          className="sticky top-0 z-20 flex bg-[#f8fafc] border-b border-[#cbd5e1]"
           style={{
             height: HEADER_ROW_HEIGHT,
             marginLeft: rowHeaderWidth,
@@ -924,24 +925,24 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                     }));
                   }
                 }}
-                className={`absolute top-0 border-r border-[#0b5a2f] flex items-center justify-center font-bold text-xs text-white transition-colors cursor-pointer select-none ${
+                className={`absolute top-0 border-r border-[#cbd5e1] flex items-center justify-center font-semibold text-xs transition-colors cursor-pointer select-none ${
                   isColActive || isColSelected
-                    ? 'bg-[#084222] text-white underline underline-offset-4 ring-1 ring-white/50'
-                    : 'hover:bg-[#0d6e38]'
+                    ? 'bg-[#dcfce7] text-[#107c41] font-bold border-b-2 border-[#107c41]'
+                    : 'bg-[#f8fafc] text-slate-700 hover:bg-[#e2e8f0]'
                 }`}
                 style={{
                   left: colLeft,
                   width: colWidth,
                   height: HEADER_ROW_HEIGHT,
                 }}
-                title={`Column ${colName} (Click/Drag to select column)`}
+                title={`Column ${colName}`}
               >
                 <span>{colName}</span>
 
                 {/* Column Resize Handle */}
                 <div
                   onMouseDown={(e) => handleColResizeMouseDown(e, cIdx)}
-                  className="absolute right-0 top-0 bottom-0 w-1.5 hover:w-2 hover:bg-white cursor-col-resize z-30"
+                  className="absolute right-0 top-0 bottom-0 w-1.5 hover:w-2 hover:bg-[#107c41] cursor-col-resize z-30"
                 />
               </div>
             );
@@ -949,10 +950,10 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
         </div>
 
         {/* ========================================================================= */}
-        {/* 3. STICKY LEFT ROW HEADERS (1, 2, 3...) — DARK EXCEL GREEN */}
+        {/* 3. STICKY LEFT ROW HEADERS (1, 2, 3...) — DISTINCT EXCEL NUMBER COLUMN */}
         {/* ========================================================================= */}
         <div
-          className="sticky left-0 z-10 bg-[#107c41] border-r border-[#0b5a2f]"
+          className="sticky left-0 z-10 bg-[#f8fafc] border-r border-[#cbd5e1]"
           style={{
             width: rowHeaderWidth,
             height: totalContentHeight,
@@ -992,11 +993,11 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                     }));
                   }
                 }}
-                className={`absolute left-0 border-b border-[#0b5a2f] flex items-center justify-center text-xs font-bold text-white transition-colors cursor-pointer select-none ${
+                className={`absolute left-0 border-b border-[#cbd5e1] flex items-center justify-center text-xs font-semibold transition-colors cursor-pointer select-none ${
                   isRowActive || isRowSelected
-                    ? 'bg-[#084222] text-white ring-1 ring-white/50'
-                    : 'hover:bg-[#0d6e38]'
-                } ${isRow1Frozen && scrollTop > 0 ? 'border-b-2 border-emerald-950 shadow-md' : ''}`}
+                    ? 'bg-[#dcfce7] text-[#107c41] font-bold border-r-2 border-[#107c41]'
+                    : 'bg-[#f8fafc] text-slate-700 hover:bg-[#e2e8f0]'
+                } ${isRow1Frozen && scrollTop > 0 ? 'shadow-md border-b-2 border-slate-400 bg-[#e2e8f0]' : ''}`}
                 style={{
                   top: rowTop,
                   width: rowHeaderWidth,
