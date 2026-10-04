@@ -37,29 +37,10 @@ interface ExcelGridProps {
 
 const DEFAULT_COL_WIDTH = 135;
 const DEFAULT_ROW_HEIGHT = 28;
-const HEADER_ROW_HEIGHT = 42;
+const HEADER_ROW_HEIGHT = 26;
 const ROW_HEADER_WIDTH = 42;
 const OVERSCAN_ROWS = 15;
 const OVERSCAN_COLS = 5;
-
-const DEFAULT_COLUMN_TITLES: Record<string, string> = {
-  A: 'Sr. No',
-  B: 'Date',
-  C: 'Order / Type',
-  D: 'PO No',
-  E: 'Material / Description',
-  F: 'Size & Specs',
-  G: 'Quantity',
-  H: 'Weight / Notes',
-  I: 'Vendor / Supplier',
-  J: 'Rate (₹)',
-  K: 'Amount (₹)',
-  L: 'Status / Remarks',
-  M: 'Delivery Date',
-  N: 'Challan No',
-  O: 'Vehicle / Transporter',
-  P: 'Location / Plant',
-};
 
 export const ExcelGrid: React.FC<ExcelGridProps> = ({
   sheet,
@@ -713,9 +694,9 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                     }));
                   }
                 }}
-                className={`absolute top-0 border-r border-[#0b5a2f] flex flex-col items-center justify-center font-bold text-xs text-white transition-colors cursor-pointer select-none px-1 ${
+                className={`absolute top-0 border-r border-[#0b5a2f] flex items-center justify-center font-bold text-xs text-white transition-colors cursor-pointer select-none ${
                   isColActive || isColSelected
-                    ? 'bg-[#084222] text-white ring-1 ring-white/50'
+                    ? 'bg-[#084222] text-white underline underline-offset-4 ring-1 ring-white/50'
                     : 'hover:bg-[#0d6e38]'
                 }`}
                 style={{
@@ -723,39 +704,9 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                   width: colWidth,
                   height: HEADER_ROW_HEIGHT,
                 }}
-                title={`Column ${colName}: ${sheet.custom_col_headers?.[colName] || DEFAULT_COLUMN_TITLES[colName] || ''} (Double-click to rename)`}
+                title={`Column ${colName} (Click/Drag to select column)`}
               >
-                {renamingColIdx === cIdx ? (
-                  <input
-                    type="text"
-                    value={colRenameValue}
-                    autoFocus
-                    onChange={(e) => setColRenameValue(e.target.value)}
-                    onBlur={() => handleSaveColRename(cIdx)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleSaveColRename(cIdx);
-                      if (e.key === 'Escape') setRenamingColIdx(null);
-                    }}
-                    className="w-full text-[11px] font-semibold text-slate-900 bg-white px-1 py-0.5 rounded text-center outline-none ring-2 ring-emerald-300"
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                ) : (
-                  <div
-                    onDoubleClick={(e) => {
-                      e.stopPropagation();
-                      setRenamingColIdx(cIdx);
-                      setColRenameValue(sheet.custom_col_headers?.[colName] || DEFAULT_COLUMN_TITLES[colName] || '');
-                    }}
-                    className="flex flex-col items-center justify-center text-center leading-tight w-full truncate pointer-events-auto"
-                  >
-                    <span className="text-[11px] font-bold text-white tracking-wider uppercase opacity-95">
-                      {colName}
-                    </span>
-                    <span className="text-[9.5px] font-medium text-emerald-100/90 truncate w-full tracking-tight">
-                      {sheet.custom_col_headers?.[colName] || DEFAULT_COLUMN_TITLES[colName] || ''}
-                    </span>
-                  </div>
-                )}
+                <span>{colName}</span>
 
                 {/* Column Resize Handle */}
                 <div
