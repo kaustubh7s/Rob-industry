@@ -44,6 +44,7 @@ import {
   dbFetchWorkbooks,
   dbFetchDirectories,
   dbUpsertWorkbook,
+  dbDeleteWorkbook,
 } from '../../services/supabaseService';
 import { SmartTemplate, INITIAL_WORKBOOKS } from '../../data/workbookSeedData';
 import { coordsToCellId, cellIdToCoords } from '../../services/workbookFormula';
@@ -176,6 +177,93 @@ export const MicrosoftWorkbookCenter: React.FC = () => {
     }
   }, [activeWorkbook, activeSheetId]);
 
+  // Broadcast updates to all open browser tabs/windows
+  const broadcastUpdate = useCallback(() => {
+    try {
+      const channel = new BroadcastChannel('rsb_workbooks_sync');
+      channel.postMessage({ type: 'WORKBOOKS_UPDATED', timestamp: Date.now() });
+      channel.close();
+    } catch (_) {}
+  }, []);
+
+  // Synchronize across systems, browsers, and tabs automatically
+  useEffect(() => {
+    let isMounted = true;
+    const fetchRemoteData = async () => {
+      try {
+        const [remoteWbs, remoteDirs] = await Promise.all([
+          dbFetchWorkbooks(),
+          dbFetchDirectories(),
+        ]);
+
+        if (remoteDirs && remoteDirs.length > 0 && isMounted) {
+          setDirectories((prev) => {
+            const dirMap = new Map<string, WorkbookDirectory>();
+            prev.forEach((d) => dirMap.set(d.id, d));
+            remoteDirs.forEach((rd) => dirMap.set(rd.id, rd));
+            const merged = Array.from(dirMap.values());
+            saveDirectories(merged);
+            return merged;
+          });
+        }
+
+        if (remoteWbs && remoteWbs.length > 0 && isMounted) {
+          setWorkbooks((prev) => {
+            const map = new Map<string, Workbook>();
+            // Start with current local workbooks
+            prev.forEach((w) => map.set(w.id, w));
+            // Merge remote workbooks (adding new ones or newer edits)
+            remoteWbs.forEach((rw) => {
+              const local = map.get(rw.id);
+              if (!local || new Date(rw.last_edited_at).getTime() >= new Date(local.last_edited_at).getTime()) {
+                map.set(rw.id, rw);
+              }
+            });
+            const merged = Array.from(map.values());
+            saveWorkbooks(merged);
+            return merged;
+          });
+        }
+      } catch (e) {
+        console.warn('Auto DB sync check:', e);
+      }
+    };
+
+    fetchRemoteData();
+
+    // Re-fetch when user switches back to this tab or window
+    const handleFocus = () => fetchRemoteData();
+    window.addEventListener('focus', handleFocus);
+
+    // Cross-tab broadcast listener
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel('rsb_workbooks_sync');
+      channel.onmessage = (event) => {
+        if (event.data?.type === 'WORKBOOKS_UPDATED' && isMounted) {
+          const fresh = loadWorkbooks();
+          setWorkbooks(fresh);
+        }
+      };
+    } catch (_) {}
+
+    // Storage event for same-browser multi-window sync
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'rsb_custom_workbooks_v3' || e.key === 'rsb_base_workbooks_edits_v3') {
+        const fresh = loadWorkbooks();
+        setWorkbooks(fresh);
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('storage', handleStorage);
+      if (channel) channel.close();
+    };
+  }, []);
+
   // Fullscreen keyboard shortcut (Alt+F or Escape)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -196,6 +284,7 @@ export const MicrosoftWorkbookCenter: React.FC = () => {
     setSaveStatus('saving');
     // Save to localStorage immediately so no data is lost on sudden refresh
     saveWorkbooks(updatedWorkbooks);
+    broadcastUpdate();
     setSaveStatus('saved');
 
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -206,7 +295,7 @@ export const MicrosoftWorkbookCenter: React.FC = () => {
         if (currentWb) dbUpsertWorkbook(currentWb).catch(() => {});
       }
     }, 1000);
-  }, [activeWorkbook]);
+  }, [activeWorkbook, broadcastUpdate]);
 
   // Full System Enterprise Database Sync
   const handleSyncWithDB = async () => {
@@ -364,6 +453,7 @@ export const MicrosoftWorkbookCenter: React.FC = () => {
     const nextWorkbooks = [newWb, ...workbooks];
     setWorkbooks(nextWorkbooks);
     triggerSave(nextWorkbooks);
+    dbUpsertWorkbook(newWb).catch(() => {});
 
     logWorkbookActivity(
       wbId,
@@ -404,6 +494,7 @@ export const MicrosoftWorkbookCenter: React.FC = () => {
     const nextWorkbooks = [newWb, ...workbooks];
     setWorkbooks(nextWorkbooks);
     triggerSave(nextWorkbooks);
+    dbUpsertWorkbook(newWb).catch(() => {});
 
     logWorkbookActivity(
       wbId,
@@ -429,6 +520,7 @@ export const MicrosoftWorkbookCenter: React.FC = () => {
       const nextWorkbooks = [importedWb, ...workbooks];
       setWorkbooks(nextWorkbooks);
       triggerSave(nextWorkbooks);
+      dbUpsertWorkbook(importedWb).catch(() => {});
 
       logWorkbookActivity(
         importedWb.id,
@@ -477,6 +569,7 @@ export const MicrosoftWorkbookCenter: React.FC = () => {
     const nextWorkbooks = [duplicatedWb, ...workbooks];
     setWorkbooks(nextWorkbooks);
     triggerSave(nextWorkbooks);
+    dbUpsertWorkbook(duplicatedWb).catch(() => {});
   };
 
   const handleDeleteWorkbook = (wbId: string) => {
@@ -499,6 +592,7 @@ export const MicrosoftWorkbookCenter: React.FC = () => {
     const nextWorkbooks = workbooks.filter((w) => w.id !== wbId);
     setWorkbooks(nextWorkbooks);
     triggerSave(nextWorkbooks);
+    dbDeleteWorkbook(wbId).catch(() => {});
 
     if (activeWorkbookId === wbId) {
       handleCloseWorkbook();
