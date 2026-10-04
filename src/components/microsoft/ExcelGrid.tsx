@@ -21,6 +21,11 @@ import {
   Filter,
   ChevronDown,
   Edit2,
+  Maximize2,
+  ArrowDown,
+  ArrowUp,
+  ArrowLeft,
+  ArrowRight,
 } from 'lucide-react';
 import { ExcelColumnFilterMenu } from './ExcelColumnFilterMenu';
 
@@ -67,7 +72,10 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
-    cellId: string;
+    targetType: 'cell' | 'row' | 'col';
+    cellId?: string;
+    rowIndex?: number;
+    colIndex?: number;
   } | null>(null);
 
   // Column Filter Dropdown Menu
@@ -347,7 +355,182 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     [rowHeaderWidth, totalCols, totalFilteredRows, totalRawRows, colPositions, rowPositions, filteredRowIndices]
   );
 
-  // Auto-Fill execution logic (series increment, formulas & formatting copy)
+  // ---------------------------------------------------------------------------
+  // CLIPBOARD PARSER & PASTE ENGINE (Excel, Google Sheets, CSV, TSV)
+  // ---------------------------------------------------------------------------
+  const parseClipboardData = (text: string): string[][] => {
+    if (!text) return [];
+    const lines = text.split(/\r\n|\n|\r/);
+    if (lines.length > 1 && lines[lines.length - 1] === '') {
+      lines.pop();
+    }
+    return lines.map((line) => {
+      if (line.includes('\t')) {
+        return line.split('\t');
+      }
+      // Standard CSV parsing with quote preservation
+      const result: string[] = [];
+      let cur = '';
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') {
+          inQuotes = !inQuotes;
+        } else if (ch === ',' && !inQuotes) {
+          result.push(cur.trim());
+          cur = '';
+        } else {
+          cur += ch;
+        }
+      }
+      result.push(cur.trim());
+      return result;
+    });
+  };
+
+  const handlePasteData = useCallback(
+    (clipText: string, startCol?: number, startRow?: number) => {
+      if (!clipText) return;
+      const grid = parseClipboardData(clipText);
+      if (grid.length === 0) return;
+
+      const baseCoords =
+        startCol !== undefined && startRow !== undefined
+          ? { col: startCol, row: startRow }
+          : cellIdToCoords(activeCell) || { col: 0, row: 0 };
+
+      const batchUpdates: Record<string, Partial<SheetCell>> = {};
+      let maxC = baseCoords.col;
+      let maxR = baseCoords.row;
+
+      grid.forEach((rowVals, rOffset) => {
+        const targetR = baseCoords.row + rOffset;
+        if (targetR >= totalRawRows) return;
+        maxR = Math.max(maxR, targetR);
+
+        rowVals.forEach((rawVal, cOffset) => {
+          const targetC = baseCoords.col + cOffset;
+          if (targetC >= totalCols) return;
+          maxC = Math.max(maxC, targetC);
+
+          const cleanVal = rawVal.replace(/^"|"$/g, '').trim();
+          const cid = coordsToCellId(targetC, targetR);
+          const isFormula = cleanVal.startsWith('=');
+          const isNum = !isFormula && !isNaN(Number(cleanVal)) && cleanVal !== '';
+
+          batchUpdates[cid] = {
+            v: isFormula ? null : isNum ? Number(cleanVal) : cleanVal,
+            f: isFormula ? cleanVal : undefined,
+          };
+        });
+      });
+
+      if (Object.keys(batchUpdates).length > 0) {
+        onBatchCellsChange(batchUpdates);
+        setSelection({
+          startRow: baseCoords.row,
+          startCol: baseCoords.col,
+          endRow: maxR,
+          endCol: maxC,
+        });
+      }
+    },
+    [activeCell, totalRawRows, totalCols, onBatchCellsChange]
+  );
+
+  // ---------------------------------------------------------------------------
+  // ROW & COLUMN INSERTION / DELETION / AUTO-FIT OPERATIONS
+  // ---------------------------------------------------------------------------
+  const handleInsertRow = useCallback(
+    (targetRow: number) => {
+      const newCells: Record<string, SheetCell> = {};
+      Object.keys(sheet.cells).forEach((coord) => {
+        const c = cellIdToCoords(coord);
+        if (!c) return;
+        if (c.row < targetRow) {
+          newCells[coord] = sheet.cells[coord];
+        } else {
+          newCells[coordsToCellId(c.col, c.row + 1)] = sheet.cells[coord];
+        }
+      });
+      onBatchCellsChange(newCells);
+    },
+    [sheet.cells, onBatchCellsChange]
+  );
+
+  const handleDeleteRow = useCallback(
+    (targetRow: number) => {
+      if (targetRow === 0) return; // Protect header row
+      const newCells: Record<string, SheetCell> = {};
+      Object.keys(sheet.cells).forEach((coord) => {
+        const c = cellIdToCoords(coord);
+        if (!c) return;
+        if (c.row < targetRow) {
+          newCells[coord] = sheet.cells[coord];
+        } else if (c.row > targetRow) {
+          newCells[coordsToCellId(c.col, c.row - 1)] = sheet.cells[coord];
+        }
+      });
+      onBatchCellsChange(newCells);
+    },
+    [sheet.cells, onBatchCellsChange]
+  );
+
+  const handleInsertCol = useCallback(
+    (targetCol: number) => {
+      const newCells: Record<string, SheetCell> = {};
+      Object.keys(sheet.cells).forEach((coord) => {
+        const c = cellIdToCoords(coord);
+        if (!c) return;
+        if (c.col < targetCol) {
+          newCells[coord] = sheet.cells[coord];
+        } else {
+          newCells[coordsToCellId(c.col + 1, c.row)] = sheet.cells[coord];
+        }
+      });
+      onBatchCellsChange(newCells);
+    },
+    [sheet.cells, onBatchCellsChange]
+  );
+
+  const handleDeleteCol = useCallback(
+    (targetCol: number) => {
+      const newCells: Record<string, SheetCell> = {};
+      Object.keys(sheet.cells).forEach((coord) => {
+        const c = cellIdToCoords(coord);
+        if (!c) return;
+        if (c.col < targetCol) {
+          newCells[coord] = sheet.cells[coord];
+        } else if (c.col > targetCol) {
+          newCells[coordsToCellId(c.col - 1, c.row)] = sheet.cells[coord];
+        }
+      });
+      onBatchCellsChange(newCells);
+    },
+    [sheet.cells, onBatchCellsChange]
+  );
+
+  const handleAutoFitCol = useCallback(
+    (targetCol: number) => {
+      const colLetter = colIndexToName(targetCol);
+      let maxLen = 8;
+      for (let r = 0; r < Math.min(totalRawRows, 150); r++) {
+        const cid = coordsToCellId(targetCol, r);
+        const cell = sheet.cells[cid];
+        const text = String(cell?.calced !== undefined ? cell.calced : cell?.v || '');
+        if (text.length > maxLen) maxLen = text.length;
+      }
+      const calculatedWidth = Math.max(90, Math.min(420, maxLen * 8.5 + 32));
+      const nextWidths = { ...colWidths, [colLetter]: calculatedWidth };
+      setColWidths(nextWidths);
+      onUpdateSheetMeta?.({ col_widths: nextWidths });
+    },
+    [totalRawRows, sheet.cells, colWidths, onUpdateSheetMeta]
+  );
+
+  // ---------------------------------------------------------------------------
+  // SMART AUTO-FILL ENGINE (Numbers, Dates, Alphanumerics, Formulas)
+  // ---------------------------------------------------------------------------
   const handleExecuteAutoFill = useCallback(
     (
       srcSel: CellSelection,
@@ -365,7 +548,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       const numSourceRows = srcMaxRow - srcMinRow + 1;
 
       for (let c = srcMinCol; c <= srcMaxCol; c++) {
-        const srcValues: Array<number | string | null> = [];
+        const srcValues: Array<any> = [];
         let allNumbers = true;
 
         for (let r = srcMinRow; r <= srcMaxRow; r++) {
@@ -392,6 +575,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
           const templateCid = coordsToCellId(c, srcMinRow + srcIdx);
           const templateCell = sheet.cells[templateCid] || {};
 
+          // 1. Pure numbers series
           if (allNumbers && srcValues[srcIdx] !== null && srcValues[srcIdx] !== undefined) {
             const baseVal = Number(srcValues[srcValues.length - 1]);
             const newVal = baseVal + step * offset;
@@ -399,7 +583,53 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
               ...templateCell,
               v: newVal,
             };
-          } else {
+          }
+          // 2. Date incrementing (e.g. 03/08/2026 or 2026-08-03)
+          else if (
+            typeof templateCell.v === 'string' &&
+            /^\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}$/.test(templateCell.v.trim())
+          ) {
+            const parts = templateCell.v.trim().split(/[-/.]/);
+            if (parts.length === 3) {
+              const day = parseInt(parts[0], 10);
+              const month = parseInt(parts[1], 10);
+              const year = parseInt(parts[2], 10);
+              const d = new Date(year < 100 ? 2000 + year : year, month - 1, day + offset);
+              const formattedDate = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+              batchUpdates[targetCid] = {
+                ...templateCell,
+                v: formattedDate,
+              };
+            }
+          }
+          // 3. Alphanumeric series like PO-001 -> PO-002
+          else if (typeof templateCell.v === 'string' && /(\D+)(\d+)$/.test(templateCell.v.trim())) {
+            const match = templateCell.v.trim().match(/^(\D+)(\d+)$/);
+            if (match) {
+              const prefix = match[1];
+              const numStr = match[2];
+              const nextNum = parseInt(numStr, 10) + offset;
+              const formatted = `${prefix}${String(nextNum).padStart(numStr.length, '0')}`;
+              batchUpdates[targetCid] = {
+                ...templateCell,
+                v: formatted,
+              };
+            }
+          }
+          // 4. Formula relative row shift (e.g. =A1+B1 -> =A2+B2)
+          else if (templateCell.f) {
+            const shiftedFormula = templateCell.f.replace(/([A-Z]+)(\d+)/g, (_, col, rowStr) => {
+              const rowNum = parseInt(rowStr, 10);
+              return `${col}${rowNum + offset}`;
+            });
+            batchUpdates[targetCid] = {
+              ...templateCell,
+              f: shiftedFormula,
+              v: null,
+            };
+          }
+          // 5. Default replicate template cell
+          else {
             batchUpdates[targetCid] = {
               ...templateCell,
             };
@@ -688,28 +918,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
         e.preventDefault();
         navigator.clipboard.readText().then((clipText) => {
-          if (!clipText) return;
-          const rows = clipText.split(/\r?\n/).filter((r) => r.length > 0);
-          const startCoords = cellIdToCoords(activeCell) || { col: 0, row: 0 };
-          const batchUpdates: Record<string, Partial<SheetCell>> = {};
-
-          rows.forEach((rowStr, rOffset) => {
-            const cols = rowStr.split('\t');
-            cols.forEach((valStr, cOffset) => {
-              const targetR = startCoords.row + rOffset;
-              const targetC = startCoords.col + cOffset;
-              if (targetR < totalRawRows && targetC < totalCols) {
-                const targetCid = coordsToCellId(targetC, targetR);
-                const isFormula = valStr.startsWith('=');
-                const isNum = !isFormula && !isNaN(Number(valStr)) && valStr.trim() !== '';
-                batchUpdates[targetCid] = {
-                  v: isFormula ? null : isNum ? Number(valStr) : valStr,
-                  f: isFormula ? valStr : undefined,
-                };
-              }
-            });
-          });
-          onBatchCellsChange(batchUpdates);
+          handlePasteData(clipText);
         });
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
         e.preventDefault();
@@ -777,8 +986,9 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     e.preventDefault();
     onActiveCellChange(cellId);
     setContextMenu({
-      x: Math.min(e.clientX, window.innerWidth - 200),
-      y: Math.min(e.clientY, window.innerHeight - 250),
+      x: Math.min(e.clientX, window.innerWidth - 220),
+      y: Math.min(e.clientY, window.innerHeight - 300),
+      targetType: 'cell',
       cellId,
     });
   };
@@ -849,6 +1059,13 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       tabIndex={0}
       onKeyDown={handleKeyDown}
       onScroll={handleScroll}
+      onPaste={(e) => {
+        const text = e.clipboardData?.getData('text');
+        if (text) {
+          e.preventDefault();
+          handlePasteData(text);
+        }
+      }}
       onClick={() => {
         if (contextMenu) setContextMenu(null);
       }}
@@ -861,7 +1078,6 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
           height: totalContentHeight + HEADER_ROW_HEIGHT,
         }}
       >
-        {/* ========================================================================= */}
         {/* ========================================================================= */}
         {/* 1. TOP-LEFT CORNER SELECT-ALL BOX */}
         {/* ========================================================================= */}
@@ -925,6 +1141,16 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                     }));
                   }
                 }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setContextMenu({
+                    x: Math.min(e.clientX, window.innerWidth - 220),
+                    y: Math.min(e.clientY, window.innerHeight - 300),
+                    targetType: 'col',
+                    colIndex: cIdx,
+                  });
+                }}
                 className={`absolute top-0 border-r border-[#cbd5e1] flex items-center justify-center font-semibold text-xs transition-colors cursor-pointer select-none ${
                   isColActive || isColSelected
                     ? 'bg-[#dcfce7] text-[#107c41] font-bold border-b-2 border-[#107c41]'
@@ -935,14 +1161,19 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                   width: colWidth,
                   height: HEADER_ROW_HEIGHT,
                 }}
-                title={`Column ${colName}`}
+                title={`Column ${colName} (Right-click for options)`}
               >
                 <span>{colName}</span>
 
-                {/* Column Resize Handle */}
+                {/* Column Resize Handle & Double-Click Auto-Fit */}
                 <div
                   onMouseDown={(e) => handleColResizeMouseDown(e, cIdx)}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    handleAutoFitCol(cIdx);
+                  }}
                   className="absolute right-0 top-0 bottom-0 w-1.5 hover:w-2 hover:bg-[#107c41] cursor-col-resize z-30"
+                  title="Double-click to Auto-Fit Width"
                 />
               </div>
             );
@@ -993,6 +1224,16 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                     }));
                   }
                 }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setContextMenu({
+                    x: Math.min(e.clientX, window.innerWidth - 220),
+                    y: Math.min(e.clientY, window.innerHeight - 300),
+                    targetType: 'row',
+                    rowIndex: origRowIndex,
+                  });
+                }}
                 className={`absolute left-0 border-b border-[#cbd5e1] flex items-center justify-center text-xs font-semibold transition-colors cursor-pointer select-none ${
                   isRowActive || isRowSelected
                     ? 'bg-[#dcfce7] text-[#107c41] font-bold border-r-2 border-[#107c41]'
@@ -1004,7 +1245,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                   height: rowHeight,
                   zIndex,
                 }}
-                title={`Row ${origRowIndex + 1}`}
+                title={`Row ${origRowIndex + 1} (Right-click for options)`}
               >
                 {origRowIndex + 1}
               </div>
@@ -1095,7 +1336,18 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                   }}
                   onMouseUp={() => setIsSelecting(false)}
                   onDoubleClick={() => startEditing()}
-                  onContextMenu={(e) => handleContextMenu(e, cellId)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    commitEdit();
+                    onActiveCellChange(cellId);
+                    setContextMenu({
+                      x: Math.min(e.clientX, window.innerWidth - 220),
+                      y: Math.min(e.clientY, window.innerHeight - 300),
+                      targetType: 'cell',
+                      cellId,
+                    });
+                  }}
                   className={`absolute border-r border-b border-[#64748b]/40 px-2 flex items-center overflow-hidden whitespace-nowrap cursor-cell font-sans select-none transition-none ${
                     isActive
                       ? 'ring-2 ring-[#107c41] z-10 shadow-xs'
@@ -1324,65 +1576,279 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       )}
 
       {/* ========================================================================= */}
-      {/* 6. RIGHT-CLICK CONTEXT MENU */}
+      {/* 6. RIGHT-CLICK CONTEXT MENU (CELL, ROW, OR COLUMN ACTIONS) */}
       {/* ========================================================================= */}
       {contextMenu && (
         <div
-          className="fixed bg-white border border-slate-300 rounded-lg shadow-xl py-1 z-50 w-48 text-xs text-slate-700 animate-fadeIn"
+          className="fixed bg-white border border-slate-300 rounded-lg shadow-2xl py-1 z-50 w-52 text-xs text-slate-700 animate-fadeIn"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}
         >
-          <button
-            type="button"
-            onClick={() => {
-              const cell = sheet.cells[contextMenu.cellId];
-              navigator.clipboard.writeText(String(cell?.f || cell?.v || ''));
-              setContextMenu(null);
-            }}
-            className="w-full text-left px-3 py-1.5 hover:bg-[#f3f4f6] flex items-center gap-2"
-          >
-            <Copy className="w-3.5 h-3.5 text-slate-500" />
-            <span>Copy</span>
-          </button>
+          {/* A. CELL CONTEXT MENU */}
+          {contextMenu.targetType === 'cell' && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  const minR = Math.min(selection.startRow, selection.endRow);
+                  const maxR = Math.max(selection.startRow, selection.endRow);
+                  const minC = Math.min(selection.startCol, selection.endCol);
+                  const maxC = Math.max(selection.startCol, selection.endCol);
+                  const rowsText: string[] = [];
+                  for (let r = minR; r <= maxR; r++) {
+                    const rowVals: string[] = [];
+                    for (let c = minC; c <= maxC; c++) {
+                      const cid = coordsToCellId(c, r);
+                      const cell = sheet.cells[cid];
+                      rowVals.push(cell?.f || (cell?.v !== undefined && cell?.v !== null ? String(cell.v) : ''));
+                    }
+                    rowsText.push(rowVals.join('\t'));
+                  }
+                  navigator.clipboard.writeText(rowsText.join('\n'));
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[#f3f4f6] flex items-center justify-between"
+              >
+                <div className="flex items-center gap-2">
+                  <Copy className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Copy</span>
+                </div>
+                <span className="text-[10px] text-slate-400">Ctrl+C</span>
+              </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              navigator.clipboard.readText().then((txt) => {
-                if (txt) onCellChange(contextMenu.cellId, { v: txt });
-              });
-              setContextMenu(null);
-            }}
-            className="w-full text-left px-3 py-1.5 hover:bg-[#f3f4f6] flex items-center gap-2"
-          >
-            <ClipboardPaste className="w-3.5 h-3.5 text-[#107c41]" />
-            <span>Paste</span>
-          </button>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.readText().then((txt) => {
+                    handlePasteData(txt);
+                  });
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[#f3f4f6] flex items-center justify-between"
+              >
+                <div className="flex items-center gap-2">
+                  <ClipboardPaste className="w-3.5 h-3.5 text-[#107c41]" />
+                  <span>Paste</span>
+                </div>
+                <span className="text-[10px] text-slate-400">Ctrl+V</span>
+              </button>
 
-          <div className="my-1 border-t border-slate-200" />
+              <div className="my-1 border-t border-slate-200" />
 
-          <button
-            type="button"
-            onClick={() => {
-              startEditing();
-              setContextMenu(null);
-            }}
-            className="w-full text-left px-3 py-1.5 hover:bg-[#f3f4f6] flex items-center gap-2"
-          >
-            <span>Edit Cell</span>
-          </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const coords = cellIdToCoords(contextMenu.cellId || activeCell);
+                  if (coords) handleInsertRow(coords.row);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[#f3f4f6] flex items-center gap-2"
+              >
+                <Plus className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Insert Row Above</span>
+              </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              onCellChange(contextMenu.cellId, { v: '', f: undefined });
-              setContextMenu(null);
-            }}
-            className="w-full text-left px-3 py-1.5 hover:bg-[#fee2e2] text-rose-600 flex items-center gap-2"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>Clear Contents</span>
-          </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const coords = cellIdToCoords(contextMenu.cellId || activeCell);
+                  if (coords) handleInsertRow(coords.row + 1);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[#f3f4f6] flex items-center gap-2"
+              >
+                <Plus className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Insert Row Below</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const coords = cellIdToCoords(contextMenu.cellId || activeCell);
+                  if (coords) handleDeleteRow(coords.row);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[#fee2e2] text-rose-600 flex items-center gap-2"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Row</span>
+              </button>
+
+              <div className="my-1 border-t border-slate-200" />
+
+              <button
+                type="button"
+                onClick={() => {
+                  startEditing();
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[#f3f4f6] flex items-center gap-2"
+              >
+                <Edit2 className="w-3.5 h-3.5 text-slate-500" />
+                <span>Edit Cell (F2)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const minR = Math.min(selection.startRow, selection.endRow);
+                  const maxR = Math.max(selection.startRow, selection.endRow);
+                  const minC = Math.min(selection.startCol, selection.endCol);
+                  const maxC = Math.max(selection.startCol, selection.endCol);
+                  const updates: Record<string, Partial<SheetCell>> = {};
+                  for (let r = minR; r <= maxR; r++) {
+                    for (let c = minC; c <= maxC; c++) {
+                      updates[coordsToCellId(c, r)] = { v: '', f: undefined };
+                    }
+                  }
+                  onBatchCellsChange(updates);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[#fee2e2] text-rose-600 flex items-center gap-2"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Clear Selection</span>
+              </button>
+            </>
+          )}
+
+          {/* B. ROW CONTEXT MENU */}
+          {contextMenu.targetType === 'row' && contextMenu.rowIndex !== undefined && (
+            <>
+              <div className="px-3 py-1 font-bold text-[11px] text-slate-400 uppercase tracking-wider">
+                Row {contextMenu.rowIndex + 1} Actions
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  handleInsertRow(contextMenu.rowIndex!);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[#f3f4f6] flex items-center gap-2"
+              >
+                <ArrowUp className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Insert 1 Row Above</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  handleInsertRow(contextMenu.rowIndex! + 1);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[#f3f4f6] flex items-center gap-2"
+              >
+                <ArrowDown className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Insert 1 Row Below</span>
+              </button>
+
+              <div className="my-1 border-t border-slate-200" />
+
+              <button
+                type="button"
+                onClick={() => {
+                  handleDeleteRow(contextMenu.rowIndex!);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[#fee2e2] text-rose-600 flex items-center gap-2"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Row {contextMenu.rowIndex + 1}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const updates: Record<string, Partial<SheetCell>> = {};
+                  for (let c = 0; c < totalCols; c++) {
+                    updates[coordsToCellId(c, contextMenu.rowIndex!)] = { v: '', f: undefined };
+                  }
+                  onBatchCellsChange(updates);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[#fee2e2] text-rose-600 flex items-center gap-2"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Clear Row Contents</span>
+              </button>
+            </>
+          )}
+
+          {/* C. COLUMN CONTEXT MENU */}
+          {contextMenu.targetType === 'col' && contextMenu.colIndex !== undefined && (
+            <>
+              <div className="px-3 py-1 font-bold text-[11px] text-slate-400 uppercase tracking-wider">
+                Column {colIndexToName(contextMenu.colIndex)} Actions
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  handleAutoFitCol(contextMenu.colIndex!);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[#f3f4f6] flex items-center gap-2"
+              >
+                <Maximize2 className="w-3.5 h-3.5 text-blue-600" />
+                <span>Auto-Fit Column Width</span>
+              </button>
+
+              <div className="my-1 border-t border-slate-200" />
+
+              <button
+                type="button"
+                onClick={() => {
+                  handleInsertCol(contextMenu.colIndex!);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[#f3f4f6] flex items-center gap-2"
+              >
+                <ArrowLeft className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Insert Column Left</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  handleInsertCol(contextMenu.colIndex! + 1);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[#f3f4f6] flex items-center gap-2"
+              >
+                <ArrowRight className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Insert Column Right</span>
+              </button>
+
+              <div className="my-1 border-t border-slate-200" />
+
+              <button
+                type="button"
+                onClick={() => {
+                  handleDeleteCol(contextMenu.colIndex!);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[#fee2e2] text-rose-600 flex items-center gap-2"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Column</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const updates: Record<string, Partial<SheetCell>> = {};
+                  for (let r = 0; r < totalRawRows; r++) {
+                    updates[coordsToCellId(contextMenu.colIndex!, r)] = { v: '', f: undefined };
+                  }
+                  onBatchCellsChange(updates);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[#fee2e2] text-rose-600 flex items-center gap-2"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Clear Column Contents</span>
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
