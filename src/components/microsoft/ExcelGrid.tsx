@@ -253,6 +253,29 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     return Math.min(totalFilteredRows - 1, low + OVERSCAN_ROWS);
   }, [scrollTop, viewportHeight, visibleRowStart, totalFilteredRows, rowPositions]);
 
+  const isRowFrozen = sheet.frozen_rows === 1;
+
+  // Rendered Row Indices (Always keeps Row 0 mounted if frozen so headers stay locked when scrolling)
+  const renderedRowIndices = useMemo(() => {
+    const list: number[] = [];
+    const added = new Set<number>();
+
+    if (isRowFrozen && filteredRowIndices.length > 0) {
+      list.push(0);
+      added.add(0);
+    }
+
+    for (let idx = visibleRowStart; idx <= visibleRowEnd; idx++) {
+      if (idx < filteredRowIndices.length) {
+        if (!added.has(idx)) {
+          list.push(idx);
+          added.add(idx);
+        }
+      }
+    }
+    return list;
+  }, [isRowFrozen, visibleRowStart, visibleRowEnd, filteredRowIndices]);
+
   const visibleColStart = useMemo(() => {
     let low = 0;
     let high = totalCols - 1;
@@ -935,13 +958,14 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
             height: totalContentHeight,
           }}
         >
-          {Array.from({ length: visibleRowEnd - visibleRowStart + 1 }).map((_, idx) => {
-            const vRowIdx = visibleRowStart + idx;
+          {renderedRowIndices.map((vRowIdx) => {
             const origRowIndex = filteredRowIndices[vRowIdx];
-            const rowTop = rowPositions[vRowIdx];
+            const isRow1Frozen = origRowIndex === 0 && isRowFrozen;
+            const rowTop = isRow1Frozen ? (scrollTop > 0 ? scrollTop : 0) : rowPositions[vRowIdx];
             const rowHeight = getRowHeight(origRowIndex);
             const isRowActive = origRowIndex === activeCoords.row;
             const isRowSelected = origRowIndex >= minSelRow && origRowIndex <= maxSelRow;
+            const zIndex = isRow1Frozen ? 25 : 10;
 
             return (
               <div
@@ -972,11 +996,12 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                   isRowActive || isRowSelected
                     ? 'bg-[#084222] text-white ring-1 ring-white/50'
                     : 'hover:bg-[#0d6e38]'
-                }`}
+                } ${isRow1Frozen && scrollTop > 0 ? 'border-b-2 border-emerald-950 shadow-md' : ''}`}
                 style={{
                   top: rowTop,
                   width: rowHeaderWidth,
                   height: rowHeight,
+                  zIndex,
                 }}
                 title={`Row ${origRowIndex + 1}`}
               >
@@ -998,12 +1023,13 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
             height: totalContentHeight,
           }}
         >
-          {Array.from({ length: visibleRowEnd - visibleRowStart + 1 }).map((_, rOffset) => {
-            const vRowIdx = visibleRowStart + rOffset;
+          {renderedRowIndices.map((vRowIdx) => {
             const rIdx = filteredRowIndices[vRowIdx];
             const isRow1Header = rIdx === 0;
-            const rowTop = rowPositions[vRowIdx];
+            const isRow1Frozen = isRow1Header && isRowFrozen;
+            const rowTop = isRow1Frozen ? (scrollTop > 0 ? scrollTop : 0) : rowPositions[vRowIdx];
             const rowHeight = getRowHeight(rIdx);
+            const zIndex = isRow1Frozen ? (activeCoords.row === 0 ? 25 : 20) : activeCell && cellIdToCoords(activeCell)?.row === rIdx ? 10 : 1;
 
             return Array.from({ length: visibleColEnd - visibleColStart + 1 }).map((_, cOffset) => {
               const cIdx = visibleColStart + cOffset;
@@ -1077,12 +1103,15 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                       : isMatch
                       ? 'bg-amber-100 ring-1 ring-amber-400 font-bold'
                       : ''
-                  } ${isRow1Header ? 'font-bold text-slate-900 justify-between' : ''}`}
+                  } ${isRow1Header ? 'font-bold text-slate-900 justify-between' : ''} ${
+                    isRow1Frozen && scrollTop > 0 ? 'border-b-2 border-slate-400/90 shadow-sm' : ''
+                  }`}
                   style={{
                     left: cellLeft,
                     top: rowTop,
                     width: cellWidth,
                     height: rowHeight,
+                    zIndex: isRow1Frozen ? (isActive ? 25 : 20) : isActive ? 10 : 1,
                     backgroundColor: inSelection && !isActive ? undefined : defaultBg,
                     color: cell?.textColor || '#0f172a',
                     fontSize: cell?.fontSize ? `${cell.fontSize}px` : isRow1Header ? '12px' : '11.5px',
