@@ -265,8 +265,33 @@ export const MicrosoftWorkbookCenter: React.FC = () => {
   }, []);
 
   // Fullscreen keyboard shortcut (Alt+F or Escape)
+  // Global Keyboard Shortcuts: Cmd+S / Ctrl+S (Instant Save), Alt+F (Fullscreen)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // 1. Cmd+S (Mac) or Ctrl+S (Windows/Linux) — Save
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        saveWorkbooks(workbooks);
+        saveDirectories(directories);
+        broadcastUpdate();
+
+        setSaveStatus('saving');
+        setTimeout(() => setSaveStatus('saved'), 350);
+
+        if (activeWorkbook) {
+          const currentWb = workbooks.find((w) => w.id === activeWorkbook.id);
+          if (currentWb) dbUpsertWorkbook(currentWb).catch(() => {});
+        }
+
+        const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+        setDbToast({
+          message: `Saved! (${isMac ? '⌘S' : 'Ctrl+S'}) All changes safely stored.`,
+          type: 'success',
+        });
+        setTimeout(() => setDbToast(null), 3000);
+      }
+
+      // 2. Fullscreen shortcut (Alt+F)
       if (e.altKey && e.key.toLowerCase() === 'f') {
         e.preventDefault();
         setIsFullscreen((prev) => !prev);
@@ -275,9 +300,10 @@ export const MicrosoftWorkbookCenter: React.FC = () => {
         setIsFullscreen(false);
       }
     };
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isFullscreen]);
+  }, [workbooks, directories, activeWorkbook, isFullscreen, broadcastUpdate]);
 
   // Debounced save for workbooks + background DB sync
   const triggerSave = useCallback((updatedWorkbooks: Workbook[]) => {

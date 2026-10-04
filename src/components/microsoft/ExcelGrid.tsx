@@ -536,6 +536,10 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       if (!coords) return;
 
       if (isEditing) {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+          commitEdit();
+          return;
+        }
         if (e.key === 'Enter') {
           e.preventDefault();
           commitEdit();
