@@ -731,7 +731,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
           {Array.from({ length: visibleRowEnd - visibleRowStart + 1 }).map((_, idx) => {
             const vRowIdx = visibleRowStart + idx;
             const origRowIndex = filteredRowIndices[vRowIdx];
-            const rowTop = rowPositions[vRowIdx] + HEADER_ROW_HEIGHT;
+            const rowTop = rowPositions[vRowIdx];
             const rowHeight = getRowHeight(origRowIndex);
             const isRowActive = origRowIndex === activeCoords.row;
             const isRowSelected = origRowIndex >= minSelRow && origRowIndex <= maxSelRow;
