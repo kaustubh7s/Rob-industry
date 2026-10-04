@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import {
   Undo,
   Redo,
@@ -35,6 +35,10 @@ import {
   Database,
   RefreshCw,
   Link2,
+  Save,
+  Replace,
+  X,
+  Sparkles,
 } from 'lucide-react';
 import { SheetCell, CellFormat, Workbook } from '../../types/workbook';
 import { User } from '../../types/erp';
@@ -75,6 +79,8 @@ interface ExcelToolbarProps {
   onSyncDB?: () => void;
   isSyncingDB?: boolean;
   onExportToERPDB?: () => void;
+  onSave?: () => void;
+  onFindReplace?: (findText: string, replaceText: string, replaceAll: boolean, matchCase: boolean) => { count: number };
 }
 
 export const ExcelToolbar: React.FC<ExcelToolbarProps> = ({
@@ -113,12 +119,32 @@ export const ExcelToolbar: React.FC<ExcelToolbarProps> = ({
   onSyncDB,
   isSyncingDB,
   onExportToERPDB,
+  onSave,
+  onFindReplace,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeRibbonTab, setActiveRibbonTab] = useState<'Home' | 'Data' | 'Formulas' | 'Insert'>('Data');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState(workbookTitle);
-  const [showCollabTooltip, setShowCollabTooltip] = useState(false);
+
+  // Find & Replace Modal State
+  const [isFindReplaceOpen, setIsFindReplaceOpen] = useState(false);
+  const [findText, setFindText] = useState('');
+  const [replaceText, setReplaceText] = useState('');
+  const [matchCase, setMatchCase] = useState(false);
+  const [findReplaceMsg, setFindReplaceMsg] = useState<string | null>(null);
+
+  // Global Ctrl+H / Cmd+F toggle for Find & Replace
+  useEffect(() => {
+    const handleFindKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'h' || e.key === 'H')) {
+        e.preventDefault();
+        setIsFindReplaceOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleFindKey);
+    return () => window.removeEventListener('keydown', handleFindKey);
+  }, []);
 
   const handleTitleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -136,40 +162,18 @@ export const ExcelToolbar: React.FC<ExcelToolbarProps> = ({
     }
   };
 
-  const userInitials = currentUser?.name
-    ? currentUser.name.slice(0, 2).toUpperCase()
-    : 'KK';
-
-  // Active collaborators list for real-time multiplayer presence
-  const collaborators = [
-    {
-      id: 'u-rahul',
-      name: 'Rahul Sharma',
-      role: 'Production Admin',
-      initials: 'RH',
-      color: '#8b5cf6',
-      activeCell: 'C14',
-      status: 'typing',
-    },
-    {
-      id: 'u-amit',
-      name: 'Amit Patel',
-      role: 'Store Incharge',
-      initials: 'AM',
-      color: '#0284c7',
-      activeCell: 'E20',
-      status: 'viewing',
-    },
-    {
-      id: currentUser?.id || 'u-kaustubh',
-      name: currentUser?.name || 'Kaustubh',
-      role: currentUser?.role || 'Admin',
-      initials: userInitials,
-      color: '#107c41',
-      activeCell: activeCell,
-      status: 'you',
-    },
-  ];
+  const handleExecuteReplace = (replaceAll: boolean) => {
+    if (!findText.trim()) return;
+    if (onFindReplace) {
+      const res = onFindReplace(findText, replaceText, replaceAll, matchCase);
+      if (res.count > 0) {
+        setFindReplaceMsg(`Replaced ${res.count} occurrence${res.count > 1 ? 's' : ''}!`);
+      } else {
+        setFindReplaceMsg('No matching text found.');
+      }
+      setTimeout(() => setFindReplaceMsg(null), 3000);
+    }
+  };
 
   return (
     <div className="sticky top-0 z-30 bg-[#f9fafb] text-slate-800 border-b border-[#cbd5e1] shadow-2xs select-none font-sans">
@@ -185,14 +189,14 @@ export const ExcelToolbar: React.FC<ExcelToolbarProps> = ({
       {/* 1. TOP MICROSOFT 365 APP BAR */}
       {/* ========================================================================= */}
       <div className="h-10 px-3 bg-[#f3f4f6] border-b border-[#e5e7eb] flex items-center justify-between gap-2 text-xs">
-        {/* Left: Folders Toggle / Workspace Hub + App Icon + Title + Cloud Sync */}
+        {/* Left: Folders Toggle / Workspace Hub + App Icon + Title + Quick Save */}
         <div className="flex items-center gap-2 min-w-0">
           {onCloseWorkbook && (
             <button
               type="button"
               onClick={onCloseWorkbook}
               className="px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer bg-white text-slate-800 hover:bg-emerald-50 hover:text-[#107c41] border border-slate-300 hover:border-[#107c41] shadow-2xs shrink-0"
-              title="Full-Screen Workspace Hub (Card & Table View)"
+              title="Full-Screen Workspace Hub"
             >
               <FolderOpen className="w-3.5 h-3.5 text-[#107c41]" />
               <span className="font-bold hidden sm:inline">Workspace Hub</span>
@@ -231,6 +235,20 @@ export const ExcelToolbar: React.FC<ExcelToolbarProps> = ({
               </button>
             )}
 
+            {/* DEDICATED QUICK SAVE BUTTON (Cmd+S / Ctrl+S) */}
+            {onSave && (
+              <button
+                type="button"
+                onClick={onSave}
+                className="px-2.5 py-1 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer bg-[#107c41] hover:bg-[#0b5a2f] text-white shadow-xs shrink-0"
+                title="Save Workbook (Cmd+S / Ctrl+S)"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>{saveStatus === 'saving' ? 'Saving...' : 'Save'}</span>
+                <span className="text-[10px] opacity-75 font-normal ml-0.5 hidden sm:inline">⌘S</span>
+              </button>
+            )}
+
             {/* Live Database Sync Status Badge & Manual Trigger */}
             <button
               type="button"
@@ -244,7 +262,7 @@ export const ExcelToolbar: React.FC<ExcelToolbarProps> = ({
               title="Click to sync live with enterprise Supabase Database across all ERP modules"
             >
               <Database className={`w-3 h-3 ${isSyncingDB ? 'animate-spin text-amber-600' : 'text-[#107c41]'}`} />
-              <span>{isSyncingDB ? 'Syncing DB...' : 'Live DB Synced'}</span>
+              <span className="hidden sm:inline">{isSyncingDB ? 'Syncing...' : 'Live DB'}</span>
             </button>
           </div>
         </div>
@@ -257,79 +275,21 @@ export const ExcelToolbar: React.FC<ExcelToolbarProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Search in sheet, values, POs... (Option + Q)"
+              placeholder="Search sheet, values, POs... (Ctrl+F)"
               className="w-full bg-white border border-[#d1d5db] focus:border-[#107c41] rounded-md pl-8 pr-3 py-1 text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden shadow-2xs"
             />
           </div>
         </div>
 
-        {/* Right: Live Collaborators with Initials + Fullscreen + Export */}
+        {/* Right: Simple User Online Status + Fullscreen + Export */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* Active Collaborators Distinct Avatars */}
+          {/* Simple Clean User Online Status Indicator */}
           <div
-            className="relative flex items-center gap-1.5 px-2 py-0.5 bg-white border border-slate-300 rounded-lg shadow-2xs cursor-pointer hover:border-emerald-500 transition-colors"
-            onMouseEnter={() => setShowCollabTooltip(true)}
-            onMouseLeave={() => setShowCollabTooltip(false)}
-            onClick={() => setShowCollabTooltip((prev) => !prev)}
+            className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200/80 rounded-md text-[11px] font-semibold text-emerald-800 shadow-2xs"
+            title="3 users currently collaborating in real-time"
           >
-            {/* Distinct Individual Avatars with Initials & Online Dot */}
-            <div className="flex items-center gap-1">
-              {collaborators.map((c) => (
-                <div
-                  key={c.id}
-                  className="relative w-6 h-6 rounded-full text-white flex items-center justify-center text-[10px] font-black border-2 border-white shadow-xs transition-transform hover:scale-110"
-                  style={{ backgroundColor: c.color }}
-                  title={`${c.name} (${c.role}) - ${c.status === 'typing' ? '✍️ Typing in ' + c.activeCell : c.status === 'you' ? '👤 You' : '👁️ Viewing ' + c.activeCell}`}
-                >
-                  <span>{c.initials}</span>
-                  {/* Status Indicator Dot */}
-                  <span
-                    className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-white ${
-                      c.status === 'typing'
-                        ? 'bg-amber-400 animate-ping'
-                        : 'bg-emerald-500'
-                    }`}
-                  />
-                </div>
-              ))}
-            </div>
-
-            {/* Distinct Live Typing Status Banner */}
-            <div className="hidden lg:flex items-center gap-1 text-[11px] text-purple-900 bg-purple-50 px-2 py-0.5 rounded-md border border-purple-200 font-semibold">
-              <span className="w-1.5 h-1.5 rounded-full bg-purple-600 animate-pulse" />
-              <span>Rahul is typing in C14</span>
-            </div>
-
-            {/* Dropdown details on hover/click */}
-            {showCollabTooltip && (
-              <div className="absolute right-0 top-full mt-1.5 w-64 bg-white border border-slate-200 rounded-lg shadow-xl p-2 z-50 text-xs">
-                <div className="font-bold text-slate-900 border-b border-slate-100 pb-1.5 mb-1.5 flex items-center justify-between">
-                  <span>Active Collaborators (3)</span>
-                  <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded font-semibold">Live Sync</span>
-                </div>
-                <div className="space-y-1.5">
-                  {collaborators.map((c) => (
-                    <div key={c.id} className="flex items-center justify-between p-1 rounded hover:bg-slate-50">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="w-5 h-5 rounded-full text-white flex items-center justify-center text-[9px] font-bold"
-                          style={{ backgroundColor: c.color }}
-                        >
-                          {c.initials}
-                        </div>
-                        <div>
-                          <p className="font-semibold text-slate-800 text-[11px] leading-tight">{c.name}</p>
-                          <p className="text-[10px] text-slate-500 leading-tight">{c.role}</p>
-                        </div>
-                      </div>
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
-                        {c.status === 'typing' ? `✍️ ${c.activeCell}` : c.status === 'you' ? '👤 You' : `👁️ ${c.activeCell}`}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>3 Online</span>
           </div>
 
           {/* Full Screen Toggle Button */}
@@ -349,25 +309,98 @@ export const ExcelToolbar: React.FC<ExcelToolbarProps> = ({
             </button>
           )}
 
-          {/* Export .XLSX Button */}
+          {/* Export to Excel (.xlsx) Button */}
           <button
             type="button"
             onClick={onExportXLSX}
             className="px-3 py-1 bg-[#107c41] hover:bg-[#0b5a2f] text-white rounded text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-            title="Download Excel File (.xlsx)"
+            title="Export full workbook to Microsoft Excel (.xlsx)"
           >
-            <Share2 className="w-3.5 h-3.5" />
+            <FileSpreadsheet className="w-3.5 h-3.5" />
             <span>Export .XLSX</span>
           </button>
         </div>
       </div>
 
       {/* ========================================================================= */}
+      {/* 1.5 INLINE FIND & REPLACE FLOATING BAR */}
+      {/* ========================================================================= */}
+      {isFindReplaceOpen && (
+        <div className="bg-[#fffbeb] border-b border-amber-300 px-3 py-2 flex flex-wrap items-center gap-2 text-xs shadow-xs animate-in slide-in-from-top-1 duration-150">
+          <div className="flex items-center gap-1 font-bold text-amber-900 shrink-0">
+            <Replace className="w-3.5 h-3.5 text-amber-700" />
+            <span>Find & Replace:</span>
+          </div>
+
+          <div className="flex items-center gap-1.5 flex-1 min-w-[280px]">
+            <input
+              type="text"
+              value={findText}
+              onChange={(e) => setFindText(e.target.value)}
+              placeholder="Find text..."
+              className="px-2 py-1 bg-white border border-amber-300 rounded text-xs text-slate-900 focus:outline-hidden focus:border-[#107c41] flex-1"
+              autoFocus
+            />
+            <input
+              type="text"
+              value={replaceText}
+              onChange={(e) => setReplaceText(e.target.value)}
+              placeholder="Replace with..."
+              className="px-2 py-1 bg-white border border-amber-300 rounded text-xs text-slate-900 focus:outline-hidden focus:border-[#107c41] flex-1"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <label className="flex items-center gap-1 text-[11px] text-amber-900 font-medium cursor-pointer">
+              <input
+                type="checkbox"
+                checked={matchCase}
+                onChange={(e) => setMatchCase(e.target.checked)}
+                className="rounded text-[#107c41]"
+              />
+              <span>Match Case</span>
+            </label>
+
+            <button
+              type="button"
+              onClick={() => handleExecuteReplace(false)}
+              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold text-xs cursor-pointer shadow-2xs"
+            >
+              Replace Next
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleExecuteReplace(true)}
+              className="px-2.5 py-1 bg-[#107c41] hover:bg-[#0b5a2f] text-white rounded font-bold text-xs cursor-pointer shadow-2xs"
+            >
+              Replace All
+            </button>
+
+            {findReplaceMsg && (
+              <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded">
+                {findReplaceMsg}
+              </span>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setIsFindReplaceOpen(false)}
+              className="p-1 text-slate-500 hover:text-slate-800 hover:bg-amber-200/60 rounded cursor-pointer"
+              title="Close (Esc)"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
       {/* 2. EXCEL MENU TABS (Data, Home, Formulas, Insert) */}
       {/* ========================================================================= */}
       <div className="flex items-center px-3 pt-1 border-b border-[#e5e7eb] bg-white text-xs">
         {(['Data', 'Home', 'Formulas', 'Insert'] as const).map((tab) => {
-          const isActive = activeRibbonTab === tab;
+          const isActive = activeRibbonTab === tab;activeRibbonTab === tab;
           return (
             <button
               key={tab}
@@ -478,6 +511,21 @@ export const ExcelToolbar: React.FC<ExcelToolbarProps> = ({
                 <span>Link to ERP DB</span>
               </button>
             )}
+
+            {/* Find & Replace Trigger Button */}
+            <button
+              type="button"
+              onClick={() => setIsFindReplaceOpen((prev) => !prev)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer border ${
+                isFindReplaceOpen
+                  ? 'bg-amber-100 text-amber-900 border-amber-300'
+                  : 'bg-[#f3f4f6] hover:bg-[#e5e7eb] text-slate-700 border-slate-300 shadow-2xs'
+              }`}
+              title="Find & Replace across sheet (Ctrl+H)"
+            >
+              <Replace className="w-3.5 h-3.5 text-amber-700" />
+              <span>Find & Replace</span>
+            </button>
 
             {/* Import Button */}
             <button

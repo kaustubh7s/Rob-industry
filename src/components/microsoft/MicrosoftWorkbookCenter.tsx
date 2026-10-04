@@ -305,6 +305,28 @@ export const MicrosoftWorkbookCenter: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [workbooks, directories, activeWorkbook, isFullscreen, broadcastUpdate]);
 
+  // Direct manual save triggered by Quick Save button or Cmd+S / Ctrl+S
+  const handleDirectSave = useCallback(() => {
+    saveWorkbooks(workbooks);
+    saveDirectories(directories);
+    broadcastUpdate();
+
+    setSaveStatus('saving');
+    setTimeout(() => setSaveStatus('saved'), 350);
+
+    if (activeWorkbook) {
+      const currentWb = workbooks.find((w) => w.id === activeWorkbook.id);
+      if (currentWb) dbUpsertWorkbook(currentWb).catch(() => {});
+    }
+
+    const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    setDbToast({
+      message: `Saved! (${isMac ? '⌘S' : 'Ctrl+S'}) All changes safely stored.`,
+      type: 'success',
+    });
+    setTimeout(() => setDbToast(null), 3000);
+  }, [workbooks, directories, activeWorkbook, broadcastUpdate]);
+
   // Debounced save for workbooks + background DB sync
   const triggerSave = useCallback((updatedWorkbooks: Workbook[]) => {
     setSaveStatus('saving');
@@ -683,6 +705,43 @@ export const MicrosoftWorkbookCenter: React.FC = () => {
       return { ...sheet, cells: nextCells };
     });
   };
+
+  // Find & Replace Handler
+  const handleFindReplace = useCallback(
+    (findText: string, replaceText: string, replaceAll: boolean, matchCase: boolean) => {
+      if (!activeWorkbook || !activeSheet || !findText) return { count: 0 };
+      let matchCount = 0;
+      const batchUpdates: Record<string, Partial<SheetCell>> = {};
+      const cells = activeSheet.cells || {};
+
+      const findEscaped = findText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(findEscaped, matchCase ? (replaceAll ? 'g' : '') : replaceAll ? 'gi' : 'i');
+
+      for (const coord in cells) {
+        const cell = cells[coord];
+        const val = cell?.v;
+        if (val === undefined || val === null) continue;
+        const strVal = String(val);
+
+        if (regex.test(strVal)) {
+          matchCount++;
+          const replaced = strVal.replace(regex, replaceText);
+          const isNum = !isNaN(Number(replaced)) && replaced.trim() !== '';
+          batchUpdates[coord] = {
+            ...cell,
+            v: isNum ? Number(replaced) : replaced,
+          };
+          if (!replaceAll) break;
+        }
+      }
+
+      if (Object.keys(batchUpdates).length > 0) {
+        handleBatchCellsChange(batchUpdates);
+      }
+      return { count: matchCount };
+    },
+    [activeWorkbook, activeSheet]
+  );
 
   const handleFormatChange = (updates: Partial<SheetCell>) => {
     if (
@@ -1138,6 +1197,8 @@ export const MicrosoftWorkbookCenter: React.FC = () => {
                 onSyncDB={handleSyncWithDB}
                 isSyncingDB={isSyncingDB}
                 onExportToERPDB={handleExportToERPDB}
+                onSave={handleDirectSave}
+                onFindReplace={handleFindReplace}
               />
 
               {/* ========================================================================= */}

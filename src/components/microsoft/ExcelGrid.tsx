@@ -1128,9 +1128,50 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                       className="w-full h-full bg-white text-slate-900 border-0 focus:outline-hidden font-bold text-xs px-0"
                     />
                   ) : (
-                    <span className={`truncate flex-1 ${isRow1Header ? 'font-bold text-slate-900 tracking-tight' : ''}`}>
-                      {formattedVal}
-                    </span>
+                    (() => {
+                      const valStr = String(formattedVal).trim();
+                      const valLower = valStr.toLowerCase();
+                      const isStatus =
+                        !isRow1Header &&
+                        (valLower === 'received' ||
+                          valLower === 'pending' ||
+                          valLower === 'po sent' ||
+                          valLower === 'complete' ||
+                          valLower === 'completed' ||
+                          valLower === 'shortage' ||
+                          valLower === 'delivered' ||
+                          valLower === 'approved');
+
+                      if (isStatus) {
+                        const isGood =
+                          valLower === 'received' ||
+                          valLower === 'complete' ||
+                          valLower === 'completed' ||
+                          valLower === 'delivered' ||
+                          valLower === 'approved';
+                        const isWarn = valLower === 'pending' || valLower === 'shortage';
+
+                        const badgeCls = isGood
+                          ? 'bg-emerald-100 text-emerald-900 border-emerald-300 font-semibold'
+                          : isWarn
+                          ? 'bg-amber-100 text-amber-900 border-amber-300 font-semibold'
+                          : 'bg-sky-100 text-sky-900 border-sky-300 font-semibold';
+
+                        return (
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] border leading-none shadow-2xs ${badgeCls}`}
+                          >
+                            {valStr}
+                          </span>
+                        );
+                      }
+
+                      return (
+                        <span className={`truncate flex-1 ${isRow1Header ? 'font-bold text-slate-900 tracking-tight' : ''}`}>
+                          {formattedVal}
+                        </span>
+                      );
+                    })()
                   )}
 
                   {/* Excel Filter Dropdown Button on Row 1 Headers (as in user screenshot) */}
