@@ -1289,6 +1289,7 @@ export const MicrosoftWorkbookCenter: React.FC = () => {
                 onUpdateSheetMeta={handleUpdateSheetMeta}
                 onSelectionChange={setCurrentSelection}
                 searchQuery={gridSearchQuery}
+                onSearchChange={setGridSearchQuery}
               />
             </div>
 

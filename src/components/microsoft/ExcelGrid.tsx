@@ -20,6 +20,9 @@ import {
   Sigma,
   Filter,
   ChevronDown,
+  ChevronUp,
+  Search,
+  X,
   Edit2,
   Maximize2,
   ArrowDown,
@@ -42,6 +45,7 @@ interface ExcelGridProps {
   onUpdateSheetMeta?: (updates: Partial<WorkbookSheet>) => void;
   onSelectionChange?: (selection: CellSelection) => void;
   searchQuery: string;
+  onSearchChange?: (query: string) => void;
 }
 
 const DEFAULT_COL_WIDTH = 135;
@@ -60,6 +64,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
   onUpdateSheetMeta,
   onSelectionChange,
   searchQuery,
+  onSearchChange,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -182,16 +187,58 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
     return result;
   }, [sheet.cells]);
 
-  // Dynamic Row Filtering Engine (Zero-latency fast scan)
+  // Full Search & Highlight Matching Engine (Cross-sheet fast scan)
+  const matchingCells = useMemo(() => {
+    const q = (searchQuery || '').trim().toLowerCase();
+    if (!q) return [];
+    const list: { cellId: string; col: number; row: number; val: string }[] = [];
+    for (let r = 0; r < totalRawRows; r++) {
+      for (let c = 0; c < totalCols; c++) {
+        const cid = coordsToCellId(c, r);
+        const cell = evaluatedCells[cid];
+        if (!cell) continue;
+        const raw =
+          cell.calced !== undefined
+            ? cell.calced
+            : cell.v !== undefined && cell.v !== null
+            ? cell.v
+            : '';
+        const str = String(raw).trim();
+        if (str && str.toLowerCase().includes(q)) {
+          list.push({ cellId: cid, col: c, row: r, val: str });
+        }
+      }
+    }
+    return list;
+  }, [searchQuery, totalRawRows, totalCols, evaluatedCells]);
+
+  const [currentMatchIdx, setCurrentMatchIdx] = useState<number>(0);
+  const [filterToMatchesOnly, setFilterToMatchesOnly] = useState<boolean>(false);
+
+  // Set of matching row numbers for instant filtering
+  const matchingRowSet = useMemo(() => {
+    return new Set(matchingCells.map((m) => m.row));
+  }, [matchingCells]);
+
+  // Dynamic Row Filtering Engine (Filters + Search match filter)
   const filteredRowIndices = useMemo(() => {
     const activeFilterEntries = Object.entries(activeFilters);
-    if (activeFilterEntries.length === 0) {
+    const hasColFilters = activeFilterEntries.length > 0;
+    const hasSearchFilter = filterToMatchesOnly && (searchQuery || '').trim().length > 0;
+
+    if (!hasColFilters && !hasSearchFilter) {
       return Array.from({ length: totalRawRows }, (_, i) => i);
     }
 
     const matchingRows: number[] = [0]; // Row 0 is header
 
     for (let r = 1; r < totalRawRows; r++) {
+      // If user toggled 'Filter table to search results'
+      if (hasSearchFilter && !matchingRowSet.has(r)) {
+        continue;
+      }
+
+      // Check column dropdown filters
       let isMatch = true;
       for (let fIdx = 0; fIdx < activeFilterEntries.length; fIdx++) {
         const [colLetter, allowedValues] = activeFilterEntries[fIdx];
@@ -215,7 +262,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       }
     }
     return matchingRows;
-  }, [totalRawRows, activeFilters, evaluatedCells]);
+  }, [totalRawRows, activeFilters, evaluatedCells, filterToMatchesOnly, searchQuery, matchingRowSet]);
 
   const totalFilteredRows = filteredRowIndices.length;
 
@@ -338,6 +385,56 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       });
     }
   }, [activeCell]);
+
+  // Scroll to specific cell and activate it
+  const scrollToCell = useCallback(
+    (colIdx: number, rowIdx: number) => {
+      if (!containerRef.current) return;
+      const targetCid = coordsToCellId(colIdx, rowIdx);
+      onActiveCellChange(targetCid);
+
+      const targetColLeft = colPositions[colIdx] || 0;
+      const filteredPosIdx = filteredRowIndices.indexOf(rowIdx);
+      const targetRowTop =
+        filteredPosIdx !== -1
+          ? rowPositions[filteredPosIdx] || 0
+          : rowIdx * DEFAULT_ROW_HEIGHT;
+
+      const el = containerRef.current;
+      const viewW = el.clientWidth || 1000;
+      const viewH = el.clientHeight || 600;
+
+      if (targetRowTop < el.scrollTop || targetRowTop > el.scrollTop + viewH - 120) {
+        el.scrollTop = Math.max(0, targetRowTop - Math.floor(viewH / 3));
+      }
+      if (targetColLeft < el.scrollLeft || targetColLeft > el.scrollLeft + viewW - 180) {
+        el.scrollLeft = Math.max(0, targetColLeft - Math.floor(viewW / 3));
+      }
+    },
+    [colPositions, rowPositions, filteredRowIndices, onActiveCellChange]
+  );
+
+  const handleNextMatch = useCallback(() => {
+    if (matchingCells.length === 0) return;
+    const next = (currentMatchIdx + 1) % matchingCells.length;
+    setCurrentMatchIdx(next);
+    scrollToCell(matchingCells[next].col, matchingCells[next].row);
+  }, [currentMatchIdx, matchingCells, scrollToCell]);
+
+  const handlePrevMatch = useCallback(() => {
+    if (matchingCells.length === 0) return;
+    const prev = (currentMatchIdx - 1 + matchingCells.length) % matchingCells.length;
+    setCurrentMatchIdx(prev);
+    scrollToCell(matchingCells[prev].col, matchingCells[prev].row);
+  }, [currentMatchIdx, matchingCells, scrollToCell]);
+
+  // Auto-jump to first match when search query is typed
+  useEffect(() => {
+    if (matchingCells.length > 0) {
+      setCurrentMatchIdx(0);
+      scrollToCell(matchingCells[0].col, matchingCells[0].row);
+    }
+  }, [searchQuery]);
 
   // Convert mouse pixel coordinates to row & column indices in virtual grid
   const getCellCoordsFromMouse = useCallback(
@@ -877,10 +974,17 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
         }
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        if (e.shiftKey) {
+        if ((searchQuery || '').trim() && matchingCells.length > 0) {
+          if (e.shiftKey) handlePrevMatch();
+          else handleNextMatch();
+        } else if (e.shiftKey) {
           if (coords.row > 0) onActiveCellChange(coordsToCellId(coords.col, coords.row - 1));
         } else {
           startEditing();
+        }
+      } else if (e.key === 'Escape') {
+        if (searchQuery) {
+          onSearchChange?.('');
         }
       } else if (e.key === 'F2') {
         e.preventDefault();
@@ -1425,12 +1529,8 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
               const inSelection =
                 rIdx >= minSelRow && rIdx <= maxSelRow && cIdx >= minSelCol && cIdx <= maxSelCol;
 
-              const isMatch =
-                searchQuery &&
-                cell &&
-                String(cell.calced !== undefined ? cell.calced : cell.v || '')
-                  .toLowerCase()
-                  .includes(searchQuery.toLowerCase());
+              const isMatch = matchingCells.some((m) => m.cellId === cellId);
+              const isCurrentMatch = matchingCells[currentMatchIdx]?.cellId === cellId;
 
               const formattedVal = formatCellValue(cell);
               const isColFiltered = !!activeFilters[colName];
@@ -1448,6 +1548,20 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                   : cIdx === 3 || cIdx === 4 // Column E, F
                   ? '#eef5f2'
                   : '#ffffff');
+
+              const cellBgColor = isCurrentMatch
+                ? '#fde047'
+                : isMatch
+                ? '#fef08a'
+                : inSelection && !isActive
+                ? undefined
+                : defaultBg;
+
+              const cellBorderOutline = isCurrentMatch
+                ? '2px solid #ca8a04'
+                : isMatch
+                ? '1.5px solid #eab308'
+                : undefined;
 
               return (
                 <div
@@ -1494,7 +1608,7 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                       : inSelection
                       ? 'bg-[#bae6fd]/40 ring-1 ring-[#0284c7]/40'
                       : isMatch
-                      ? 'bg-amber-100 ring-1 ring-amber-400 font-bold'
+                      ? 'font-bold'
                       : ''
                   } ${isRow1Header ? 'font-bold text-slate-900 justify-between' : ''} ${
                     isRow1Frozen && scrollTop > 0 ? 'border-b-2 border-slate-400/90 shadow-sm' : ''
@@ -1504,14 +1618,14 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                     top: rowTop,
                     width: cellWidth,
                     height: rowHeight,
-                    zIndex: isRow1Frozen ? (isActive ? 25 : 20) : isActive ? 10 : 1,
-                    backgroundColor: inSelection && !isActive ? undefined : defaultBg,
-                    color: cell?.textColor || '#0f172a',
+                    zIndex: isRow1Frozen ? (isActive ? 25 : 20) : isCurrentMatch ? 15 : isActive ? 10 : 1,
+                    backgroundColor: cellBgColor,
+                    color: (isMatch || isCurrentMatch) ? '#0f172a' : (cell?.textColor || '#0f172a'),
                     fontSize: cell?.fontSize ? `${cell.fontSize}px` : isRow1Header ? '12px' : '11.5px',
-                    fontWeight: isRow1Header || cell?.bold ? 'bold' : 'normal',
+                    fontWeight: isRow1Header || cell?.bold || isMatch || isCurrentMatch ? 'bold' : 'normal',
                     fontStyle: cell?.italic ? 'italic' : 'normal',
                     textDecoration: cell?.underline ? 'underline' : 'none',
-                    outline: cellCollaborator && !isActive ? `2px solid ${cellCollaborator.color}` : undefined,
+                    outline: cellBorderOutline || (cellCollaborator && !isActive ? `2px solid ${cellCollaborator.color}` : undefined),
                     outlineOffset: '-1px',
                     justifyContent: isRow1Header
                       ? 'space-between'
@@ -2243,6 +2357,70 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 9. SEARCH & FIND FLOATING NAVIGATOR HUD */}
+      {/* ========================================================================= */}
+      {(searchQuery || '').trim().length > 0 && (
+        <div className="absolute top-3 right-5 z-50 flex items-center gap-2.5 bg-slate-900/90 backdrop-blur-md text-white px-3.5 py-1.5 rounded-lg shadow-2xl border border-slate-700/80 text-xs select-none">
+          <div className="flex items-center gap-1.5 font-bold text-amber-400">
+            <Search className="w-3.5 h-3.5" />
+            <span>
+              {matchingCells.length > 0
+                ? `${currentMatchIdx + 1} of ${matchingCells.length} matches`
+                : 'No matches found'}
+            </span>
+          </div>
+
+          {matchingCells.length > 0 && (
+            <div className="flex items-center gap-1 border-l border-slate-700 pl-2">
+              <button
+                type="button"
+                onClick={handlePrevMatch}
+                className="p-1 hover:bg-slate-800 rounded text-slate-300 hover:text-white transition-colors cursor-pointer"
+                title="Previous match (Shift+Enter)"
+              >
+                <ChevronUp className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={handleNextMatch}
+                className="p-1 hover:bg-slate-800 rounded text-slate-300 hover:text-white transition-colors cursor-pointer"
+                title="Next match (Enter)"
+              >
+                <ChevronDown className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          <div className="border-l border-slate-700 pl-2 flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setFilterToMatchesOnly(!filterToMatchesOnly)}
+              className={`px-2 py-0.5 rounded text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer ${
+                filterToMatchesOnly
+                  ? 'bg-[#107c41] text-white shadow-xs'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+              }`}
+              title="Filter sheet rows to only show matching values"
+            >
+              <Filter className="w-3 h-3" />
+              <span>{filterToMatchesOnly ? 'Filtered' : 'Filter Rows'}</span>
+            </button>
+
+            {onSearchChange && (
+              <button
+                type="button"
+                onClick={() => onSearchChange('')}
+                className="p-1 hover:bg-rose-500/30 text-slate-400 hover:text-rose-300 rounded transition-colors ml-0.5 cursor-pointer"
+                title="Clear search (Esc)"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </div>
       )}

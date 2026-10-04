@@ -134,10 +134,16 @@ export const ExcelToolbar: React.FC<ExcelToolbarProps> = ({
   const [matchCase, setMatchCase] = useState(false);
   const [findReplaceMsg, setFindReplaceMsg] = useState<string | null>(null);
 
-  // Global Ctrl+H / Cmd+F toggle for Find & Replace
+  const searchBarInputRef = useRef<HTMLInputElement>(null);
+
+  // Global Ctrl+F to focus search, Ctrl+H toggle for Find & Replace
   useEffect(() => {
     const handleFindKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'h' || e.key === 'H')) {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+        e.preventDefault();
+        searchBarInputRef.current?.focus();
+        searchBarInputRef.current?.select();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'h' || e.key === 'H')) {
         e.preventDefault();
         setIsFindReplaceOpen(true);
       }
@@ -269,15 +275,29 @@ export const ExcelToolbar: React.FC<ExcelToolbarProps> = ({
 
         {/* Center: Search Box */}
         <div className="hidden md:flex items-center flex-1 max-w-sm mx-2">
-          <div className="relative w-full">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
+          <div className="relative w-full flex items-center">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2 pointer-events-none" />
             <input
+              ref={searchBarInputRef}
               type="text"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder="Search sheet, values, POs... (Ctrl+F)"
-              className="w-full bg-white border border-[#d1d5db] focus:border-[#107c41] rounded-md pl-8 pr-3 py-1 text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden shadow-2xs"
+              className="w-full bg-white border border-[#d1d5db] focus:border-[#107c41] rounded-md pl-8 pr-8 py-1 text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden shadow-2xs transition-colors"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  onSearchChange('');
+                  searchBarInputRef.current?.focus();
+                }}
+                className="absolute right-2 top-1.5 p-0.5 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100 cursor-pointer transition-colors"
+                title="Clear search"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </div>
 
