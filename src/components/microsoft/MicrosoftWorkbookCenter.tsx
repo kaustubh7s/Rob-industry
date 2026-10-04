@@ -1020,6 +1020,7 @@ export const MicrosoftWorkbookCenter: React.FC = () => {
 
   const handleDeleteSheet = (sheetId: string) => {
     if (!activeWorkbook || activeWorkbook.sheets.length <= 1) return;
+    const deletedIdx = activeWorkbook.sheets.findIndex((s) => s.id === sheetId);
     const nextSheets = activeWorkbook.sheets.filter((s) => s.id !== sheetId);
 
     const nextWorkbooks = workbooks.map((wb) => {
@@ -1028,7 +1029,14 @@ export const MicrosoftWorkbookCenter: React.FC = () => {
     });
     setWorkbooks(nextWorkbooks);
     triggerSave(nextWorkbooks);
-    setActiveSheetId(nextSheets[0].id);
+
+    // Pick adjacent sheet
+    const newIdx = Math.min(Math.max(0, deletedIdx - 1), nextSheets.length - 1);
+    const newActiveId = nextSheets[newIdx].id;
+    setActiveSheetId(newActiveId);
+    try {
+      localStorage.setItem('rsb_active_sheet_id', newActiveId);
+    } catch (_) {}
   };
 
   const handleChangeTabColor = (sheetId: string, color: string) => {
