@@ -42,32 +42,99 @@ export function saveDirectories(dirs: WorkbookDirectory[]): void {
   }
 }
 
-// In-memory robust workbook store to support massive 5,000+ row datasets without 5MB localStorage QuotaExceededError
-let inMemoryWorkbooks: Workbook[] = INITIAL_WORKBOOKS;
+const BASE_WORKBOOK_IDS = new Set(['wb-rsb1-daily-po', 'wb-rsb2-dc-book', 'wb-rsb3-spare-parts']);
+const CUSTOM_WORKBOOKS_KEY = 'rsb_custom_workbooks_v3';
+const BASE_WORKBOOK_EDITS_KEY = 'rsb_base_workbooks_edits_v3';
+
+// In-memory cache
+let inMemoryWorkbooks: Workbook[] | null = null;
 
 // 2. WORKBOOKS STORAGE
 export function loadWorkbooks(): Workbook[] {
-  // Always return the rich real dataset from memory
-  if (!inMemoryWorkbooks || inMemoryWorkbooks.length === 0 || inMemoryWorkbooks[0]?.sheets[0]?.cells['B1']?.v !== 'Date') {
-    inMemoryWorkbooks = INITIAL_WORKBOOKS;
+  if (inMemoryWorkbooks && inMemoryWorkbooks.length > 0) {
+    return inMemoryWorkbooks;
   }
-  return inMemoryWorkbooks;
+
+  // 1. Start with base RSB workbooks
+  const baseMap = new Map<string, Workbook>();
+  INITIAL_WORKBOOKS.forEach((wb) => {
+    baseMap.set(wb.id, JSON.parse(JSON.stringify(wb)));
+  });
+
+  // 2. Apply any saved edits to base workbooks (titles, modified sheets, pins)
+  try {
+    const savedBaseEdits = localStorage.getItem(BASE_WORKBOOK_EDITS_KEY);
+    if (savedBaseEdits) {
+      const parsedEdits: Record<string, Partial<Workbook>> = JSON.parse(savedBaseEdits);
+      Object.entries(parsedEdits).forEach(([id, edits]) => {
+        const existing = baseMap.get(id);
+        if (existing) {
+          baseMap.set(id, { ...existing, ...edits });
+        }
+      });
+    }
+  } catch (err) {
+    console.warn('Error applying base workbook edits:', err);
+  }
+
+  // 3. Load user-created custom workbooks (like "new", custom sheets, etc.)
+  const customWbs: Workbook[] = [];
+  try {
+    const savedCustom = localStorage.getItem(CUSTOM_WORKBOOKS_KEY);
+    if (savedCustom) {
+      const parsedCustom: Workbook[] = JSON.parse(savedCustom);
+      if (Array.isArray(parsedCustom)) {
+        customWbs.push(...parsedCustom);
+      }
+    }
+  } catch (err) {
+    console.warn('Error loading custom workbooks:', err);
+  }
+
+  // 4. Combine base + custom workbooks
+  const result = [...Array.from(baseMap.values()), ...customWbs];
+  inMemoryWorkbooks = result;
+  return result;
 }
 
 export function saveWorkbooks(wbs: Workbook[]): void {
   inMemoryWorkbooks = wbs;
+
+  // Separate custom vs base workbooks
+  const customWbs: Workbook[] = [];
+  const baseEdits: Record<string, Partial<Workbook>> = {};
+
+  wbs.forEach((wb) => {
+    if (!BASE_WORKBOOK_IDS.has(wb.id)) {
+      customWbs.push(wb);
+    } else {
+      baseEdits[wb.id] = {
+        title: wb.title,
+        description: wb.description,
+        is_pinned: wb.is_pinned,
+        is_favorite: wb.is_favorite,
+        directory_id: wb.directory_id,
+        tags: wb.tags,
+        sheets: wb.sheets,
+        last_edited_at: wb.last_edited_at,
+        last_edited_by: wb.last_edited_by,
+        last_edited_by_name: wb.last_edited_by_name,
+      };
+    }
+  });
+
+  // Save custom workbooks permanently to localStorage
   try {
-    // Save lightweight session state
-    const metaOnly = wbs.map((w) => ({
-      id: w.id,
-      title: w.title,
-      directory_id: w.directory_id,
-      is_pinned: w.is_pinned,
-      last_edited_at: w.last_edited_at,
-    }));
-    sessionStorage.setItem('rsb_wb_meta_v1', JSON.stringify(metaOnly));
+    localStorage.setItem(CUSTOM_WORKBOOKS_KEY, JSON.stringify(customWbs));
   } catch (err) {
-    // Ignore quota errors in memory mode
+    console.warn('LocalStorage save custom workbooks warning:', err);
+  }
+
+  // Save base workbooks edits permanently to localStorage
+  try {
+    localStorage.setItem(BASE_WORKBOOK_EDITS_KEY, JSON.stringify(baseEdits));
+  } catch (err) {
+    console.warn('LocalStorage save base workbook edits warning:', err);
   }
 }
 

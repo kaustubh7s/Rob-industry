@@ -73,11 +73,32 @@ export const MicrosoftWorkbookCenter: React.FC = () => {
   const [dbToast, setDbToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // Navigation State
-  const [selectedDirectoryId, setSelectedDirectoryId] = useState<string | null>(null);
-  const [activeWorkbookId, setActiveWorkbookId] = useState<string | null>(() => {
-    return workbooks[0]?.id || 'wb-rsb1-daily-po';
+  const [selectedDirectoryId, setSelectedDirectoryId] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('rsb_selected_dir_id') || null;
+    } catch {
+      return null;
+    }
   });
-  const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
+
+  const [activeWorkbookId, setActiveWorkbookId] = useState<string | null>(() => {
+    try {
+      const stored = localStorage.getItem('rsb_active_wb_id');
+      const loaded = loadWorkbooks();
+      if (stored && loaded.some((w) => w.id === stored)) return stored;
+    } catch {}
+    const initial = loadWorkbooks();
+    return initial[0]?.id || 'wb-rsb1-daily-po';
+  });
+
+  const [activeSheetId, setActiveSheetId] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('rsb_active_sheet_id') || null;
+    } catch {
+      return null;
+    }
+  });
+
   const [activeCell, setActiveCell] = useState<string>('B2');
   const [currentSelection, setCurrentSelection] = useState<CellSelection | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(true);
@@ -114,26 +135,46 @@ export const MicrosoftWorkbookCenter: React.FC = () => {
     activeWorkbook?.sheets[0] ||
     null;
 
+  // Track active workbook & sheet in localStorage
+  useEffect(() => {
+    try {
+      if (activeWorkbookId) {
+        localStorage.setItem('rsb_active_wb_id', activeWorkbookId);
+      } else {
+        localStorage.removeItem('rsb_active_wb_id');
+      }
+    } catch (_) {}
+  }, [activeWorkbookId]);
+
+  useEffect(() => {
+    try {
+      if (activeSheetId) {
+        localStorage.setItem('rsb_active_sheet_id', activeSheetId);
+      } else {
+        localStorage.removeItem('rsb_active_sheet_id');
+      }
+    } catch (_) {}
+  }, [activeSheetId]);
+
+  useEffect(() => {
+    try {
+      if (selectedDirectoryId) {
+        localStorage.setItem('rsb_selected_dir_id', selectedDirectoryId);
+      } else {
+        localStorage.removeItem('rsb_selected_dir_id');
+      }
+    } catch (_) {}
+  }, [selectedDirectoryId]);
+
   // Auto-select initial sheet when workbook is opened
   useEffect(() => {
-    if (activeWorkbook && (!activeSheetId || !activeWorkbook.sheets.some((s) => s.id === activeSheetId))) {
-      setActiveSheetId(activeWorkbook.sheets[0]?.id || null);
-      setActiveCell('B2');
+    if (activeWorkbook) {
+      if (!activeSheetId || !activeWorkbook.sheets.some((s) => s.id === activeSheetId)) {
+        setActiveSheetId(activeWorkbook.sheets[0]?.id || null);
+      }
       setTitleValue(activeWorkbook.title);
     }
   }, [activeWorkbook, activeSheetId]);
-
-  // Auto-heal legacy cached workbooks to ensure clean names and Date headers are loaded
-  useEffect(() => {
-    const rsb1 = workbooks.find((w) => w.id === 'wb-rsb1-daily-po');
-    if (!rsb1 || rsb1.title.includes('DAILY PO') || rsb1.sheets[0]?.cells['B1']?.v !== 'Date') {
-      console.log('Syncing clean workbooks with RSB master data...');
-      setWorkbooks(INITIAL_WORKBOOKS);
-      saveWorkbooks(INITIAL_WORKBOOKS);
-      setActiveWorkbookId('wb-rsb1-daily-po');
-      setActiveSheetId('sheet-wb-rsb1-daily-po-0');
-    }
-  }, [workbooks]);
 
   // Fullscreen keyboard shortcut (Alt+F or Escape)
   useEffect(() => {
@@ -153,16 +194,18 @@ export const MicrosoftWorkbookCenter: React.FC = () => {
   // Debounced save for workbooks + background DB sync
   const triggerSave = useCallback((updatedWorkbooks: Workbook[]) => {
     setSaveStatus('saving');
+    // Save to localStorage immediately so no data is lost on sudden refresh
+    saveWorkbooks(updatedWorkbooks);
+    setSaveStatus('saved');
+
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(() => {
-      saveWorkbooks(updatedWorkbooks);
-      setSaveStatus('saved');
       // Background mirror to Supabase DB
       if (activeWorkbook) {
         const currentWb = updatedWorkbooks.find((w) => w.id === activeWorkbook.id);
         if (currentWb) dbUpsertWorkbook(currentWb).catch(() => {});
       }
-    }, 500);
+    }, 1000);
   }, [activeWorkbook]);
 
   // Full System Enterprise Database Sync
