@@ -517,20 +517,7 @@ export const ExcelToolbar: React.FC<ExcelToolbarProps> = ({
               <span>{isRowFrozen ? 'Top Row Frozen' : 'Freeze Top Row'}</span>
             </button>
 
-            <div className="h-5 w-px bg-slate-200 mx-1" />
 
-            {/* Cross-Systems ERP DB Linking Button */}
-            {onExportToERPDB && (
-              <button
-                type="button"
-                onClick={onExportToERPDB}
-                className="px-2.5 py-1 rounded bg-[#0284c7] hover:bg-[#0369a1] text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-                title="Link and push sheet rows directly to central ERP Database (project_material_requirements)"
-              >
-                <Link2 className="w-3.5 h-3.5 text-white" />
-                <span>Link to ERP DB</span>
-              </button>
-            )}
 
             {/* Find & Replace Trigger Button */}
             <button
