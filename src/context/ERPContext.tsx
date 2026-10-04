@@ -375,7 +375,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const saved = localStorage.getItem('RSB_ACTIVE_TAB');
       if (saved) return saved;
     } catch (e) {}
-    return 'requirements';
+    return 'microsoft';
   });
 
   const setActiveTab = (tab: string) => {
@@ -687,84 +687,101 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return [];
   });
 
-  // Sync to localStorage
+  // Safe sync to localStorage preventing QuotaExceededError crashes
+  const safeLocalStorageSet = (key: string, data: any) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(data));
+    } catch (err: any) {
+      console.warn(`[ERPContext] LocalStorage quota handled safely for ${key}:`, err);
+      try {
+        localStorage.removeItem('rsb_wb_workbooks_v5');
+        localStorage.removeItem('rsb_wb_workbooks_v6');
+        localStorage.removeItem('rsb_wb_workbooks_v7');
+        localStorage.removeItem('rsb_wb_directories_v5');
+        localStorage.setItem(key, JSON.stringify(data));
+      } catch {
+        // Fallback: in-memory state remains fully functional without crashing
+      }
+    }
+  };
+
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_trash', JSON.stringify(trashItems));
+    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_trash', trashItems);
   }, [trashItems]);
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_materials', JSON.stringify(materials));
+    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_materials', materials);
   }, [materials]);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(projectRequirements));
+    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_requirements', projectRequirements);
   }, [projectRequirements]);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(vendors));
+    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_vendors', vendors);
   }, [vendors]);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_customers', JSON.stringify(customers));
+    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_customers', customers);
   }, [customers]);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_machines', JSON.stringify(machines));
+    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_machines', machines);
   }, [machines]);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(projects));
+    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_projects', projects);
   }, [projects]);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_orders', JSON.stringify(orders));
+    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_orders', orders);
   }, [orders]);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_inward', JSON.stringify(inwardEntries));
+    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_inward', inwardEntries);
   }, [inwardEntries]);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_outward', JSON.stringify(outwardEntries));
+    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_outward', outwardEntries);
   }, [outwardEntries]);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_jobCards', JSON.stringify(jobCards));
+    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_jobCards', jobCards);
   }, [jobCards]);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_qc', JSON.stringify(qcInspections));
+    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_qc', qcInspections);
   }, [qcInspections]);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_po', JSON.stringify(purchaseOrders));
+    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_po', purchaseOrders);
   }, [purchaseOrders]);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_so', JSON.stringify(salesOrders));
+    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_so', salesOrders);
   }, [salesOrders]);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_costing', JSON.stringify(costingRecords));
+    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_costing', costingRecords);
   }, [costingRecords]);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_audit', JSON.stringify(auditLogs));
+    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_audit', auditLogs);
   }, [auditLogs]);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_notif', JSON.stringify(notifications));
+    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_notif', notifications);
   }, [notifications]);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_boms', JSON.stringify(boms));
+    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_boms', boms);
   }, [boms]);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_rfqs', JSON.stringify(rfqs));
+    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_rfqs', rfqs);
   }, [rfqs]);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY + '_vdocs', JSON.stringify(vendorDocuments));
+    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_vdocs', vendorDocuments);
   }, [vendorDocuments]);
 
   // Initial Background Sync & Real-time Live Subscription with Supabase Cloud
@@ -861,8 +878,9 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // 2. Realtime listener: Listen for any new orders/requirements saved on other devices/phones
       try {
+        if (!isMounted) return;
         const channel = client
-          .channel('rsb-live-sync')
+          .channel(`rsb-live-sync-${Date.now()}`)
           .on(
             'postgres_changes',
             { event: '*', schema: 'public', table: 'project_material_requirements' },
@@ -979,15 +997,14 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           )
           .subscribe();
 
-        return () => {
-          client.removeChannel(channel);
-        };
+        activeChannel = channel;
       } catch (e) {
         console.warn('Realtime subscription error:', e);
       }
     };
 
-    const cleanupPromise = initCloudSync();
+    let activeChannel: any = null;
+    initCloudSync();
 
     // Cross-tab and window focus instant synchronization
     let broadcast: BroadcastChannel | null = null;
@@ -1114,9 +1131,12 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isMounted = false;
       window.removeEventListener('focus', handleWindowFocus);
       if (broadcast) broadcast.close();
-      cleanupPromise.then((cleanup) => {
-        if (typeof cleanup === 'function') cleanup();
-      });
+      if (activeChannel) {
+        try {
+          const client = getSupabaseClient();
+          if (client) client.removeChannel(activeChannel);
+        } catch (e) {}
+      }
     };
   }, []);
 

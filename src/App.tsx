@@ -38,6 +38,7 @@ import { MobileAdminApp } from './components/mobile/MobileAdminApp';
 import { MobileStoreInwardApp } from './components/mobile/MobileStoreInwardApp';
 import { LoginScreen } from './components/auth/LoginScreen';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { MicrosoftWorkbookCenter } from './components/microsoft/MicrosoftWorkbookCenter';
 
 const ERPAppContent: React.FC = () => {
   const { activeTab, setActiveTab, currentUser, isAuthenticated } = useERP();
@@ -49,6 +50,7 @@ const ERPAppContent: React.FC = () => {
   const [quickActionInitial, setQuickActionInitial] = useState<'order' | 'inward' | 'outward' | 'job' | 'qc'>('inward');
   const [isCalcModalOpen, setIsCalcModalOpen] = useState(false);
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
+  const [isLiveEditMode, setIsLiveEditMode] = useState(false);
 
   // Dedicated Mobile Device Detection (Leaves PC UI 100% untouched)
   const [isMobile, setIsMobile] = useState<boolean>(() => {
@@ -92,8 +94,21 @@ const ERPAppContent: React.FC = () => {
         activeEl instanceof HTMLSelectElement ||
         (activeEl as HTMLElement)?.isContentEditable;
 
+      // Ctrl+Shift+E / Cmd+Shift+E -> Toggle Live In-Browser Direct Edit Mode
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key.toLowerCase() === 'e')) {
+        e.preventDefault();
+        setIsLiveEditMode((prev) => {
+          const next = !prev;
+          if (typeof document !== 'undefined') {
+            document.designMode = next ? 'on' : 'off';
+          }
+          return next;
+        });
+        return;
+      }
+
       // Ctrl+K / Cmd+K Search
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setIsSearchOpen((prev) => !prev);
         return;
@@ -128,9 +143,14 @@ const ERPAppContent: React.FC = () => {
           setActiveTab('members');
           return;
         }
+        if (key === '6' || key === 'w') {
+          e.preventDefault();
+          setActiveTab('microsoft');
+          return;
+        }
       }
 
-      // Ctrl / Cmd + Number Combinations (Ctrl+1, Ctrl+2, Ctrl+3, Ctrl+4, Ctrl+5)
+      // Ctrl / Cmd + Number Combinations (Ctrl+1, Ctrl+2, Ctrl+3, Ctrl+4, Ctrl+5, Ctrl+6)
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
         if (e.key === '1') {
           e.preventDefault();
@@ -158,6 +178,11 @@ const ERPAppContent: React.FC = () => {
           setActiveTab('members');
           return;
         }
+        if (e.key === '6') {
+          e.preventDefault();
+          setActiveTab('microsoft');
+          return;
+        }
         if (e.key === 'r' || e.key === 'R') {
           // Allow default browser reload
           return;
@@ -183,7 +208,7 @@ const ERPAppContent: React.FC = () => {
   }
 
   return (
-    <div className={`min-h-screen flex flex-col ${isProductionWorkstation ? 'bg-[#f8fafc] text-slate-900' : 'bg-slate-950 text-slate-100'} selection:bg-slate-900 selection:text-white`}>
+    <div className={`${activeTab === 'microsoft' ? 'h-screen overflow-hidden' : 'min-h-screen'} flex flex-col ${isProductionWorkstation ? 'bg-[#f8fafc] text-slate-900' : 'bg-slate-950 text-slate-100'} selection:bg-slate-900 selection:text-white`}>
       {/* Header with ☰ Menu Drawer Toggle */}
       <Header
         onOpenSearch={() => setIsSearchOpen(true)}
@@ -204,8 +229,8 @@ const ERPAppContent: React.FC = () => {
         />
 
         {/* 100% Full Screen Main Viewport */}
-        <main className="flex-1 w-full overflow-y-auto p-4 sm:p-6 lg:p-8 bg-[#f8fafc] text-slate-900 custom-scrollbar">
-          <div className="w-full max-w-[1800px] mx-auto space-y-6">
+        <main className={`flex-1 w-full ${activeTab === 'microsoft' ? 'overflow-hidden p-0' : 'overflow-y-auto p-4 sm:p-6 lg:p-8'} bg-[#f8fafc] text-slate-900 custom-scrollbar`}>
+          <div className={`w-full ${activeTab === 'microsoft' ? 'h-full max-w-none space-y-0' : 'max-w-[1800px] mx-auto space-y-6'}`}>
             {/* Core Workstation Screens */}
             {(activeTab === 'entry' ||
               activeTab === 'requirements' ||
@@ -215,6 +240,9 @@ const ERPAppContent: React.FC = () => {
               activeTab === 'members') && (
               <ProjectMaterialEntry />
             )}
+
+            {/* Microsoft Workbook Center Module */}
+            {activeTab === 'microsoft' && <MicrosoftWorkbookCenter />}
 
             {/* Additional Plant Registers & Modules */}
             {activeTab === 'dashboard' && (
@@ -253,6 +281,7 @@ const ERPAppContent: React.FC = () => {
             {/* Robust Fallback for Unrecognized / Dynamic Tabs */}
             {![
               'entry', 'requirements', 'projects', 'details', 'procurement', 'members',
+              'microsoft',
               'dashboard', 'orders', 'bom', 'mrp', 'dispatcher', 'terminal',
               'subcontracting', 'traceability', 'vendor_performance', 'vendor_portal',
               'materials', 'calculator', 'inward', 'outward', 'production',
@@ -289,6 +318,22 @@ const ERPAppContent: React.FC = () => {
       >
         <WeightCalculator isModal onClose={() => setIsCalcModalOpen(false)} />
       </Modal>
+
+      {/* Discreet Live Edit Floating Indicator */}
+      {isLiveEditMode && (
+        <div className="fixed bottom-4 right-4 z-[9999] bg-emerald-600 text-white px-4 py-2 rounded-xl shadow-2xl flex items-center gap-3 text-xs font-semibold animate-pulse border border-emerald-400">
+          <span>✏️ Live Edit Mode: Click any text on screen to edit</span>
+          <button
+            onClick={() => {
+              setIsLiveEditMode(false);
+              if (typeof document !== 'undefined') document.designMode = 'off';
+            }}
+            className="bg-black/30 hover:bg-black/50 px-2 py-1 rounded text-[11px] transition-colors"
+          >
+            Done (Exit)
+          </button>
+        </div>
+      )}
     </div>
   );
 };

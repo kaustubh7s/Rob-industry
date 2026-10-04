@@ -8,6 +8,7 @@ import {
   X,
   Sparkles,
   Command,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 
@@ -74,6 +75,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       icon: ShoppingCart,
       shortcut: 'Ctrl+3',
       badge: projectRequirements.length > 0 ? String(projectRequirements.length) : null,
+    },
+    {
+      id: 'microsoft',
+      label: 'MICROSOFT',
+      icon: FileSpreadsheet,
+      shortcut: 'Ctrl+6',
+      badge: 'Excel',
+      badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
     },
   ];
 

@@ -11,6 +11,7 @@
     /* Bundler mode */
     "moduleResolution": "bundler",
     "moduleDetection": "force",
+    "resolveJsonModule": true,
     "noEmit": true,
     "jsx": "react-jsx",
 

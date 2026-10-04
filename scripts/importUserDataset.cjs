@@ -1,0 +1,478 @@
+const fs = require('fs');
+const path = require('path');
+
+const RAW_TSV = `	Date	PO NO	Sr. No	Material	Specifications	Qty	Received	PENDING	Supplier Name	M/C	Remarks	COUSTMER CODE	PO Status	order by 	COMMENT										
+	12-Sep-26	LOCAL	156	MS BAR 	60 X 360	02 NOS 			LADDAJI	FLMC 	GEAR BOX 		PO Status	YASIR											
+	12-Sep-26	LOCAL	157	MS PLATE 	500 X 800 X 12 MM	01 NOS 			KINEKAR 	FLMC 	GEAR BOX 		PO Status	YASIR											
+	12-Sep-26	LOCAL	158	MS BAR 	350 X 12 MM	02 NOS 			KINEKAR 	FLMC 	GEAR BOX 		PO Status	YASIR											
+	12-Sep-26	LOCAL	159	MS GATTU	50 X 50	04 NOS 			LADDAJI	FLMC 	GEAR BOX 		PO Status	YASIR											
+	12-Sep-26	45	160	NAYLON PLASTIC GATTU	150 X 70 MM	02 NOS 			Manav Metal	FLMC 	FILING TANK		PO Status	YASIR											
+	12-Sep-26	45	161	SS BAR 304	OD 22 - 2 LENGHT	02 NOS 			Manav Metal	FLMC 	DISTANCE PIS 		PO Status	YASIR											
+	12-Sep-26	45	162	GUM METAL	OD 50 X 20	13 NOS			Manav Metal	FLMC 	SEALING BUSH 		PO Status	YASIR											
+	12-Sep-26	46	163	PLASTIC 	CAP ELIVETOR CHAIN	75 FT			MOLDEX	FLMC 	CAP ELIVETOR CHAIN		PO Status	YASIR											
+	12-Sep-26	46	164	PLASTIC 	CAP ELIVETOR SPROCKET 	08 NOS 			MOLDEX	FLMC 	CAP ELIVETOR 		PO Status	YASIR											
+	14-Sep-26	47	165	SS SQ FLAT	65 X 16 X 165 	3 NOS 			MANAV METAL	FLMC 	CLAMP FLMC 		PO Status												
+	14-Sep-26	47	167	SS 304	25 X 10 	2 MTR			MANAV METAL	LM 	GUM POT CYLINDER PATTI		PO Status												
+	14-Sep-26	47	168	SS 304	25 X 12	2 MTR			MANAV METAL	LM 	GUM POT CYLINDER PATTI		PO Status												
+	14-Sep-26	47	169	SS 304	25 X 16	2 MTR			MANAV METAL	LM	GUM POT CYLINDER PATTI		PO Status												
+	14-Sep-26	47	170	BRASS PIPE	OD 25 X ID 17 X 1 L	1 LENGHT 			MANAV METAL	LM 	HEATER PIPE 		PO Status												
+	17-Sep-26	48	171	MS FLAT	75 X 12 X 158	12 NOS 			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	172	MS FLAT 	100 X 12 X 340 	2 NOS 			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	173	MS FLAT 	100 X 12 X 100	2NOS 			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	174	SS 304 FLAT	60 X 120 X 225	4 NOS			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	175	SS 304 FLAT	50 X 16 X 120 	4 NOS			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	176	SS304  BAR 	45 X 25	4 NOS			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	177	SS 304 BAR 	55 X 50	4 NOS			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	178	SS 304 BAR 	65 X25	2 NOS 			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	179	SS 304 BAR 	65 X10	2 NOS 			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	180	SS 304 BAR 	45 X 50	2 NOS 			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	181	SS 304 BAR 	45 X 250	2 NOS 			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	182	SS 304 BAR 	65 X 20	2 NOS 			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	183	SS 304 BAR 	40 X 460	2 NOS 			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	184	SS 304 BAR 	30 X442	6 NOS			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	185	SS 304 BAR 	30 X450	2 NOS 			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	186	SS 304 BAR 	30 X350	2 NOS 			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	187	SS 304 BAR 	80 X12	12 NOS 			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	188	SS FLAT 304	60 X 16 X 120	2 NOS 			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	189	MS BAR 	50 X 400	2 NOS 			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	190	MS PLATE 	175 X 16 MM	2 NOS 			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	191	ALLUMINIUM HE30	25 X 50 X 141	4 NOS			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	192	ALLUMINIUM HE30	25 X 50 X 141	4 NOS			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	193	ALLUMINIUM HE30	20 X 90 X 110	4 NOS			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	194	ALLUMINIUM HE30	150 X 16 X 450	2 NOS 			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	195	ALLUMINIUM HE30	20 X 50 X 200	2 NOS 			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	196	ALLUMINIUM PIPE 	40 X 32 X 265	12 NOS 			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	197	ALLUMINIUM BAR	100 X 45 	4 NOS			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	198	MS BAR 	45 X 250 	2 NOS 			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	199	MS BAR 	45 X 140 	4 NOS			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	200	MS PIPE 	75 X 55 X 265	2 NOS 			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	201	MS PIPE 	65 X 45 X 290	2 NOS 			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	202	MS CIRCLE 	130 X ID 60X 30	4 NOS			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	203	MS CIRCLE 	130 X 60 X 16 	2 NOS 			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	204	BRASS BAR 	60 X 55	2 NOS 			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	205	SS CIRCLE	OD 130 X ID60 X16 THICK	4 NOS			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	206	MS FLAT	40 X 12 X 135	8 NOS			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	207	MS FLAT	40X 12 X 110	24 NOS			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	208	MS FLAT	40 X 12 X 85	4 NOS			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	209	MS FLAT	40 X 12 X 80	4 NOS			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	210	MS FLAT	40 X 12 X 40	4 NOS			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	211	MS PIPE 	OD 95 X ID 70 X 235	2 NOS			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	212	SS CIRCLE	OD 160 X ID 90 X 20 THICK	2 NOS			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	213	SS FLAT 	50 X 12 440	4 NOS			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	214	SS BAR 	OD 40 X 454 LENGTH	2 NOS			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	215	SS BAR 	OD 40 X 40 LENGTH	2 NOS			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	48	216	SS CIRCLE	OD 205 X 16 THICK	2 NOS			MANAV METAL	LM 			PO Status	P SAPKAL											
+	17-Sep-26	49	217	SS 304	OD 75 x 450 L	1 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	218	SS 304	OD 28 x 125 L	1 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	219	MS	OD 32 x 490 L	1 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	220	SS 304	OD 50 x 190 L	1 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	221	SS 304	OD 100 x 16 	1 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	222	SS 304	OD 20 x 316 L	1 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	223	SS 304	40 x 5 x 288 L	1 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	224	SS 304	40 x 5 x 256 L	1 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	225	Aluminium	32 x 32 x 90 L	2 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	226	Aluminium	32 x 32 x 87 L	2 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	227	SS	OD 90 x 12 Thickness	1 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	228	MS	Dia 32 x 110 L	1 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	229	Brass bar	OD 60 x 55 L	1 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	230	Brass pipe	OD 27 x ID 18 x 370 L	1 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	231	Brass pipe 	OD 10 x ID 7 x 50 L	1 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	232	SS 304	OD 12 x 60 L	2 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	233	SS 304	OD 16 x 285 L	2 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	234	SS 304	20 x 20 x 285 L	2 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	235	SS 304	OD 90 x 395 L	1 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	236	SS 304	OD 28 x 125 L	1 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	237	MS	OD 32 x 490 L	1 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	238	SS 304	OD 55 x 450 L	1 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	239	SS 304	OD 100 x 16 	1 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	240	SS 304	OD 20 x 390 L	1 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	241	SS 304	40 x 5 x 288 L	1 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	242	SS 304	40 x 5 x 256 L	1 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	243	Aluminium	od 100 x 50	2 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	244	Aluminium	50 x 16 x 315	3 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	245	SS 304	OD 16 x 340 L	2 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	49	246	SS 304	20 x 20 x 340 L	2 nos 			MANAV METAL	LM  GUM POT			PO Status	D KHARE											
+	17-Sep-26	50	247	SS 304 CIRCLE	225 X 12 	02 NOS 			MANAV METAL	16 HD 	WASHIN BOTTUM PLATE 		PO Status	SANDIP SHARDUL											
+	17-Sep-26	50	248	SS 304 BAR 	OD 40 X 1100	3 LENGHT			MANAV METAL	16 HD 	SEALING PILLER 		PO Status	SANDIP SHARDUL											
+	18-Sep-26	LOCAL	249	SS FILLER WIRE	3 MM SS FILLER WIRE	20 KG			MANAV METAL	ALL MACHINE 	FOR ORGAN WELDING 		PO Status	SHINGARE MAMA											
+	19-Sep-26	51	250	ELECTRIAL COMPONENTS	M18 NPN NO Photoelectric Sensor	12 Nos			DARSHAN ELECTRICAL	FLMC 60 BPM			PO Status	NISHANT											
+	19-Sep-26	51	251	ELECTRIAL COMPONENTS	M12 NPN NO Proxy Sensor	07 Nos			DARSHAN ELECTRICAL	FLMC 60 BPM			PO Status	NISHANT											
+	19-Sep-26	51	252	ELECTRIAL COMPONENTS	MCB 6 Amp 3 Pole 	02 Nos			DARSHAN ELECTRICAL	FLMC 60 BPM			PO Status	NISHANT											
+	19-Sep-26	51	253	ELECTRIAL COMPONENTS	MCB 6 Amp 2 Pole	01 Nos			DARSHAN ELECTRICAL	FLMC 60 BPM			PO Status	NISHANT											
+	19-Sep-26	51	254	ELECTRIAL COMPONENTS	Contactor 9 Amp 24V Dc	06 Nos			DARSHAN ELECTRICAL	FLMC 60 BPM			PO Status	NISHANT											
+	19-Sep-26	51	255	ELECTRIAL COMPONENTS	TC 544	02 Nos			DARSHAN ELECTRICAL	FLMC 60 BPM			PO Status	NISHANT											
+	19-Sep-26	52	256	ELECTRIAL COMPONENTS	M18 NPN NO Photoelectric Sensor	04 Nos			DARSHAN ELECTRICAL	SM			PO Status	NISHANT											
+	19-Sep-26	52	257	ELECTRIAL COMPONENTS	M12 NPN NO Proxy Sensor	01 Nos			DARSHAN ELECTRICAL	SM			PO Status	NISHANT											
+	19-Sep-26	52	258	ELECTRIAL COMPONENTS	MCB 6 Amp 3 Pole 	02 Nos			DARSHAN ELECTRICAL	SM			PO Status	NISHANT											
+	19-Sep-26	52	259	ELECTRIAL COMPONENTS	MCB 6 Amp 2 Pole	01 Nos			DARSHAN ELECTRICAL	SM			PO Status	NISHANT											
+	19-Sep-26	52	260	ELECTRIAL COMPONENTS	Contactor 9 Amp 24V Dc	03 Nos			DARSHAN ELECTRICAL	COMBO CP			PO Status	NISHANT											
+	19-Sep-26	52	261	ELECTRIAL COMPONENTS	TC 533 	01 NOS			DARSHAN ELECTRICAL	COMBO CP			PO Status	NISHANT											
+	19-Sep-26	52	262	ELECTRIAL COMPONENTS	SMPS 24V DC 5 AMP 	01 NOS			DARSHAN ELECTRICAL	SM			PO Status	NISHANT											
+	20-Sep-26	53	263	CASTING 	GEAR DIA 516	02 NOS			RAJAT TECHNOCAST	90 BPM			PO Status	AMITABH											
+	20-Sep-26	53	264	CASTING 	GEAR DIA 414	01 NOS			RAJAT TECHNOCAST	90 BPM			PO Status	AMITABH											
+	20-Sep-26	53	265	CASTING 	HUB AS PER DRAWING	04 EACH			RAJAT TECHNOCAST	90 BPM			PO Status	AMITABH											
+	21-Sep-26	54	266	ELECTRIAL COMPONENTS	MCB 3 POLE 6 AMP	2 NOS			DARSHAN ENTERPRISES	90 BPM			PO Status	GANESH SHINDE											
+	21-Sep-26	54	267	ELECTRIAL COMPONENTS	MCB 2 POLE 6 AMP	1 NOS			DARSHAN ENTERPRISES	90 BPM			PO Status	GANESH SHINDE											
+	21-Sep-26	54	268	ELECTRIAL COMPONENTS	MCB 1 POLE 4 AMP	1 NOS			DARSHAN ENTERPRISES	90 BPM			PO Status	GANESH SHINDE											
+	21-Sep-26	54	269	ELECTRIAL COMPONENTS	SMPS 24 V DC 5 AMP	1 NOS			DARSHAN ENTERPRISES	90 BPM			PO Status	GANESH SHINDE											
+	21-Sep-26	54	270	ELECTRIAL COMPONENTS	RELAY BOARD / CORD 8 CHANNEL	1 COIL			DARSHAN ENTERPRISES	90 BPM			PO Status	GANESH SHINDE											
+	21-Sep-26	54	271	ELECTRIAL COMPONENTS	M-12 PROXY NPN NO	1 NOS			DARSHAN ENTERPRISES	90 BPM			PO Status	GANESH SHINDE											
+	21-Sep-26	54	272	ELECTRIAL COMPONENTS	EXHAUST FAN 4"	1 NOS			DARSHAN ENTERPRISES	90 BPM			PO Status	GANESH SHINDE											
+	21-Sep-26	54	273	ELECTRIAL COMPONENTS	FAN FILTER 4"	1 NOS			DARSHAN ENTERPRISES	90 BPM			PO Status	GANESH SHINDE											
+	21-Sep-26	54	274	ELECTRIAL COMPONENTS	MAIN OFF/ON SWITCH 32 AMP	1 NOS			DARSHAN ENTERPRISES	90 BPM			PO Status	GANESH SHINDE											
+	21-Sep-26	54	275	ELECTRIAL COMPONENTS	CONTACTOR 9 AMP 24 VDC	3 NOS			DARSHAN ENTERPRISES	90 BPM			PO Status	GANESH SHINDE											
+	21-Sep-26	54	276	ELECTRIAL COMPONENTS	OVERLOAD 1.5 TO 2.5 AMP	3 NOS			DARSHAN ENTERPRISES	90 BPM			PO Status	GANESH SHINDE											
+	21-Sep-26	54	277	ELECTRIAL COMPONENTS	12 MM SPIRAL COIL	1 COIL			DARSHAN ENTERPRISES	90 BPM			PO Status	GANESH SHINDE											
+	21-Sep-26	54	278	ELECTRIAL COMPONENTS	6 MM SPIRAL	1 COIL			DARSHAN ENTERPRISES	90 BPM			PO Status	GANESH SHINDE											
+	21-Sep-26	54	279	ELECTRIAL COMPONENTS	2 POSITION SELECTOR SWITCH WITH NO	1 NOS			DARSHAN ENTERPRISES	90 BPM			PO Status	GANESH SHINDE											
+	21-Sep-26	54	280	ELECTRIAL COMPONENTS	LUMINOUS GREEN PB 24V DC WITH NO	5 NOS			DARSHAN ENTERPRISES	90 BPM			PO Status	GANESH SHINDE											
+	21-Sep-26	54	281	ELECTRIAL COMPONENTS	EMERGENCY STOP PB WITH NO	1 NOS			DARSHAN ENTERPRISES	90 BPM			PO Status	GANESH SHINDE											
+	21-Sep-26	54	282	ELECTRIAL COMPONENTS	MINILEX WATER LEVEL CONTROL	1 NOS			DARSHAN ENTERPRISES	90 BPM			PO Status	GANESH SHINDE											
+	21-Sep-26	54	283	ELECTRIAL COMPONENTS	M-18 PHOTO SENSOR NPN NO	4 NOS			DARSHAN ENTERPRISES	90 BPM			PO Status	GANESH SHINDE											
+	21-Sep-26	54	284	ELECTRIAL COMPONENTS	RED LAMP 24 VOLT DC	1 NOS			DARSHAN ENTERPRISES	90 BPM			PO Status	GANESH SHINDE											
+	21-Sep-26	54	285	ELECTRIAL COMPONENTS	10K POT BOURNS 10 TURN	1 NOS			DARSHAN ENTERPRISES	90 BPM			PO Status	GANESH SHINDE											
+	21-Sep-26	54	286	ELECTRIAL COMPONENTS	0.5 PIN TYPE TUBULAR LUGS	500 NOS			DARSHAN ENTERPRISES	90 BPM			PO Status	GANESH SHINDE											
+	21-Sep-26	54	287	ELECTRIAL COMPONENTS	PG 16 GLAND	10 NOS			DARSHAN ENTERPRISES	90 BPM			PO Status	GANESH SHINDE											
+	6-Sep-26	41	130	S.S 304 SHEET	1MT X 1.5MTR X 4MM THICK	1 NOS			MANAV METAL	10HD 	STAR WHEEL		PO Status	RN											
+	7-Sep-26		131	M.S Flate	80 X 15MM X 82 lENGTH	4NOS			SEARCH				PO Status												
+	7-Sep-26	42	132	M.S Plate	2105 x 1422 x 20MM thick	2Nos			Smart Profile	LM 200	Min Base Plate		PO Status												
+	7-Sep-26	42	132	M.S Plate	800 x 1230 x 12mm thick	2nos			Smart Profile	LM 200	Gear Box Base Plate		PO Status												
+	7-Sep-26	42	134	M.S Plate	1200 x 1960 x 20mm Thick	2nos			Smart Profile	LM 120	Main Base Plate		PO Status												
+	7-Sep-26	42	135	M. S Plate	750 x 1035 x 12mm Thick	2nos			Smart Profile	LM 120 	Gear Base Plate		PO Status												
+	7-Sep-26	42	136	M. S Plate	2200 x 2456 x 20mm Thick	2nos			Smart Profile	16 HD	Main Base Plate		PO Status												
+	7-Sep-26	42	137	M. S Circle	OD- 530 x 18mm Thick	2nos			Smart Profile	16HD 			PO Status												
+	7-Sep-26	42	138	M. S Circle	OD- 463 x ID- 355 x 18mm Thuck	2nos			Smart Profile	16 HD			PO Status												
+	7-Sep-26	42	139	M.S Circle	OD- 545 x 18mm Thick	2nos			Smart Profile	16 HD			PO Status												
+	7-Sep-26	42	140	M.S Circle 	OD- 380 x 22mm Thick	2nos			Smart Profile	16 HD			PO Status												
+	7-Sep-26	42	141	M.S Circle	OD- 330 x 95mm Thick	2nos			Smart Profile	16 HD			PO Status												
+	7-Sep-26	42	142	M.S Triangle	100 x 100 As Per Drawing	36 nos			Smart Profile	Common			PO Status												
+	7-Sep-26	42	143	M.S Plate	900 x 1420 x 12mm Thick	1nos			Smart Profile	LM 200 & 120	Infeed Guide Base Plate for laser cutting		PO Status												
+	7-Sep-26	43	144	SS 304	40 X 40 X 12 MM	20 NOS 			MANAV METAL	 ALL FLMC 	MANDAP 		PO Status												
+	7-Sep-26	43	145	SS 304 BAR 	16 MM 	5 LENGHT			MANAV METAL	 ALL FLMC 	FOR CAM		PO Status												
+	7-Sep-26	43	146	SS 304 BAR	8 MM	5 LENGHT			MANAV METAL	 ALL FLMC 	SEALING 		PO Status												
+	7-Sep-26	43	147	SS 304 BAR	12 MM	5 LENGHT			MANAV METAL	 ALL FLMC 	PIN, SENSOR STAND ETC		PO Status												
+	8/10/26	8	39	MS PIPE 	OD 143 X ID 119 X 338	01 NOS 			MANAV METAL 	16 HD 	SEALING HOUSING 		PO Sent												
+	8/10/26	8	40	MS PIPE 	OD 143 X ID 119 X 430 	01 NOS 			MANAV METAL 	16 HD 	WASHING HOUSIG 		PO Sent												
+	8/10/26	8	41	MS PIPE 	OD 175 X ID 145 X 480	01 NOS 			MANAV METAL 	16 HD 	FEELING HOUSING		PO Sent												
+	8/10/26	8	42	SS PIPE 304	OD 100 X ID 83 X 350	04 NOS 			MANAV METAL 	16 HD 	STAR HOUSNG		PO Sent												
+	8/10/26	8	43	SS PIPE 304	OD 82 X ID 62 X 400	01 NOS 			MANAV METAL 	16 HD 	CAP TRANSFER HOUSING		PO Sent												
+	8/10/26	8	44	SS RING 304	OD 235 X ID 135 X 24 MM	01 NOS 			MANAV METAL 	16 HD 	WASHING HOUSING BOTTUM		PO Sent												
+	8/10/26	8	45	SS RING 304	OD 265 X ID 165 X 24 MM	01 NOS 			MANAV METAL 	16 HD 	FEELING BOTTUM		PO Sent												
+	8/10/26	8	46	SS RING 304	OD 295 X ID 165 X 14 MM	01 NOS 			MANAV METAL 	16 HD 	FEELING TOP		PO Sent												
+	8/10/26	8	47	SS RING 304	OD 235 X ID 135 X 24 MM	01 NOS 			MANAV METAL 	16 HD 	SEALING BOTTUM		PO Sent												
+	8/10/26	8	48	SS RING 304	OD 245 X ID 135 X 14 MM	01 NOS 			MANAV METAL 	16 HD 	WASHING TOP		PO Sent												
+	8/10/26	8	49	SS RING 304	OD 295 X ID 105 X 20 MM	01 NOS 			MANAV METAL 	16 HD 	FEELING SHAFT CIRCLE		PO Sent												
+	8/10/26	8	50	SS CIRCLE 	OD 175 X 18 MM 	01 NOS 			MANAV METAL 	16 HD 	SEALING SHAFT 		PO Sent												
+	8/10/26	8	51	SS CIRCLE 	OD 275 X 20 MM	01 NOS 			MANAV METAL 	16 HD 	WASHING SHAFT 		PO Sent												
+	8/10/26	8	52	SS CIRCLE 	1	02 NOS			MANAV METAL 	16 HD 	FEELING SHAFT 		PO Sent												
+	8/10/26	8	53	SS PIPE 304	OD 98 X ID 55 X 465 MM	02 NOS 			MANAV METAL 	16 HD 	SEALING SLEEVE		PO Sent												
+	8/10/26	8	54	MS PIPE 	OD 95 X ID 68 X 670	01 NOS 			MANAV METAL 	16 HD 	FEELING SHAFT		PO Sent												
+	8/11/26	9	55	SS RING 304	OD 615 X ID 170 X 14 MM THICKNESS 	02 NOS 			MANAV METAL 	16 HD 	 FILING CAM RING 16 HD 		PO Sent												
+	8/11/26	9	56	SS FLAT 304	65 X 16 X 2100 MM	02 NOS 			MANAV METAL 	16 HD 	FLING CAM FLAT 16 HD 		PO Sent												
+	8/11/26	10	57	ACRYLIC SHEET 	825 X 1050	01 NOS			DISHA PLAST	10HD 	 DOOR 		PO Sent												
+	8/11/26	10	58	ACRYLIC SHEET 	882 X 1050	01 NOS			DISHA PLAST	10HD 	 DOOR 		PO Sent												
+	8/11/26	10	59	ACRYLIC SHEET 	884 X 1050	01NOS			DISHA PLAST	10HD 	 DOOR 		PO Sent												
+	8/11/26	10	60	ACRYLIC SHEET 	832 X 1050	01 NOS			DISHA PLAST	10HD 	 DOOR 		PO Sent												
+	8/11/26	10	61	ACRYLIC SHEET 	830 X 1050	01 NOS			DISHA PLAST	10HD 	 DOOR 		PO Sent												
+	8/11/26	10	62	ACRYLIC SHEET 	880 X 1050	01 NOS 			DISHA PLAST	10HD 	 DOOR 		PO Sent												
+	8/11/26	10	63	ACRYLIC SHEET 	884 X 1050	01 NOS 			DISHA PLAST	10HD 	 DOOR 		PO Sent												
+	8/11/26	11	64	MS PIPE 	OD 75 X 5 THICKNESS X 830	04 NOS			MANAV METAL 	SHRINK 	SHRINK 		PO Sent												
+	8/11/26	11	65	MS BAR 	DAI 30 X 195 	02 NOS 			MANAV METAL 	SHRINK 	SHRINK 		PO Sent												
+	8/11/26	11	66	MS BAR 	DAI 30 X 110	06 NOS			MANAV METAL 	SHRINK 	SHRINK 		PO Sent												
+	8/11/26	11	67	SS ROUND PIPE	25 MM X 1.2 THICKNESS X 60 FEET 	06 LENGTH			MANAV METAL 	SHRINK 	SHRINK 		PO Sent												
+	8/11/26	11	68	SS 304 ROUND BAR	12 MM X 10 FEET 	06 LENGTH			MANAV METAL 	SHRINK 	SHRINK 		PO Sent												
+	8/11/26	11	69	SS FLAT 	100 X 8 X 180	01 NOS			MANAV METAL 	SHRINK 	SHRINK 		PO Sent												
+	8/11/26	11	70	SS PIPE 	OD 10 X ID 7 X 5 LENGHT 	05 NOS 			MANAV METAL 	16 HD	16 HD NOZZEL		PO Sent												
+	8/11/26	11	71	NYLON ROUND BAR 	25 MM X 1 MTR	01 NOS 			MANAV METAL 	SHRINK 	SHRINK 		PO Sent												
+	8/12/26	12	72	SS 304 PIPE 	OD 42 X ID 30 X 135 LENGTH 	32 NOS 			MANAV METAL 	16 HD 	LIFTER BASE CONTACTOR 		PO Sent												
+	8/12/26	12	73	SS 304 FLAT 	50  X 12 X 98 MM	32 NOS 			MANAV METAL 	16 HD 	LIFTER BASE CONTACTOR 		PO Sent												
+	8/12/26	12	74	SS FLAT 	32 X 12 X 62 	32 NOS 			MANAV METAL 	16 HD 	LIFTER BASE CONTACTOR 		PO Sent												
+	8/12/26	12	75	SS BAR 304 BRIGHT 	OD 25 X 298  MM	32 NOS 			MANAV METAL 	16 HD 	LIFTER ROD 		PO Sent												
+	8/12/26	12	76	SS BAR 304 BRIGHT 	OD 12 X 270 MM	32 NOS 			MANAV METAL 	16 HD 	LIFTER ROD 		PO Sent												
+	8/12/26	12	77	SS FLAT 304	60 X 12 X 105 MM	32 NOS 			MANAV METAL 	16 HD 	LIFTER ROD 		PO Sent												
+	8/12/26	12	78	SS SQ 304 	25 X 25 X 84 MM 	64 NOS			MANAV METAL 	16 HD 	WASHING BLOCK 		PO Sent												
+	8/12/26	12	79	SS SQ 304 	25 X 25 X 40 MM	32 NOS 			MANAV METAL 	16 HD 	WASHING BLOCK 		PO Sent												
+	8/12/26	12	80	SS BRIGHT BAR 	OD 12 X 115 	32 NOS 			MANAV METAL 	16 HD 	WASHING BLOCK 		PO Sent												
+	8/12/26	12	81	SS 304 PIPE 	OD 42 X 81 MM 	32 NOS 			MANAV METAL 	16 HD 	NOZZEL HEAD 		PO Sent												
+	8/12/26	12	82	SS CIRCLE 304	OD 70 X 10 MM	32 NOS 			MANAV METAL 	16 HD 	NOZZEL HEAD 		PO Sent												
+	8/12/26	12	83	SS BAR 	OD 35 X 13 MM	32 NOS 			MANAV METAL 	16 HD 	NOZZEL HEAD 		PO Sent												
+	8/13/26	13	84	GUN METAL ROD	OD 45 X 18 MM THICKNESS	60 NOS			MANAV METAL 	16 HD 	SEALING RING BUSH &LIFTER T ROD BUSH		PO Sent												
+	8/13/26	13	85	SS PIPE 304	OD 150 X ID 130 X 35 MM	06 NOS 			MANAV METAL 	16 HD 	TANK RING 		PO Sent												
+	8/13/26	14	86	S.S304 Circle	OD-1175 x 22mm thick	1 NOS 			SBR STEEL	24 HD	Filling Tank Base Plate		PO Sent												
+	8/13/26	14	87	S.S304 Circle	OD-1000 x 22mm thick	1 NOS 			SBR STEEL	24 HD 	Washing Top Plate		PO Sent												
+	8/13/26	14	88	S.S304 Circle	OD-582 x 20mm thick	1 NOS 			SBR STEEL	24 HD 	Sealing Star Plate		PO Sent												
+	8/13/26	15	89	M.S Circle	OD-585 x 19/20mm thick	1 NOS 			SR METAL	24 HD 	Sealing Top Plate		PO Sent												
+	8/13/26	15	90	M.S Circle	OD-423 x 22mm thick	1 NOS 			SR METAL	24 HD 	Seal Gear		PO Sent												
+	8/13/26	15	91	M.S Circle	OD-570 x 22mm Thick	1 NOS 			SR METAL	24 HD 	Seal Main Bush Plate		PO Sent												
+	8/13/26	15	92	M.S Circle	OD-505 x ID-395 x 22mm Thick	1 NOS 			SR METAL	24 HD 	Seal Bush Ring Plate		PO Sent												
+	8/13/26	15	93	M.S Circle	OD-375 x 95mm thick	1 NOS 			SR METAL	24 HD 	Seal Cam		PO Sent												
+	8/13/26	15	94	S.S304 Pipe	OD-122 x ID-75/78 x 465mm	1 NOS 			SR METAL	24 HD 	Sealing Sleeve		PO Sent												
+	8/13/26	15	95	S.S304 Circle	OD-235 x 20mm Thick	1 NOS 			SR METAL	24 HD 	Sealing Sleeve TOP		PO Sent												
+	8/13/26	15	96	S S 304 RING	OD 210 X ID 100 X 18 MM 	01 NOS 			SR METAL	24 HD 	Sealing Sleeve BOTTOM 		PO Sent												
+	8/13/26	15	97	MS Pipe	OD-232/235 x ID-199 x 490mm length	1 NOS 			SR METAL	24 HD 	Filling HOUSING 		PO Sent												
+	8/13/26	15	98	S.S304 Circle	OD-345 x 30mm thick	1 NOS 			SR METAL	24 HD 	Filling HOUSING FLANGE		PO Sent												
+	8/13/26	15	99	M S Pipe	OD-105 x ID-75 x 675mm length	1 NOS 			SR METAL	24 HD 	Filling Shaft		PO Sent												
+	8/13/26	15	100	S.S304 Pipe	OD-125 x ID-80 x 70mm Length	1 NOS 			SR METAL	24 HD 	Filling  SHAFT (BOX NUT)		PO Sent												
+	8/13/26	15	101	S.S304 Circle	OD-360 x ID-125 x 24mm Thick	1 NOS 			SR METAL	24 HD 	Filling Shaft FLANGE		PO Sent												
+	8/13/26	15	102	MS BAR 	OD-83 x 575 mm Length	1 NOS 			SR METAL	24 HD 	Washing Shaft		PO Sent												
+	8/13/26	15	103	MS BAR 	OD-83 x 1010 mm Length	1 NOS 			SR METAL	24 HD 	Sealing Shaft		PO Sent												
+	8/13/26	15	104	S.S304 Pipe	OD-105 x ID-75 x 65mm length	1 NOS 			SR METAL	24 HD 	Washing BOX NUT		PO Sent												
+	8/13/26	15	105	S.S304 Pipe	OD-105 x ID-75 x 75mm length	1 NOS 			SR METAL	24 HD 	Sealing BOX NUT		PO Sent												
+	8/13/26	15	106	M S Pipe	OD-190 x ID-160 x 415mm length	1 NOS 			SR METAL	24 HD 	Washing HOUSING		PO Sent												
+	8/13/26	15	107	M S  Pipe	OD-190 x ID-160 x 330mm length	1 NOS 			SR METAL	24 HD 	Sealing Housing		PO Sent												
+	8/13/26	15	108	S.S304 Circle	OD-335 x 20mm Thick	1 NOS 			SR METAL	24 HD 	Washing Shaft FLANGE		PO Sent												
+	8/13/26	15	109	S.S304 Circle	OD-215 x 20mm Thick	1 NOS 			SR METAL	24 HD 	Sealing Shaft Flange		PO Sent												
+	8/13/26	15	110	S.S304 Circle	OD-275 x ID-180 x 24mm Thick	2 NOS			SR METAL	24 HD 	Washing & Sealing Housing Flange ( BOTTOM )		PO Sent												
+	8/13/26	15	111	MS BAR 	OD 50 X 530 	4 NOS			SR METAL	24 HD 	STAR SHAFT		PO Sent												
+	8/13/26	15	112	SS FLANE 304	OD 290 X 14 MM	3 NOS			SR METAL	24 HD 	STAR SHAFT FLANGE		PO Sent												
+	8/13/26	15	113	SS FLANE 304	OD 205 X 14 MM	01 NOS 			SR METAL	24 HD 	STAR SHAFT FLANGE		PO Sent												
+	8/13/26	15	114	MS BAR 	OD 35 X 530 LENGTH	1 NOS 			SR METAL	24 HD 	CAP TRANSFER SHAFT		PO Sent												
+	8/13/26	15	115	SS BAR 	OD 45 X 80 LENGTH 	01 NOS 			SR METAL	24 HD 	CAP TRANSFER BOX 		PO Sent												
+	8/13/26	15	116	SS PIPE 304	OD 83 X 60 X 400 MM	1 NOS 			SR METAL	24 HD 	CAP TRANSFER HOUSING 		PO Sent												
+	8/13/26	15	117	SS RING 304	OD 160 X ID 70 X 14 MM THICKNESS 	1 NOS 			SR METAL	24 HD 	CAP TRANSFER FLANGE 		PO Sent												
+	8/13/26	15	118	SS PIPE 304	OD 112 X ID 93 X 355 MM 	4 NOS			SR METAL	24 HD 	STAR HOUSING 		PO Sent												
+	8/13/26	15	119	SS RING 304	OD 200 X ID 90 X 20 MM THICKNESS 	4 NOS			SR METAL	24 HD 	STAR HOUSING FLANGE		PO Sent												
+	8/13/26	15	120	SS BAR 	OD 55 X 80 LENGTH	4 NOS 			SR METAL	24 HD 	STAR SHAFT BOX		PO Sent												
+	8/18/26	16	121	SS 304 BAR 	OD 50 X 1100 MM	03 NOS 			SBR STEEL	24 HD 	 PILLAR SEAING		PO Sent												
+	8/18/26	16	122	SS 304 BAR 	OD 30 X 385 MM	02 NOS 			SBR STEEL	24 HD 	 PILLAR DOBULE FLANGE		PO Sent												
+	8/18/26	16	123	SS 304 BAR 	OD 30 X 365 MM	06 NOS 			SBR STEEL	24 HD 	 PILLAR RELING 		PO Sent												
+	8/18/26	16	124	SS 304 BAR 	OD 30 X 322 MM	04 NOS 			SBR STEEL	24 HD 	 PILLAR  FILING CAM 		PO Sent												
+	8/18/26	16	125	SS 304 BAR 	OD 30 X 302 MM	02 NOS 			SBR STEEL	24 HD 	 PILLAR FILING CAM		PO Sent												
+	8/18/26	16	126	SS CIRCLE 304	OD 100 X 12 MM	18 NOS 			SBR STEEL	24 HD 	 PILLAR CIRCLE		PO Sent												
+	8/19/26	17	127	SS 304 PIPE 	OD 100 X ID 83 X 350	01 NOS 			SBR STEEL 	16 HD 	STAR HOUSING 		PO Sent												
+	8/19/26	17	128	SS 304 PIPE 	OD 98 X ID 55 X 465 MM	01 NOS 			SBR STEEL	16 HD	SAELING SLEEVE 		PO Sent												
+	8/19/26	17	129	SS 304 RING 	OD 615 X ID 170 X 14 MM THICKNESS 	02 NOS 			SBR STEEL	16 HD	FILLING CAM RING 		PO Sent												
+	8/4/26	2	1	M.S Circle	Dia 530 X 18mm Thick	2 Nos	Received		Smart Profile	16 HD	Seal Bush Plate 90 bpm	Rajureshwar Beverages Pvt Ltd/Ashwini Industries	PO Sent												
+	8/4/26	2	2	M.S Circle	OD 463 X ID 355 X 18mm Thick	2 Nos	Received		Smart Profile	16 HD	Sealing Ring Plate 90 bpm	Rajureshwar Beverages Pvt Ltd/Ashwini Industries	PO Sent												
+	8/4/26	2	3	M.S Circle	Dia 545 x 18 mm Thick	2 Nos	Received		Smart Profile	16 HD	Sealing Top Plate 90 bpm	Rajureshwar Beverages Pvt Ltd/Ashwini Industries	PO Sent												
+	8/4/26	2	4	M.S Circle	Dia 380 x 22 mm Thick	2 Nos	Received		Smart Profile	16 HD	Sealing Gear 90 bpm	Ashwini Industries	PO Sent												
+	8/4/26	2	5	M.S Circle	Dia 330 x 90mm Thick	2 Nos	Received		Smart Profile	16 HD	Sealing Plate 90 bpm	Rajureshwar Beverages Pvt Ltd/Ashwini Industries	PO Sent												
+	8/4/26	2	6	M.S Plate	670 x 990 x 12mm Thick	2 Nos	Received		Smart Profile	16 HD	Gear Box Mounting Plate 90 bpm	Rajureshwar Beverages Pvt Ltd/Ashwini Industries	PO Sent												
+	8/4/26	2	7	M.S Plate	1240 x 520 x12mm Thick	2 Nos	Received		Smart Profile	SM 100	Shrink Top Plate	Jaipur/	PO Sent												
+	8/4/26	2	8	M.S Plate	1560 x 1510 x 940 x 1125 x 20mm(As per Drawing)	01 Nos	Received		Smart Profile	10 HD 	TOP PLATE 60 bpm	Real Foods	PO Sent												
+	8/5/26	3	9	MCB	3 Pole 6 Amp	11 Nos			Darshan Enterprises	SM 200	Electrical Pannel Material Shrink	Nakoda Industries	PO Sent												
+	8/5/26	3	10	MCB 	2 Pole 6 Amp	04 Nos			Darshan Enterprises	SM 200	Electrical Pannel Material Shrink	Nakoda Industries	PO Sent												
+	8/5/26	3	11	MCB	1 Pole 4 Amp	02 Nos			Darshan Enterprises	SM 200	Electrical Pannel Material Shrink	Nakoda Industries	PO Sent												
+	8/5/26	3	12	Relay Card	8 Channel	04 Nos			Darshan Enterprises	SM 200	Electrical Pannel Material Shrink	Nakoda Industries	PO Sent												
+	8/5/26	3	13	Relay Card 	2 Channel	01 Nos			Darshan Enterprises	SM 200	Electrical Pannel Material Shrink	Nakoda Industries	PO Sent												
+	8/5/26	3	14	SMPS 	24V DC 5 Amp	02 Nos			Darshan Enterprises	SM 200	Electrical Pannel Material Shrink	Nakoda Industries	PO Sent												
+	8/5/26	3	15	Exhaust Fan Sq Body	6"	04 Nos			Darshan Enterprises	SM 200	Electrical Pannel Material Shrink	Nakoda Industries	PO Sent												
+	8/5/26	3	16	Fan Filter Sq Body	6"	04 Nos			Darshan Enterprises	SM 200	Electrical Pannel Material Shrink	Nakoda Industries	PO Sent												
+	8/5/26	3	17	Contactor 	9 Amp 24V DC	05 Nos			Darshan Enterprises	SM 200	Electrical Pannel Material Shrink	Nakoda Industries	PO Sent												
+	8/5/26	3	18	Overload	1.5 to 2.5 Amp	02 Nos			Darshan Enterprises	SM 200	Electrical Pannel Material Shrink	Nakoda Industries	PO Sent												
+	8/5/26	3	19	Temp Controller	TC 513 	01 Nos			Darshan Enterprises	SM 200	Electrical Pannel Material Shrink	Nakoda Industries	PO Sent												
+	8/5/26	3	20	Tube LED	230V 2 Feet	01 Nos			Darshan Enterprises	SM 200	Electrical Pannel Material Shrink	Nakoda Industries	PO Sent												
+	8/5/26	3	21	Connector 	2.5 sq mm	200 Nos			Darshan Enterprises	SM 200	Electrical Pannel Material Shrink	Nakoda Industries	PO Sent												
+	8/5/26	3	22	Connector 	6 sq mm	100 Nos			Darshan Enterprises	SM 200	Electrical Pannel Material Shrink	Nakoda Industries	PO Sent												
+	8/5/26	3	23	Single Core wire	2.5 sq mm (Grey)	01 Coil			Darshan Enterprises	SM 200	Electrical Pannel Material Shrink	Nakoda Industries	PO Sent												
+	8/5/26	3	24	Single Core wire	0.5 sq mm Red	01 Coil			Darshan Enterprises	SM 200	Electrical Pannel Material Shrink	Nakoda Industries	PO Sent												
+	8/5/26	3	25	Single Core wire	0.5 sq mm Black	01 Coil			Darshan Enterprises	SM 200	Electrical Pannel Material Shrink	Nakoda Industries	PO Sent												
+	8/5/26	3	26	Single Core wire	0.5 sq mm Brown	01 Coil			Darshan Enterprises	SM 200	Electrical Pannel Material Shrink	Nakoda Industries	PO Sent												
+	8/5/26	3	27	Single Core wire	0.5 sq mm Blue	01 Coil			Darshan Enterprises	SM 200	Electrical Pannel Material Shrink	Nakoda Industries	PO Sent												
+	8/5/26	3	28	Drag Chain	57 mm x 25mm	02 Meter			Darshan Enterprises	SM 200	Electrical Pannel Material Shrink	Nakoda Industries	PO Sent												
+	8/5/26	3	29	Cable Tray 	45x60 mm	50 Nos			Darshan Enterprises	SM 200	Electrical Pannel Material Shrink	Nakoda Industries	PO Sent												
+	8/5/26	4	30	SS 304 	BEND OD 32 	06 NOS			Manav Metal	10HD 	PIPELINE Assembly RFC 60(10HD)		PO Sent												
+	8/5/26	4	31	SS 304 	SMS COUPLING ID 32 	04 NOS 			Manav Metal	10HD 	PIPELINE Assembly RFC 60(10HD)		PO Sent												
+	8/5/26	4	32	SS 304 	BARREL NIPPLE 1 INCH X 8 INCH 	03 NOS 			Manav Metal	10HD 	PIPELINE Assembly RFC 60(10HD)		PO Sent												
+	8/5/26	4	33	SS 304 	BALL VALVE 1 INCH	02 NOS 			Manav Metal	10HD 	PIPELINE Assembly RFC 60(10HD)		PO Sent												
+	8/5/26	5	34	Rubber	SHRINK RUBBER ROLLER 	02 NOS	Received		BALRAJ RAUUBER 	SM 200	SHRINK MACHINE 	Nakoda Industries	Received												
+	8/6/26	6	35	M.S Circle	DAI 240 X 22 MM 	2 NOS	Received		Smart Profile		DISTRIBUTOR PLATE CENTER MOUNTING  		Received												
+	8/6/26	6	36	M.S Circle	DAI 160 X 22 MM	4 NOS 	Received		Smart Profile		AS REJECTED  PLATE WAS RECIVED 		PO Sent												
+	8/6/26	7	37	SS BAR 304	OD 35 X 12 MM THIKNESS 	32 NOS 	Received		MANAV METAL 		NOZZEL HEAD TIKLI		PO Sent												
+	8/6/26	7	38	SS BAR PIPE	OD 110 X ID 75 X 110 LENGTH 	02NOS 	Received		MANAV METAL 		CAP TANSFER PALTE PIPE		PO Sent												
+	9-Sep-26	44	148	SS 304 FLAT	40 X 5 FLAT	02 LENGHT			MANAV METAL	 ALL FLMC 	FLMC ALL MACHINE		PO Status												
+	9-Sep-26	44	149	SS 304 FLAT	40 X 12	02 LENGHT			MANAV METAL	 ALL FLMC 	FLMC ALL MACHINE		PO Status												
+	9-Sep-26	44	150	SS  304 FLAT	50 X 6	01 LENGHT			MANAV METAL	 ALL FLMC 	CAM PATTI		PO Status												
+	9-Sep-26	44	151	SS  304 FLAT	50 X 12 	01 LENGHT			MANAV METAL	 ALL FLMC 	OUTLET BRIDGE		PO Status												
+	9-Sep-26	44	152	SS BAR 304	16 MM BAR	05 LENGHT			MANAV METAL	 ALL FLMC 	WASHING CAM		PO Status												
+	9-Sep-26	44	153	SS BAR 304	8 MM BAR	05 LENGHT			MANAV METAL	 ALL FLMC 	SEALING COVER 		PO Status												
+	9-Sep-26	44	154	SS BAR 304	12 MM BAR 	03 LENGHT			MANAV METAL	 ALL FLMC 	DOCK SENSOR ROD 		PO Status												
+	9-Sep-26	44	155	SS 304 FLAT	25 X 5	05 LENGHT			MANAV METAL	 ALL FLMC 	INLET PATTI		PO Status												
+	9/22/26	LOCAL	288	GRAPG SCREW HARDEN	12 X 12 	40 NOS 			V K	LM DRUM			PO Status												
+	9/22/26	LOCAL	289	ALLEN BOLT SS	5 X 8	100 NOS			V K	16 HD	ALL ASM		PO Status	SANDIP SHARDUL											
+	9/22/26	LOCAL	290	ALLEN BOLT SS	6 X 16	70 NOS			V K	16 HD	ALL ASM		PO Status	SANDIP SHARDUL											
+	9/22/26	LOCAL	291	ALLEN BOLT SS	8 X 50	40 NOS			V K	16 HD 	ALL ASM		PO Status	SANDIP SHARDUL											
+	9/22/26	LOCAL	292	ALLEN BOLT	5 X 20	60 NOS 		V K		16 HD 	ALL ASM		PO Status	SANDIP SHARDUL											
+	9/22/26	LOCAL	293	HEX BOLT 	8 X 20	50 NOS 			V K	16 HD 	ALL ASM		PO Status	SANDIP SHARDUL											
+	9/22/26	LOCAL	294	HEX BOLT 	6 X 15	20 NOS 			V K	16 HD 	ALL ASM		PO Status	SANDIP SHARDUL											
+	9/22/26	LOCAL	295	GRAPH SCREW	5 X 8	100 NOS 			V K	16 HD	ALL ASM		PO Status	SANDIP SHARDUL											
+	9/22/26	LOCAL	296	WASHER 	5 MM	100 NOS 		V 	V K 	16 HD 	ALL ASM		PO Status	SANDIP SHARDUL											
+	9/22/26	LOCAL	297	WASHER 	8 MM	50 NOS 		V K		16 HD 	ALL ASM		PO Status	SANDIP SHARDUL											
+	9/22/26	LOCAL	298	WASHER 	6 MM	50 NOS 			V K	16 HD 	ALL ASM		PO Status	SANDIP SHARDUL											
+	9/23/26	55	299	BEARING 	6308 ZZ	8 NOS			H M TRADERS 	90 BPM			PO Status	YASIR											
+	9/23/26	55	300	BEARING 	5312 ZZ	2 NOS 			H M TRADERS 	90 BPM			PO Status	YASIR											
+	9/23/26	55	301	BEARING 	6312 ZZ	2 NOS 			H M TRADERS 	90 BPM			PO Status	YASIR											
+	9/23/26	55	302	BEARING 	32218	1 NOS 			H M TRADERS 	90 BPM			PO Status	YASIR											
+	9/23/26	55	303	BEARING 	6306 ZZ	2 NOS 			H M TRADERS 	90 BPM			PO Status	YASIR											
+	9/23/26	55	304	BEARING 	6314 ZZ	2 NOS 			H M TRADERS 	90 BPM			PO Status	YASIR											
+	9/23/26	55	305	BEARING 	6218  ZZ	1 NOS 			H M TRADERS 	90 BPM			PO Status	YASIR											
+	9/23/26	55	306	BEARING 	6205 ZZ	8 NOS 			H M TRADERS 	90 BPM			PO Status	YASIR											
+	9/23/26	55	307	BEARING 	5203 ZZ	8 NOS 			H M TRADERS 	90 BPM			PO Status	YASIR											
+	9/23/26	55	308	BEARING 	6205 ZZ	4 NOS 			H M TRADERS 	90 BPM			PO Status	YASIR											
+	9/23/26	55	309	BEARING 	30205 ZZ	8 NOS 			H M TRADERS 	90 BPM			PO Status	YASIR											
+	9/23/26	55	310	BEARING 	THRUST 51104	8 NOS 			H M TRADERS 	90 BPM			PO Status	YASIR											
+	9/23/26	55	311	BEARING 	 UCFL 205	4 NOS 			H M TRADERS 	90 BPM			PO Status	YASIR											
+	9/23/26	55	312	OIL SEAL 	50 X 90 X 8	4 NOS 			H M TRADERS 	90 BPM			PO Status	YASIR											
+	9/23/26	55	313	OIL SEAL 	110 X160 X12	1 NOS 			H M TRADERS 	90 BPM			PO Status	YASIR											
+	9/23/26	55	314	OIL SEAL 	80 X 130 X 10	2 NOS 			H M TRADERS 	90 BPM			PO Status	YASIR											
+	9/23/26	55	315	OIL SEAL 	32 X 52 X 6	8 NOS 			H M TRADERS 	90 BPM			PO Status	YASIR											
+	9/23/26	55	316	CHEAK NUT 	KM - 18 	2 NOS 			H M TRADERS 	90 BPM			PO Status	YASIR											
+	9/23/26	55	317	CHEAK NUT 	KM - 17	4 NOS 			H M TRADERS 	90 BPM			PO Status	YASIR											
+	9/23/26	55	318	CHEAK NUT 	KM - 14	2 NOS 			H M TRADERS 	90 BPM			PO Status	YASIR											
+	9/23/26	55	319	CHEAK NUT 	KM - 12	4 NOS 			H M TRADERS 	90 BPM			PO Status	YASIR											
+	9/23/26	55	320	CHEAK NUT 	KM - 11	4 NOS 			H M TRADERS 	90 BPM			PO Status	YASIR											
+	9/23/26	55	321	CHEAK NUT 	KM -  8	6 NOS 			H M TRADERS 	90 BPM			PO Status	YASIR											
+	9/23/26	55	322	CHEAK NUT 	KM  - 5	40 NOS 			H M TRADERS 	90 BPM			PO Status	YASIR											
+	9/23/26	55	323	CHEAK NUT 	KM  - 4	20 NOS 			H M TRADERS 	90 BPM			PO Status	YASIR											
+	9/24/26	57	324	M.S Bar	OD55X 930mm length	1 NOS			SHIVRAJ INDUSTRIES 	12 HD	 		PO Status												
+	9/24/26	57	325	M.S Bar	OD55X560 length	1 NOS			SHIVRAJ INDUSTRIES 	12 HD	W/s shaft		PO Status												
+	9/24/26	57	326	M.S Bar	OD35X525mm length	3 NOS			SHIVRAJ INDUSTRIES 	12 HD	Star shaft		PO Status												
+	9/24/26	57	327	M.S Bar	OD35X550 mm length	2 NOS			SHIVRAJ INDUSTRIES 	12 HD	Star shaft		PO Status												
+	9/24/26	LOCAL	328	M S  PIPE	OD 154 X ID 130 X 480	01 NOS			MANAV METAL	12 HD	FILING HOUSING		PO Status												
+	9/24/26	58	329	SS 304 PIPE	OD 42 X ID 30 X 135 LENGTH	24 NOS			MANAV METAL	24 HD	LIFTER BASE CONTACTOR		PO Status												
+	9/28/26	58	330	SS 304 FLAT	50 X 12 X 98 MM	24 NOS			MANAV METAL	24 HD	LIFTER BASE CONTACTOR		PO Status												
+	9/28/26	58	331	SS FLAT	32 X 12 X 62	24 NOS			MANAV METAL	24 HD	LIFTER BASE CONTACTOR		PO Status												
+	9/28/26	58	332	SS BAR 304 BRIGHT	OD 25 X 298 MM	24NOS			MANAV METAL	24 HD	LIFTER ROD		PO Status												
+	9/28/26	58	333	SS BAR 304 BRIGHT	OD 12 X 270 MM	24 NOS			MANAV METAL	24 HD	LIFTER ROD		PO Status												
+	9/28/26	58	334	SS FLAT 304	60 X 12 X 105 MM	24 NOS			MANAV METAL	24 HD	LIFTER ROD		PO Status												
+	9/28/26	58	335	SS SQ 304	25 X 25 X 84 MM	48 NOS			MANAV METAL	24 HD	WASHING BLOCK		PO Status												
+	9/28/26	58	336	SS SQ 304	25 X 25 X 40 MM	24 NOS			MANAV METAL	24 HD	WASHING BLOCK		PO Status												
+	9/28/26	58	337	SS BRIGHT BAR	OD 12 X 115	24 NOS			MANAV METAL	24 HD	WASHING BLOCK		PO Status												
+	9/28/26	58	338	SS 304 PIPE	OD 42 X ID 30 X 81 LENGTH	24 NOS			MANAV METAL	24 HD	NOZZEL HEAD		PO Status												
+	9/28/26	58	339	SS BAR	OD 32 X 13 MM	24 NOS			MANAV METAL	24 HD	NOZZEL HEAD		PO Status												
+	9/28/26	LOCAL	340	SS CIRCLE	OD 100 X 6 MM 	40 NOS			MANAV METAL	24 HD	ALL MACHICE LEG		PO Status												
+	9/30/26	59	341	SS SQ BAR	25 x 25 x 368	4 NOS 			MANAV METAL	12 HD	 INLET SQ PILLER 		PO Status	SANDIP SHARDUL											
+	9/30/26	59	342	SS Pipe	OD 38 x 3 mm thick x 368	3 NOS 			MANAV METAL	12 HD	WASHING PILLER 		PO Status	SANDIP SHARDUL											
+	9/30/26	59	343	SS Pipe 	OD 38 x 3 mm thick x 1100	2 NOS 			MANAV METAL	12 HD	SEALING PILLER 		PO Status	SANDIP SHARDUL											
+	9/30/26	59	344	SS Pipe 	OD 32 x 3 mm thick x 368	7 NOS 			MANAV METAL	12 HD	SEALING PILLER 		PO Status	SANDIP SHARDUL											
+	9/30/26	59	345	SS Bar 	OD 30 x 380	2 NOS 			MANAV METAL	12 HD	DUBBLE FLANGE		PO Status	SANDIP SHARDUL											
+	9/30/26	59	346	SS Bar 	OD 30 x 368	2 NOS 			MANAV METAL	12 HD	SEALING PILLER 		PO Status	SANDIP SHARDUL											
+	9/30/26	59	347	SS Bar 	OD 30 x 380	1 NOS 			MANAV METAL	12 HD	SEALING PILLER 		PO Status	SANDIP SHARDUL											
+	9/30/26	59	348	SS Flat	80 x 12  MM THICKNESS x 420	2 NOS 			MANAV METAL	12 HD			PO Status	SANDIP SHARDUL											
+	9/30/26	59	349	SS Flat	80 x 12 12  MM THICKNESS x 175	1 NOS 			MANAV METAL	12 HD			PO Status	SANDIP SHARDUL											
+	9/30/26	59	350	SS Flat	100 x 12  MM THICKNESS x 150	1 NOS 			MANAV METAL	12 HD			PO Status	SANDIP SHARDUL											
+	9/30/26	59	351	SS Flat	60 x 16 MM THICKNESS  x 110	2 NOS 			MANAV METAL	12 HD			PO Status	SANDIP SHARDUL											
+	9/30/26	59	352	SS Flat	50 x 16 MM THICKNESSS x 112	1 NOS 			MANAV METAL	12 HD			PO Status	SANDIP SHARDUL											
+	9/30/26	59	353	SS Flat	60 x 16MM THICKNESS  x 135	2 NOS 			MANAV METAL	12 HD			PO Status	SANDIP SHARDUL											
+	9/30/26	59	354	SS Flat	50 x 16 MM THICKNESS  x 83	3 NOS 			MANAV METAL	12 HD			PO Status	SANDIP SHARDUL											
+	9/30/26	59	355	SS Flat	60 x 16 MM THICKNESS x 100	2 NOS 			MANAV METAL	12 HD			PO Status	SANDIP SHARDUL											
+	9/30/26	59	356	SS Flat	65 x 12 MM THICKNESS x 65	4 NOS 			MANAV METAL	12 HD			PO Status	SANDIP SHARDUL											
+	9/30/26	59	357	SS BAR	OD 40 X 200 MM 	3 NOS 			MANAV METAL	12 HD			PO Status	SANDIP SHARDUL											
+	9/30/26	60	358	GEAR BOX AND MOTOR	GEAR BOX 50 :30 (0.5 HP SUITABLE)	2 NOS			GEAR WORLD 	LM			PO Status	GAJU SOLUNKE											
+	9/30/26	60	359	GEAR BOX AND MOTOR	MOTOR 1440 RPM 0.5 HP	2 NOS			GEAR WORLD 	LM			PO Status	GAJU SOLUNKE											
+	9/30/26	60	360	GEAR BOX AND MOTOR	GEAR BOX 40:15 (0.25 HP SUITABLE)	4 NOS			GEAR WORLD 	LM			PO Status	GAJU SOLUNKE											
+	9/30/26	60	361	GEAR BOX AND MOTOR	MOTOR 1440 RPM 0.25HP	4 NOS			GEAR WORLD 	LM			PO Status	GAJU SOLUNKE											
+	9/30/26	60	362	GEAR BOX AND MOTOR	MOTOR 1440 RPM 3 HP	1 NOS			GEAR WORLD 	LM			PO Status	GAJU SOLUNKE											
+	9/30/26	60	363	GEAR BOX AND MOTOR	GEAR BOX 63/15	2 NOS			GEAR WORLD 	LM			PO Status	GAJU SOLUNKE											
+	9/30/26	60	364	GEAR BOX AND MOTOR	MOTOR 1440 RPM 1 HP	4 NOS			GEAR WORLD 	LM			PO Status	GAJU SOLUNKE											
+	9/30/26	60	365	GEAR BOX AND MOTOR	GEAR BOX 63/60	2 NOS			GEAR WORLD 	LM			PO Status	GAJU SOLUNKE											
+	9/30/26	61	366	NYLON SHEET 	25MM THICKNESS  X450 X 450 	1 NOS 			MANAV METAL	LM			PO Status	GAJU SOLUNKE											
+	9/30/26	61	367	NYLON SHEET 	25MM THICKNESS X 1 X 1	1 NOS 			MANAV METAL	LM			PO Status	GAJU SOLUNKE`;
+
+function parseTsv() {
+  const lines = RAW_TSV.split('\n');
+  const cells = {};
+  const colWidths = {
+    A: 50,
+    B: 110,
+    C: 90,
+    D: 80,
+    E: 220,
+    F: 230,
+    G: 95,
+    H: 95,
+    I: 95,
+    J: 170,
+    K: 120,
+    L: 220,
+    M: 140,
+    N: 110,
+    O: 130,
+    P: 180
+  };
+
+  let maxRow = 0;
+  let maxCol = 16;
+
+  lines.forEach((line, rIdx) => {
+    if (!line.trim()) return;
+    const rowNum = rIdx + 1; // 1-indexed
+    maxRow = Math.max(maxRow, rowNum);
+    const parts = line.split('\t');
+    
+    // Check if first element is blank
+    const startIdx = parts[0] === '' ? 1 : 0;
+    
+    for (let c = startIdx; c < parts.length; c++) {
+      const colLetter = String.fromCharCode(65 + (c - startIdx + 1)); // start at B (col B = 66)
+      const val = parts[c].trim();
+      if (!val) continue;
+
+      const isHeader = rowNum === 1;
+      cells[`${colLetter}${rowNum}`] = {
+        v: val,
+        bold: isHeader,
+        align: isHeader ? 'center' : (colLetter === 'B' || colLetter === 'C' || colLetter === 'D' || colLetter === 'G' || colLetter === 'H' || colLetter === 'I' || colLetter === 'N') ? 'center' : 'left',
+        format: 'text',
+        bgColor: isHeader ? '#ffffff' : undefined,
+        textColor: '#0f172a'
+      };
+
+      const estW = Math.min(Math.max(val.length * 8 + 30, 80), 300);
+      if (!colWidths[colLetter] || estW > colWidths[colLetter]) {
+        colWidths[colLetter] = estW;
+      }
+    }
+  });
+
+  console.log(`Parsed ${maxRow} rows, ${Object.keys(cells).length} cells`);
+  return { cells, colWidths, rowCount: Math.max(maxRow + 30, 200), colCount: 26 };
+}
+
+const parsed = parseTsv();
+
+// Update realRsbWorkbooks.json
+const realWbPath = path.join(__dirname, '../src/data/realRsbWorkbooks.json');
+let existing = [];
+if (fs.existsSync(realWbPath)) {
+  existing = JSON.parse(fs.readFileSync(realWbPath, 'utf8'));
+}
+
+const rsb1Index = existing.findIndex(w => w.id === 'wb-rsb1-daily-po');
+const sheet1 = {
+  id: 'sheet-wb-rsb1-daily-po-0',
+  workbook_id: 'wb-rsb1-daily-po',
+  name: 'Daily PO Register',
+  tab_color: '#107c41',
+  order_index: 0,
+  row_count: parsed.rowCount,
+  col_count: parsed.colCount,
+  col_widths: parsed.colWidths,
+  frozen_rows: 1,
+  frozen_cols: 0,
+  cells: parsed.cells
+};
+
+if (rsb1Index >= 0) {
+  existing[rsb1Index].sheets[0] = sheet1;
+} else {
+  existing.unshift({
+    id: 'wb-rsb1-daily-po',
+    directory_id: 'dir-daily-po',
+    title: 'RSB-1 Daily PO Master Register',
+    description: 'Real-time Daily Purchase Orders register with materials, quantities, remarks and order tracking',
+    created_by: 'usr-amit',
+    created_by_name: 'Amit',
+    created_at: '2026-09-01T09:00:00Z',
+    last_edited_by: 'usr-kaustubh',
+    last_edited_by_name: 'Kaustubh',
+    last_edited_at: '2026-10-04T17:15:00Z',
+    is_pinned: true,
+    is_favorite: true,
+    tags: ['Daily PO', 'RSB Live Excel', 'Real Data'],
+    sheets: [sheet1]
+  });
+}
+
+fs.writeFileSync(realWbPath, JSON.stringify(existing, null, 2));
+console.log('Successfully updated realRsbWorkbooks.json with user exact dataset!');
