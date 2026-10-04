@@ -43,9 +43,9 @@ export function saveDirectories(dirs: WorkbookDirectory[]): void {
 }
 
 const BASE_WORKBOOK_IDS = new Set(['wb-rsb1-daily-po', 'wb-rsb2-dc-book', 'wb-rsb3-spare-parts']);
-const CUSTOM_WORKBOOKS_KEY = 'rsb_custom_workbooks_v3';
-const BASE_WORKBOOK_EDITS_KEY = 'rsb_base_workbooks_edits_v3';
-const DELETED_WORKBOOK_IDS_KEY = 'rsb_deleted_workbook_ids_v3';
+const CUSTOM_WORKBOOKS_KEY = 'rsb_custom_workbooks_v4';
+const BASE_WORKBOOK_EDITS_KEY = 'rsb_base_workbooks_edits_v4';
+const DELETED_WORKBOOK_IDS_KEY = 'rsb_deleted_workbook_ids_v4';
 
 // In-memory cache
 let inMemoryWorkbooks: Workbook[] | null = null;
@@ -77,9 +77,17 @@ export function loadWorkbooks(): Workbook[] {
     return inMemoryWorkbooks;
   }
 
+  // Seamless migration from v3 if v4 not set
+  try {
+    if (!localStorage.getItem(CUSTOM_WORKBOOKS_KEY)) {
+      const v3Custom = localStorage.getItem('rsb_custom_workbooks_v3');
+      if (v3Custom) localStorage.setItem(CUSTOM_WORKBOOKS_KEY, v3Custom);
+    }
+  } catch (_) {}
+
   const deletedIds = getDeletedWorkbookIds();
 
-  // 1. Start with base RSB workbooks (unless explicitly deleted)
+  // 1. Start with base RSB workbooks with accurate Row 1 column headers
   const baseMap = new Map<string, Workbook>();
   INITIAL_WORKBOOKS.forEach((wb) => {
     if (!deletedIds.has(wb.id)) {

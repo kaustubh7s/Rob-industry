@@ -8,10 +8,11 @@ function convertSerialDate(val) {
     const utcDays = Math.floor(val - 25569);
     const utcValue = utcDays * 86400;
     const dateInfo = new Date(utcValue * 1000);
-    const day = dateInfo.getUTCDate();
-    const month = dateInfo.getUTCMonth() + 1;
-    const year = dateInfo.getUTCFullYear();
-    return `${day}/${month}/${year}`;
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const day = String(dateInfo.getUTCDate()).padStart(2, '0');
+    const month = months[dateInfo.getUTCMonth()];
+    const year = String(dateInfo.getUTCFullYear()).slice(-2);
+    return `${day}-${month}-${year}`;
   }
   return val;
 }
@@ -64,6 +65,18 @@ function processWorkbook(filePath, wbId, dirId, title, desc, tag) {
           colWidths[colKey] = estWidth;
         }
       }
+    }
+
+    // Ensure A1 header exists
+    if (!cells['A1'] && sIdx === 0) {
+      cells['A1'] = {
+        v: 'Sr. No',
+        bold: true,
+        align: 'center',
+        format: 'text',
+        textColor: '#0f172a',
+      };
+      if (!colWidths['A']) colWidths['A'] = 80;
     }
 
     return {
