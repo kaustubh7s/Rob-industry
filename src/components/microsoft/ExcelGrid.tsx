@@ -93,16 +93,8 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
   });
 
   const [isSelecting, setIsSelecting] = useState(false);
-
-  // Global mouseup handler to ensure drag selection always terminates cleanly
-  useEffect(() => {
-    if (!isSelecting) return;
-    const handleGlobalMouseUp = () => {
-      setIsSelecting(false);
-    };
-    window.addEventListener('mouseup', handleGlobalMouseUp);
-    return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
-  }, [isSelecting]);
+  const [isFilling, setIsFilling] = useState(false);
+  const [fillRange, setFillRange] = useState<{ startRow: number; endRow: number; startCol: number; endCol: number } | null>(null);
 
   // Sync selection to parent for multi-cell formatting & column coloring
   useEffect(() => {
@@ -295,6 +287,217 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
       });
     }
   }, [activeCell]);
+
+  // Convert mouse pixel coordinates to row & column indices in virtual grid
+  const getCellCoordsFromMouse = useCallback(
+    (clientX: number, clientY: number) => {
+      if (!containerRef.current) return null;
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = clientX - rect.left - rowHeaderWidth + containerRef.current.scrollLeft;
+      const y = clientY - rect.top - HEADER_ROW_HEIGHT + containerRef.current.scrollTop;
+
+      // Find column index
+      let targetCol = 0;
+      for (let c = 0; c < totalCols; c++) {
+        if (x >= colPositions[c] && x < colPositions[c + 1]) {
+          targetCol = c;
+          break;
+        }
+        if (x >= colPositions[c + 1]) targetCol = c;
+      }
+
+      // Find row index
+      let targetRow = 0;
+      for (let r = 0; r < totalFilteredRows; r++) {
+        if (y >= rowPositions[r] && y < rowPositions[r + 1]) {
+          targetRow = filteredRowIndices[r];
+          break;
+        }
+        if (y >= rowPositions[r + 1]) targetRow = filteredRowIndices[r];
+      }
+
+      return {
+        col: Math.max(0, Math.min(targetCol, totalCols - 1)),
+        row: Math.max(0, Math.min(targetRow, totalRawRows - 1)),
+      };
+    },
+    [rowHeaderWidth, totalCols, totalFilteredRows, totalRawRows, colPositions, rowPositions, filteredRowIndices]
+  );
+
+  // Auto-Fill execution logic (series increment, formulas & formatting copy)
+  const handleExecuteAutoFill = useCallback(
+    (
+      srcSel: CellSelection,
+      targetRange: { startRow: number; endRow: number; startCol: number; endCol: number }
+    ) => {
+      const srcMinRow = Math.min(srcSel.startRow, srcSel.endRow);
+      const srcMaxRow = Math.max(srcSel.startRow, srcSel.endRow);
+      const srcMinCol = Math.min(srcSel.startCol, srcSel.endCol);
+      const srcMaxCol = Math.max(srcSel.startCol, srcSel.endCol);
+
+      const targetMaxRow = targetRange.endRow;
+      if (targetMaxRow <= srcMaxRow) return;
+
+      const batchUpdates: Record<string, Partial<SheetCell>> = {};
+      const numSourceRows = srcMaxRow - srcMinRow + 1;
+
+      for (let c = srcMinCol; c <= srcMaxCol; c++) {
+        const srcValues: Array<number | string | null> = [];
+        let allNumbers = true;
+
+        for (let r = srcMinRow; r <= srcMaxRow; r++) {
+          const cid = coordsToCellId(c, r);
+          const cell = sheet.cells[cid];
+          const v = cell?.v;
+          srcValues.push(v !== undefined ? v : null);
+          if (typeof v !== 'number' && (v === '' || isNaN(Number(v)))) {
+            allNumbers = false;
+          }
+        }
+
+        let step = 1;
+        if (allNumbers && srcValues.length >= 2) {
+          const first = Number(srcValues[0]);
+          const last = Number(srcValues[srcValues.length - 1]);
+          step = (last - first) / (srcValues.length - 1) || 1;
+        }
+
+        for (let r = srcMaxRow + 1; r <= targetMaxRow; r++) {
+          const targetCid = coordsToCellId(c, r);
+          const offset = r - srcMaxRow;
+          const srcIdx = (r - srcMinRow) % numSourceRows;
+          const templateCid = coordsToCellId(c, srcMinRow + srcIdx);
+          const templateCell = sheet.cells[templateCid] || {};
+
+          if (allNumbers && srcValues[srcIdx] !== null && srcValues[srcIdx] !== undefined) {
+            const baseVal = Number(srcValues[srcValues.length - 1]);
+            const newVal = baseVal + step * offset;
+            batchUpdates[targetCid] = {
+              ...templateCell,
+              v: newVal,
+            };
+          } else {
+            batchUpdates[targetCid] = {
+              ...templateCell,
+            };
+          }
+        }
+      }
+
+      if (Object.keys(batchUpdates).length > 0) {
+        onBatchCellsChange(batchUpdates);
+        setSelection({
+          startRow: srcMinRow,
+          endRow: targetMaxRow,
+          startCol: srcMinCol,
+          endCol: srcMaxCol,
+        });
+      }
+    },
+    [sheet.cells, onBatchCellsChange]
+  );
+
+  // Smooth Auto-Scroll and Continuous Drag Loop
+  const mousePosRef = useRef<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    if (!isSelecting && !isFilling) return;
+
+    let animId: number;
+
+    const handleWindowMouseMove = (e: MouseEvent) => {
+      mousePosRef.current = { x: e.clientX, y: e.clientY };
+      const coords = getCellCoordsFromMouse(e.clientX, e.clientY);
+      if (coords) {
+        if (isSelecting) {
+          setSelection((prev) => ({
+            ...prev,
+            endRow: coords.row,
+            endCol: coords.col,
+          }));
+        } else if (isFilling) {
+          setFillRange({
+            startRow: Math.min(selection.startRow, selection.endRow),
+            endRow: Math.max(coords.row, Math.max(selection.startRow, selection.endRow)),
+            startCol: Math.min(selection.startCol, selection.endCol),
+            endCol: Math.max(selection.startCol, selection.endCol),
+          });
+        }
+      }
+    };
+
+    const scrollLoop = () => {
+      if (containerRef.current && mousePosRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        const { x, y } = mousePosRef.current;
+        const edgeZone = 45;
+        let scrolled = false;
+
+        // Auto-scroll down smoothly when dragging near/beyond bottom
+        if (y > rect.bottom - edgeZone) {
+          const delta = Math.min(Math.max((y - (rect.bottom - edgeZone)) * 0.35, 3), 25);
+          containerRef.current.scrollTop += delta;
+          scrolled = true;
+        } else if (y < rect.top + HEADER_ROW_HEIGHT + edgeZone && y > rect.top) {
+          const delta = Math.min(Math.max((rect.top + HEADER_ROW_HEIGHT + edgeZone - y) * 0.35, 3), 25);
+          containerRef.current.scrollTop -= delta;
+          scrolled = true;
+        }
+
+        // Horizontal scroll
+        if (x > rect.right - edgeZone) {
+          const delta = Math.min(Math.max((x - (rect.right - edgeZone)) * 0.35, 3), 25);
+          containerRef.current.scrollLeft += delta;
+          scrolled = true;
+        } else if (x < rect.left + rowHeaderWidth + edgeZone && x > rect.left) {
+          const delta = Math.min(Math.max((rect.left + rowHeaderWidth + edgeZone - x) * 0.35, 3), 25);
+          containerRef.current.scrollLeft -= delta;
+          scrolled = true;
+        }
+
+        if (scrolled) {
+          const coords = getCellCoordsFromMouse(x, y);
+          if (coords) {
+            if (isSelecting) {
+              setSelection((prev) => ({
+                ...prev,
+                endRow: coords.row,
+                endCol: coords.col,
+              }));
+            } else if (isFilling) {
+              setFillRange({
+                startRow: Math.min(selection.startRow, selection.endRow),
+                endRow: Math.max(coords.row, Math.max(selection.startRow, selection.endRow)),
+                startCol: Math.min(selection.startCol, selection.endCol),
+                endCol: Math.max(selection.startCol, selection.endCol),
+              });
+            }
+          }
+        }
+      }
+      animId = requestAnimationFrame(scrollLoop);
+    };
+
+    window.addEventListener('mousemove', handleWindowMouseMove);
+    animId = requestAnimationFrame(scrollLoop);
+
+    const handleGlobalMouseUp = () => {
+      if (isFilling && fillRange) {
+        handleExecuteAutoFill(selection, fillRange);
+      }
+      setIsSelecting(false);
+      setIsFilling(false);
+      setFillRange(null);
+    };
+
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+
+    return () => {
+      cancelAnimationFrame(animId);
+      window.removeEventListener('mousemove', handleWindowMouseMove);
+      window.removeEventListener('mouseup', handleGlobalMouseUp);
+    };
+  }, [isSelecting, isFilling, getCellCoordsFromMouse, selection, fillRange, handleExecuteAutoFill, rowHeaderWidth]);
 
   const startEditing = useCallback(
     (initialChar?: string) => {
@@ -953,12 +1156,39 @@ export const ExcelGrid: React.FC<ExcelGridProps> = ({
 
                   {/* Excel Fill Handle */}
                   {isActive && !isEditing && (
-                    <div className="absolute -bottom-1 -right-1 w-2 h-2 bg-[#107c41] border border-white cursor-crosshair z-20" />
+                    <div
+                      onMouseDown={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setIsFilling(true);
+                        setFillRange({
+                          startRow: minSelRow,
+                          endRow: maxSelRow,
+                          startCol: minSelCol,
+                          endCol: maxSelCol,
+                        });
+                      }}
+                      className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-[#107c41] border border-white cursor-crosshair z-20 hover:scale-125 transition-transform"
+                      title="Drag down to auto-fill series or duplicate"
+                    />
                   )}
                 </div>
               );
             });
           })}
+
+          {/* Active Auto-Fill Drag Preview Box */}
+          {isFilling && fillRange && (
+            <div
+              className="absolute pointer-events-none border-2 border-dashed border-[#107c41] bg-[#107c41]/10 z-25 transition-none"
+              style={{
+                left: colPositions[fillRange.startCol],
+                top: rowPositions[fillRange.startRow],
+                width: colPositions[fillRange.endCol + 1] - colPositions[fillRange.startCol],
+                height: rowPositions[fillRange.endRow + 1] - rowPositions[fillRange.startRow],
+              }}
+            />
+          )}
         </div>
       </div>
 
