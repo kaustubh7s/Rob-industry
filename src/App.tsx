@@ -32,7 +32,7 @@ import { GlobalSearch } from './components/common/GlobalSearch';
 import { ExcelModal } from './components/common/ExcelModal';
 import { QuickActionModal } from './components/common/QuickActionModal';
 import { ProjectMaterialEntry } from './components/entry/ProjectMaterialEntry';
-import { EasyTutorialModal, FloatingTutorialButton } from './components/common/EasyTutorialModal';
+import { EasyTutorialModal } from './components/common/EasyTutorialModal';
 import { Modal } from './components/common/Modal';
 import { MobileAdminApp } from './components/mobile/MobileAdminApp';
 import { MobileStoreInwardApp } from './components/mobile/MobileStoreInwardApp';
@@ -307,9 +307,6 @@ const ERPAppContent: React.FC = () => {
         onClose={() => setIsTutorialOpen(false)}
         onSelectTab={(tabId) => setActiveTab(tabId)}
       />
-
-      {/* Floating Always-Available Quick Tutorial & SOP Guide Trigger */}
-      <FloatingTutorialButton onClick={() => setIsTutorialOpen(true)} />
 
       {/* SS Weight Quick Calculator Modal */}
       <Modal
