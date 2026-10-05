@@ -48,6 +48,7 @@ interface HeaderProps {
   onOpenCalculator: () => void;
   onOpenQuickAction: (action?: 'order' | 'inward' | 'outward' | 'job' | 'qc') => void;
   onOpenTutorial: () => void;
+  onOpenTour?: () => void;
   onToggleSidebar?: () => void;
 }
 
@@ -57,6 +58,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenCalculator,
   onOpenQuickAction,
   onOpenTutorial,
+  onOpenTour,
   onToggleSidebar,
 }) => {
   const {
@@ -221,6 +223,21 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="hidden md:inline-block px-1.5 py-0.2 rounded bg-emerald-500/20 text-[9px] font-mono border border-emerald-400/30 text-emerald-200">
               rsb1.xlsx
             </span>
+          </button>
+
+          {/* Interactive Gliding Tour Button */}
+          <button
+            type="button"
+            onClick={() => {
+              if (onOpenTour) onOpenTour();
+              else window.dispatchEvent(new CustomEvent('rsb:start-tour'));
+            }}
+            className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs border bg-gradient-to-r from-cyan-950/90 to-blue-950/90 hover:from-cyan-900 hover:to-blue-900 border-cyan-500/50 text-cyan-300 hover:text-white active:scale-95 group"
+            title="Start Interactive Gliding Walkthrough Tour (6 Steps)"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-cyan-400 group-hover:scale-110 group-hover:rotate-12 transition-transform" />
+            <span className="font-extrabold tracking-wide">TOUR</span>
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping shrink-0" />
           </button>
         </div>
 

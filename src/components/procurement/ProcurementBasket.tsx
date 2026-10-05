@@ -1201,7 +1201,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
         {/* ======================================================================= */}
         {/* 1. HEADER SECTION (CLEAN FULL-SCREEN ORDER BASKET) */}
         {/* ======================================================================= */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div data-tour="tour-po-basket-nav" className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-blue-700 text-white flex items-center justify-center font-black shadow-sm">
             {viewMode === 'poBasket' ? (
@@ -1241,6 +1241,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
             <>
               <button
                 type="button"
+                data-tour="tour-issue-direct-po"
                 onClick={() => {
                   setDirectPOForm({
                     poNumber: `PO-2026-${String(purchaseOrders.length + 1).padStart(3, '0')}`,

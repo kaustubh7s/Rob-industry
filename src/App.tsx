@@ -33,6 +33,7 @@ import { ExcelModal } from './components/common/ExcelModal';
 import { QuickActionModal } from './components/common/QuickActionModal';
 import { ProjectMaterialEntry } from './components/entry/ProjectMaterialEntry';
 import { EasyTutorialModal } from './components/common/EasyTutorialModal';
+import { InteractiveGlidingTour } from './components/common/InteractiveGlidingTour';
 import { Modal } from './components/common/Modal';
 import { MobileAdminApp } from './components/mobile/MobileAdminApp';
 import { MobileStoreInwardApp } from './components/mobile/MobileStoreInwardApp';
@@ -50,6 +51,7 @@ const ERPAppContent: React.FC = () => {
   const [quickActionInitial, setQuickActionInitial] = useState<'order' | 'inward' | 'outward' | 'job' | 'qc'>('inward');
   const [isCalcModalOpen, setIsCalcModalOpen] = useState(false);
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
+  const [isTourOpen, setIsTourOpen] = useState(false);
   const [isLiveEditMode, setIsLiveEditMode] = useState(false);
 
   // Dedicated Mobile Device Detection (Leaves PC UI 100% untouched)
@@ -194,6 +196,13 @@ const ERPAppContent: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [setActiveTab]);
 
+  // Global Interactive Tour Event Listener
+  useEffect(() => {
+    const handleStartTour = () => setIsTourOpen(true);
+    window.addEventListener('rsb:start-tour', handleStartTour);
+    return () => window.removeEventListener('rsb:start-tour', handleStartTour);
+  }, []);
+
   // Screen Lock / Unauthenticated Gate
   if (!isAuthenticated) {
     return <LoginScreen />;
@@ -216,6 +225,7 @@ const ERPAppContent: React.FC = () => {
         onOpenCalculator={() => setIsCalcModalOpen(true)}
         onOpenQuickAction={handleOpenQuickAction}
         onOpenTutorial={() => setIsTutorialOpen(true)}
+        onOpenTour={() => setIsTourOpen(true)}
         onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
       />
 
@@ -318,6 +328,12 @@ const ERPAppContent: React.FC = () => {
       >
         <WeightCalculator isModal onClose={() => setIsCalcModalOpen(false)} />
       </Modal>
+
+      {/* Interactive Gliding Tour (6-Step Walkthrough with Glowing Spotlight Beacon) */}
+      <InteractiveGlidingTour
+        isOpen={isTourOpen}
+        onClose={() => setIsTourOpen(false)}
+      />
 
       {/* Discreet Live Edit Floating Indicator */}
       {isLiveEditMode && (

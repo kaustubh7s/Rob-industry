@@ -1537,7 +1537,7 @@ export const ProjectMaterialEntry: React.FC = () => {
       {/* ========================================================================= */}
       {/* 1. TOP PORTAL BAR & ORDERED BY AUTOMATION BADGE */}
       {/* ========================================================================= */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
+      <div data-tour="tour-entry-station" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black shadow-sm">
             <Cpu className="w-5 h-5 text-amber-300" />
@@ -1585,6 +1585,7 @@ export const ProjectMaterialEntry: React.FC = () => {
 
           <button
             type="button"
+            data-tour="tour-add-project-btn"
             onClick={() => setIsAddProjectModalOpen(true)}
             className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
             title="Create and register a new machine project"
@@ -2207,6 +2208,7 @@ export const ProjectMaterialEntry: React.FC = () => {
 
           <button
             type="button"
+            data-tour="tour-save-order-btn"
             onClick={handleSaveProject}
             disabled={isSavingOrder}
             className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white text-xs font-black transition-all shadow-md shadow-emerald-950/40 flex items-center gap-1.5 cursor-pointer active:scale-95"
@@ -2231,7 +2233,7 @@ export const ProjectMaterialEntry: React.FC = () => {
       {/* 7. EXACT 10-COLUMN PROJECT MATERIAL DATA GRID */}
       {/* | Machine Name | Date | PO No | Sr No | Material Type | Size Specification | Qty | Vendor Name | Description | Ordered By | */}
       {/* ========================================================================= */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
+      <div data-tour="tour-material-grid" className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
         <div className="p-3.5 bg-slate-900 text-white flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Boxes className="w-4 h-4 text-blue-400" />
