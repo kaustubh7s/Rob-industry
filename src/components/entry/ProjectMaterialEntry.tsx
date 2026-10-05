@@ -2499,6 +2499,7 @@ export const ProjectMaterialEntry: React.FC = () => {
         title="Create New Project"
         subtitle="Establish dedicated project with self-learning client memory & automatic BOM generation"
         maxWidth="md"
+        theme="light"
       >
         <form onSubmit={handleCreateProject} className="space-y-4 text-xs font-sans">
           {/* Smart Self-Learning Notice */}
