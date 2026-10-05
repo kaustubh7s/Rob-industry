@@ -38,7 +38,7 @@ const TOUR_STEPS: TourStep[] = [
   {
     id: 'step-4-ctrl-2-shortcut',
     targetSelector: '[data-tour="tour-po-basket-nav"]',
-    label: '4. Press Ctrl+2 or Ctrl+3 to Go to Order Basket',
+    label: '4. Press Ctrl+2 to Go to Order Basket',
     stepNum: 4,
     isShortcutOverlay: true,
   },
@@ -330,21 +330,17 @@ export const InteractiveGlidingTour: React.FC<InteractiveGlidingTourProps> = ({
             </div>
 
             {/* BIG HIGHLIGHTED SHORTCUT KEY BADGE */}
-            <div className="py-5 px-6 bg-slate-950/80 rounded-2xl border border-cyan-400/40 shadow-inner flex flex-col items-center justify-center gap-3">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            <div className="py-6 px-6 bg-slate-950/85 rounded-2xl border-2 border-cyan-400/50 shadow-inner flex flex-col items-center justify-center gap-3.5">
+              <span className="text-xs font-black uppercase tracking-widest text-cyan-400/90">
                 Press Keyboard Shortcut
               </span>
-              <div className="flex items-center gap-2">
-                <kbd className="px-4 py-2.5 rounded-xl bg-gradient-to-b from-slate-800 to-slate-900 border-2 border-slate-600 text-cyan-300 font-mono text-xl sm:text-2xl font-black shadow-lg shadow-black/60">
+              <div className="flex items-center gap-3">
+                <kbd className="px-5 py-3 rounded-2xl bg-gradient-to-b from-slate-800 to-slate-900 border-2 border-slate-600 text-cyan-300 font-mono text-2xl sm:text-3xl font-black shadow-xl shadow-black/70">
                   Ctrl
                 </kbd>
-                <span className="text-xl font-black text-slate-500">+</span>
-                <kbd className="px-5 py-2.5 rounded-xl bg-gradient-to-b from-cyan-500 to-blue-600 border-2 border-cyan-300 text-white font-mono text-xl sm:text-2xl font-black shadow-lg shadow-cyan-500/40 animate-pulse">
+                <span className="text-2xl font-black text-cyan-400">+</span>
+                <kbd className="px-6 py-3 rounded-2xl bg-gradient-to-b from-cyan-500 via-blue-600 to-indigo-600 border-2 border-cyan-300 text-white font-mono text-2xl sm:text-3xl font-black shadow-xl shadow-cyan-500/50 animate-pulse">
                   2
-                </kbd>
-                <span className="text-xs font-semibold text-slate-400 mx-1">or</span>
-                <kbd className="px-4 py-2.5 rounded-xl bg-gradient-to-b from-slate-800 to-slate-900 border-2 border-slate-600 text-cyan-300 font-mono text-xl sm:text-2xl font-black shadow-lg shadow-black/60">
-                  Ctrl+3
                 </kbd>
               </div>
             </div>
