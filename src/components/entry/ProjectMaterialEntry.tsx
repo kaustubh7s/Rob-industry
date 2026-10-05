@@ -2515,7 +2515,7 @@ export const ProjectMaterialEntry: React.FC = () => {
 
           {/* 1. Project Name */}
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
               Project Name *
             </label>
             <input
@@ -2524,14 +2524,14 @@ export const ProjectMaterialEntry: React.FC = () => {
               value={newProjectForm.name}
               onChange={(e) => setNewProjectForm({ ...newProjectForm, name: e.target.value })}
               placeholder="e.g. Mahalaxmi 2, FOHA, Rotary Line 1"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-bold focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 font-bold placeholder:text-slate-400 focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-sm shadow-xs"
               autoFocus
             />
           </div>
 
           {/* Machine / Assembly Name */}
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
               Machine / Assembly Name (Optional)
             </label>
             <input
@@ -2540,7 +2540,7 @@ export const ProjectMaterialEntry: React.FC = () => {
               value={newProjectForm.machineName}
               onChange={(e) => setNewProjectForm({ ...newProjectForm, machineName: e.target.value })}
               placeholder="e.g. Liquid Filling Line, Conveyor Cell, Washing System"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-semibold focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 font-semibold placeholder:text-slate-400 focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-sm shadow-xs"
             />
             <datalist id="entry-learned-machines">
               {allMachineOptions.map((m) => (
@@ -2552,7 +2552,7 @@ export const ProjectMaterialEntry: React.FC = () => {
           {/* 2. Client Name & 3. Client Number (Self-Learning Combobox) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
                 Client / Customer Name *
               </label>
               <input
@@ -2570,7 +2570,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                   });
                 }}
                 placeholder="Type new or select existing"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-semibold focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 font-semibold placeholder:text-slate-400 focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-sm shadow-xs"
               />
               <datalist id="entry-learned-customers">
                 {customers.map((c) => (
@@ -2582,7 +2582,7 @@ export const ProjectMaterialEntry: React.FC = () => {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
                 Client Number *
               </label>
               <input
@@ -2591,7 +2591,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                 value={newProjectForm.clientNumber}
                 onChange={(e) => setNewProjectForm({ ...newProjectForm, clientNumber: e.target.value })}
                 placeholder="e.g. +91 98765 43210"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-semibold focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm font-mono"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 font-semibold placeholder:text-slate-400 focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-sm font-mono shadow-xs"
               />
             </div>
           </div>
@@ -2599,7 +2599,7 @@ export const ProjectMaterialEntry: React.FC = () => {
           {/* 3. Start Date & 4. Target Date */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
                 Start Date *
               </label>
               <input
@@ -2607,12 +2607,12 @@ export const ProjectMaterialEntry: React.FC = () => {
                 required
                 value={newProjectForm.startDate}
                 onChange={(e) => setNewProjectForm({ ...newProjectForm, startDate: e.target.value })}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-bold focus:bg-white focus:border-blue-600 outline-none font-mono text-sm"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 font-bold focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 outline-none font-mono text-sm shadow-xs"
               />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
                 Target Date *
               </label>
               <input
@@ -2620,7 +2620,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                 required
                 value={newProjectForm.targetDate}
                 onChange={(e) => setNewProjectForm({ ...newProjectForm, targetDate: e.target.value })}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 font-bold focus:bg-white focus:border-blue-600 outline-none font-mono text-sm"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 font-bold focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 outline-none font-mono text-sm shadow-xs"
               />
             </div>
           </div>
@@ -2629,13 +2629,13 @@ export const ProjectMaterialEntry: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsAddProjectModalOpen(false)}
-              className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer transition-all active:scale-95"
+              className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer transition-all active:scale-95 text-xs"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-6 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold shadow-md shadow-blue-500/20 cursor-pointer active:scale-95 transition-all"
+              className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-md shadow-blue-600/20 cursor-pointer active:scale-95 transition-all text-xs"
             >
               Create Project & Select
             </button>

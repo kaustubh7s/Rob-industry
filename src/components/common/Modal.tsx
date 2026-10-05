@@ -50,11 +50,13 @@ export const Modal: React.FC<ModalProps> = ({
   const isLight = theme === 'light';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto ${
+      isLight ? 'bg-slate-900/40 backdrop-blur-xs' : 'bg-slate-950/75 backdrop-blur-sm'
+    } animate-in fade-in duration-200`}>
       <div
         className={`relative w-full ${maxWidthClasses} ${
           isLight
-            ? 'bg-white border border-slate-200 text-slate-900 shadow-2xl rounded-2xl'
+            ? 'bg-white border border-slate-200/80 text-slate-900 shadow-2xl rounded-2xl ring-1 ring-black/5'
             : 'bg-slate-900 border border-slate-700/80 text-slate-100 shadow-2xl rounded-2xl'
         } overflow-hidden my-8`}
         onClick={(e) => e.stopPropagation()}
@@ -63,7 +65,7 @@ export const Modal: React.FC<ModalProps> = ({
         <div
           className={`flex items-center justify-between px-6 py-4 border-b ${
             isLight
-              ? 'border-slate-200 bg-slate-50/90 text-slate-900'
+              ? 'border-slate-200/80 bg-slate-50/80 text-slate-900'
               : 'border-slate-800 bg-slate-900/50 text-slate-100'
           }`}
         >
@@ -72,7 +74,7 @@ export const Modal: React.FC<ModalProps> = ({
               {title}
             </h3>
             {subtitle && (
-              <p className={`text-xs mt-0.5 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+              <p className={`text-xs mt-0.5 ${isLight ? 'text-slate-500 font-medium' : 'text-slate-400'}`}>
                 {subtitle}
               </p>
             )}
