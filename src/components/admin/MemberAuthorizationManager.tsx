@@ -34,6 +34,8 @@ import {
   Cloud,
   Truck,
   PackageCheck,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 import { User, UserRole, AuthLevel, UserPermissions } from '../../types/erp';
@@ -87,10 +89,15 @@ export const MemberAuthorizationManager: React.FC = () => {
   const [generatedResetPin, setGeneratedResetPin] = useState<{ user: User; pin: string; expiresAt: string } | null>(null);
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
 
-  // New Member Form State (Zero manual password input - auto-generates one-time activation code)
+  // Super Admin Access Gate Check
+  const isSuperAdmin = currentUser?.role === 'super_admin' || currentUser?.authLevel === 'Tier 1: Super Admin';
+
+  // New Member Form State
   const [newMemberForm, setNewMemberForm] = useState({
     name: '',
     email: '',
+    password: '',
+    showPassword: false,
     role: 'operator' as UserRole,
     department: 'Material Data Entry Floor',
     authLevel: 'Tier 4: Data Entry Operator' as AuthLevel,
@@ -106,11 +113,13 @@ export const MemberAuthorizationManager: React.FC = () => {
     },
   });
 
-  // Edit Member Form State (Zero password fields)
+  // Edit Member Form State
   const [editForm, setEditForm] = useState<{
     id: string;
     name: string;
     email: string;
+    password?: string;
+    showPassword?: boolean;
     role: UserRole;
     department: string;
     authLevel: AuthLevel;
@@ -148,6 +157,8 @@ export const MemberAuthorizationManager: React.FC = () => {
       id: user.id,
       name: user.name,
       email: user.email,
+      password: user.password || '',
+      showPassword: false,
       role: user.role,
       department: user.department,
       authLevel: user.authLevel || 'Tier 4: Data Entry Operator',
@@ -224,8 +235,9 @@ export const MemberAuthorizationManager: React.FC = () => {
     };
 
     updateUser(editForm.id, {
-      name: editForm.name,
-      email: editForm.email,
+      name: editForm.name.trim(),
+      email: editForm.email.trim(),
+      password: editForm.password ? editForm.password.trim() : undefined,
       role: derivedRole,
       department: derivedDept,
       authLevel: editForm.authLevel,
@@ -233,13 +245,13 @@ export const MemberAuthorizationManager: React.FC = () => {
       permissions: updatedPermissions,
     });
 
-    setSaveToast(`Successfully updated authorizations for ${editForm.name} to ${editForm.authLevel}`);
+    setSaveToast(`Successfully updated credentials and authorizations for ${editForm.name}`);
     setTimeout(() => setSaveToast(null), 3000);
     setEditingUser(null);
     setEditForm(null);
   };
 
-  // Create New Member with auto-generated activation token
+  // Create New Member with custom password or auto-generated activation token
   const handleCreateMember = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMemberForm.name.trim() || !newMemberForm.email.trim()) {
@@ -252,6 +264,7 @@ export const MemberAuthorizationManager: React.FC = () => {
       id: newId,
       name: newMemberForm.name.trim(),
       email: newMemberForm.email.trim(),
+      password: newMemberForm.password ? newMemberForm.password.trim() : 'Admin@123',
       role: newMemberForm.role,
       department: newMemberForm.department,
       authLevel: newMemberForm.authLevel,
@@ -268,8 +281,10 @@ export const MemberAuthorizationManager: React.FC = () => {
       origin: { y: 0.6 },
     });
 
-    // Generate immediate 1-time activation code
-    handleIssueResetPin(newUser);
+    // Generate immediate 1-time activation code if no password was typed
+    if (!newMemberForm.password) {
+      handleIssueResetPin(newUser);
+    }
 
     setSaveToast(`Member ${newUser.name} successfully registered.`);
     setTimeout(() => setSaveToast(null), 3500);
@@ -278,6 +293,8 @@ export const MemberAuthorizationManager: React.FC = () => {
     setNewMemberForm({
       name: '',
       email: '',
+      password: '',
+      showPassword: false,
       role: 'operator',
       department: 'Material Data Entry Floor',
       authLevel: 'Tier 4: Data Entry Operator',
@@ -306,6 +323,28 @@ export const MemberAuthorizationManager: React.FC = () => {
       setTimeout(() => setSaveToast(null), 3000);
     }
   };
+
+  // Super Admin Security Barrier: Restrict whole component to Tier 1 Super Admin
+  if (!isSuperAdmin) {
+    return (
+      <div className="p-8 max-w-3xl mx-auto text-center my-12">
+        <div className="p-8 rounded-2xl bg-slate-900 border border-rose-500/40 text-slate-300 space-y-4 shadow-2xl">
+          <div className="w-16 h-16 rounded-2xl bg-rose-500/10 text-rose-400 border border-rose-500/30 mx-auto flex items-center justify-center shadow-inner">
+            <ShieldAlert className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-black text-white">Super Admin Access Required</h2>
+          <p className="text-sm text-slate-400 max-w-md mx-auto leading-relaxed">
+            Member Authorization, Username modifications, and Password management are strictly restricted to <strong>Super Admin</strong> credentials.
+          </p>
+          <div className="pt-2">
+            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-400 border border-slate-700 font-mono">
+              Current Session: {currentUser?.name || 'User'} ({currentUser?.role || 'Guest'})
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 text-slate-100">
@@ -337,7 +376,7 @@ export const MemberAuthorizationManager: React.FC = () => {
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Logged in as <strong className="text-purple-300">Super Admin Amit</strong>. Zero-knowledge encrypted identity management.
+                  Logged in as <strong className="text-purple-300">Super Admin {currentUser?.name || 'Administrator'}</strong>. Full username, password & authorization control.
                 </p>
               </div>
             </div>
@@ -659,30 +698,54 @@ export const MemberAuthorizationManager: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                  Full Name *
+                  Full Name / Username *
                 </label>
                 <input
                   type="text"
                   required
                   value={newMemberForm.name}
                   onChange={(e) => setNewMemberForm({ ...newMemberForm, name: e.target.value })}
-                  placeholder="e.g. Chandramani"
+                  placeholder="e.g. Rahul"
                   className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                  Company Email *
+                  Company Email / Login ID *
                 </label>
                 <input
                   type="email"
                   required
                   value={newMemberForm.email}
                   onChange={(e) => setNewMemberForm({ ...newMemberForm, email: e.target.value })}
-                  placeholder="e.g. chandramani@rsbequipments.com"
+                  placeholder="e.g. rahul@rsbequipments.com"
                   className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
                 />
+              </div>
+            </div>
+
+            {/* Set Password Field */}
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center justify-between">
+                <span>Account Password (Optional)</span>
+                <span className="text-[10px] text-slate-500 font-normal">Leave blank to auto-generate 1-time PIN</span>
+              </label>
+              <div className="relative">
+                <input
+                  type={newMemberForm.showPassword ? 'text' : 'password'}
+                  value={newMemberForm.password}
+                  onChange={(e) => setNewMemberForm({ ...newMemberForm, password: e.target.value })}
+                  placeholder="e.g. Rahul@123"
+                  className="w-full pl-3 pr-10 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setNewMemberForm({ ...newMemberForm, showPassword: !newMemberForm.showPassword })}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                >
+                  {newMemberForm.showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
             </div>
 
@@ -853,19 +916,68 @@ export const MemberAuthorizationManager: React.FC = () => {
           maxWidth="2xl"
         >
           <div className="space-y-4 text-slate-200">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  value={editForm.name}
-                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
-                />
+            {/* Account Identity & Credentials Card */}
+            <div className="p-3.5 rounded-xl bg-slate-900 border border-purple-500/30 space-y-3">
+              <div className="flex items-center gap-2 text-xs font-bold text-purple-300 uppercase tracking-wider">
+                <KeyRound className="w-4 h-4 text-purple-400" />
+                <span>Super Admin Credential & Username Controls</span>
               </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Username / Full Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editForm.name}
+                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                    placeholder="Enter display name / username"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Login Email / Username ID *
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={editForm.email}
+                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                    placeholder="Enter login email"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-amber-400 mb-1 flex items-center justify-between">
+                  <span>Change Password</span>
+                  <span className="text-[10px] text-slate-400 font-normal">Leave blank to keep existing password</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={editForm.showPassword ? 'text' : 'password'}
+                    value={editForm.password || ''}
+                    onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+                    placeholder="Type new password here to change (e.g. Rahul@123)"
+                    className="w-full pl-3 pr-10 py-2 rounded-xl bg-slate-800 border border-amber-500/40 text-amber-200 text-xs font-semibold focus:border-amber-400 outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setEditForm({ ...editForm, showPassword: !editForm.showPassword })}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                  >
+                    {editForm.showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
                   Department
@@ -877,9 +989,7 @@ export const MemberAuthorizationManager: React.FC = () => {
                   className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
                 />
               </div>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
                   Authorization Tier
@@ -949,21 +1059,21 @@ export const MemberAuthorizationManager: React.FC = () => {
                   ))}
                 </select>
               </div>
+            </div>
 
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                  Account Status
-                </label>
-                <select
-                  value={editForm.status}
-                  onChange={(e) => setEditForm({ ...editForm, status: e.target.value as any })}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
-                >
-                  <option value="Active">Active (Full Privileges)</option>
-                  <option value="Read Only">Read Only (Inspection View)</option>
-                  <option value="Suspended">Suspended (Access Revoked)</option>
-                </select>
-              </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                Account Status
+              </label>
+              <select
+                value={editForm.status}
+                onChange={(e) => setEditForm({ ...editForm, status: e.target.value as any })}
+                className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-semibold focus:border-purple-500 outline-none"
+              >
+                <option value="Active">Active (Full Privileges)</option>
+                <option value="Read Only">Read Only (Inspection View)</option>
+                <option value="Suspended">Suspended (Access Revoked)</option>
+              </select>
             </div>
 
             {/* Granular Permissions Checkboxes */}

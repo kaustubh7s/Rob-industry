@@ -291,10 +291,37 @@ interface ERPContextType {
 
 const ERPContext = createContext<ERPContextType | undefined>(undefined);
 
-const LOCAL_STORAGE_KEY = 'RSB_ERP_STATE_V3';
+const LOCAL_STORAGE_KEY = 'RSB_ERP_STATE_V5';
 const AUTH_SESSION_KEY = 'RSB_ERP_AUTH_USER_ID';
 const LAST_ACTIVITY_KEY = 'RSB_ERP_LAST_ACTIVITY';
 const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes session inactivity timeout
+
+// One-time automatic purge of all previous trial data keys from browser
+(function purgeLegacyTrialData() {
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (
+        key &&
+        !key.startsWith('RSB_ERP_STATE_V5') &&
+        (key.startsWith('RSB_ERP_STATE_') ||
+          key.startsWith('rsb_wb_') ||
+          key.startsWith('rsb_custom_') ||
+          key.startsWith('rsb_base_') ||
+          key.startsWith('rsb_deleted_') ||
+          key.startsWith('rsb_erp_production_') ||
+          key.startsWith('RSB_PROJECT_MATERIAL_ENTRY_'))
+      ) {
+        if (key === 'rsb_supabase_config') continue;
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
+  } catch (e) {
+    console.warn('Error purging legacy trial data:', e);
+  }
+})();
 
 export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [users, setUsers] = useState<User[]>(() => {
@@ -302,28 +329,16 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (saved) {
       try {
         const parsed: User[] = JSON.parse(saved);
-        const filtered = parsed.filter(
-          (u) =>
-            u.name !== 'Sanjay Sharma' &&
-            u.email !== 'sanjay.sharma@rsbmetal.com' &&
-            u.id !== 'usr-1' &&
-            !['usr-2', 'usr-3', 'usr-4', 'usr-5', 'usr-6', 'usr-7', 'usr-8'].includes(u.id)
-        );
-        // Ensure all seed INITIAL_USERS (including usr-ramesh) are always included
-        const existingIds = new Set(filtered.map((u) => u.id));
-        const merged = [...filtered];
-        for (const initU of INITIAL_USERS) {
-          if (!existingIds.has(initU.id)) {
-            merged.push(initU);
-          } else {
-            const idx = merged.findIndex((m) => m.id === initU.id);
-            if (idx !== -1) {
-              merged[idx] = { ...initU, ...merged[idx], password: initU.password || merged[idx].password, role: initU.role || merged[idx].role };
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const existingIds = new Set(parsed.map((u) => u.id));
+          const merged = [...parsed];
+          for (const initU of INITIAL_USERS) {
+            if (!existingIds.has(initU.id)) {
+              merged.push(initU);
             }
           }
+          return merged;
         }
-        localStorage.setItem(LOCAL_STORAGE_KEY + '_users', JSON.stringify(merged));
-        return merged;
       } catch (e) {
         console.error(e);
       }

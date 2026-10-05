@@ -195,7 +195,7 @@ const COMMON_SIZES = [
   '400 x 400 x 10 mm',
 ];
 
-const DRAFT_STORAGE_KEY = 'RSB_PROJECT_MATERIAL_ENTRY_10COL_WORKFLOW_V3';
+const DRAFT_STORAGE_KEY = 'RSB_PROJECT_MATERIAL_ENTRY_10COL_WORKFLOW_V4';
 
 export const ProjectMaterialEntry: React.FC = () => {
   const {

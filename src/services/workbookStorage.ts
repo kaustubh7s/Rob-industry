@@ -14,10 +14,10 @@ import {
 import { getSupabaseClient } from '../lib/supabaseClient';
 
 const STORAGE_KEYS = {
-  DIRECTORIES: 'rsb_wb_directories_v8',
-  WORKBOOKS: 'rsb_wb_workbooks_v8',
-  TRASH: 'rsb_wb_trash_v8',
-  LOGS: 'rsb_wb_logs_v8',
+  DIRECTORIES: 'rsb_wb_directories_v10',
+  WORKBOOKS: 'rsb_wb_workbooks_v10',
+  TRASH: 'rsb_wb_trash_v10',
+  LOGS: 'rsb_wb_logs_v10',
 };
 
 // 1. DIRECTORIES STORAGE
@@ -42,10 +42,10 @@ export function saveDirectories(dirs: WorkbookDirectory[]): void {
   }
 }
 
-const BASE_WORKBOOK_IDS = new Set(['wb-rsb1-daily-po', 'wb-rsb2-dc-book', 'wb-rsb3-spare-parts']);
-const CUSTOM_WORKBOOKS_KEY = 'rsb_custom_workbooks_v6';
-const BASE_WORKBOOK_EDITS_KEY = 'rsb_base_workbooks_edits_v6';
-const DELETED_WORKBOOK_IDS_KEY = 'rsb_deleted_workbook_ids_v6';
+const BASE_WORKBOOK_IDS = new Set<string>();
+const CUSTOM_WORKBOOKS_KEY = 'rsb_custom_workbooks_v10';
+const BASE_WORKBOOK_EDITS_KEY = 'rsb_base_workbooks_edits_v10';
+const DELETED_WORKBOOK_IDS_KEY = 'rsb_deleted_workbook_ids_v10';
 
 // In-memory cache
 let inMemoryWorkbooks: Workbook[] | null = null;
@@ -76,17 +76,6 @@ export function loadWorkbooks(): Workbook[] {
   if (inMemoryWorkbooks !== null) {
     return inMemoryWorkbooks;
   }
-
-  // Seamless migration from earlier versions if v6 not set
-  try {
-    if (!localStorage.getItem(CUSTOM_WORKBOOKS_KEY)) {
-      const prevCustom =
-        localStorage.getItem('rsb_custom_workbooks_v5') ||
-        localStorage.getItem('rsb_custom_workbooks_v4') ||
-        localStorage.getItem('rsb_custom_workbooks_v3');
-      if (prevCustom) localStorage.setItem(CUSTOM_WORKBOOKS_KEY, prevCustom);
-    }
-  } catch (_) {}
 
   const deletedIds = getDeletedWorkbookIds();
 

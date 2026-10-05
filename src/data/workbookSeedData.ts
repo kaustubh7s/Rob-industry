@@ -342,27 +342,7 @@ function create150BPMMaterialSheet(): WorkbookSheet {
   };
 }
 
-// Initial Workbooks Array populated from real rsb1.xlsx, rsb2.xlsx, and rsb3.xlsx with clean names
-const rawWbs = (realWorkbooksData as unknown as Workbook[]);
-
-export const INITIAL_WORKBOOKS: Workbook[] = rawWbs.map((wb, index) => {
-  let cleanTitle = `RSB-${index + 1} Master Register`;
-  if (wb.id === 'wb-rsb1-daily-po') cleanTitle = 'RSB-1 Master Register';
-  else if (wb.id === 'wb-rsb2-dc-book') cleanTitle = 'RSB-2 Master Register';
-  else if (wb.id === 'wb-rsb3-spare-parts') cleanTitle = 'RSB-3 Master Register';
-
-  return {
-    ...wb,
-    title: cleanTitle,
-    directory_id: '',
-    tags: [`Register ${index + 1}`, 'Live Sheet'],
-    description: `Master spreadsheet register with comprehensive industrial records.`,
-    sheets: wb.sheets.map((sheet, sIdx) => ({
-      ...sheet,
-      name: sIdx === 0 ? `Sheet1` : sheet.name,
-    })),
-  };
-});
+export const INITIAL_WORKBOOKS: Workbook[] = [];
 
 export interface SmartTemplate {
   id: string;
