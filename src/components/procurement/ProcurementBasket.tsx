@@ -1575,6 +1575,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
             {/* Project Filter */}
             <div>
               <select
+                data-tour="tour-basket-project-select"
                 value={filterProject}
                 onChange={(e) => setFilterProject(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500 cursor-pointer"
@@ -2160,6 +2161,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                         <td className="py-2.5 px-3 text-center">
                           <input
                             type="checkbox"
+                            data-tour={idx === 0 ? 'tour-basket-first-checkbox' : undefined}
                             checked={isSelected}
                             onChange={() => handleToggleSelectRow(item.id)}
                             className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
@@ -4160,6 +4162,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
             <div className="flex items-center gap-2">
               <button
                 type="button"
+                data-tour="tour-basket-assign-vendor"
                 onClick={handleOpenBulkAssign}
                 className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-md hover:shadow-indigo-500/30"
               >
@@ -4178,6 +4181,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
 
               <button
                 type="button"
+                data-tour="tour-basket-generate-po"
                 onClick={() => handleOpenPOModal()}
                 className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-md hover:shadow-emerald-500/30"
               >

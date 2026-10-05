@@ -2637,6 +2637,7 @@ export const ProjectMaterialEntry: React.FC = () => {
             </button>
             <button
               type="submit"
+              data-tour="tour-modal-create-project-btn"
               className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-md shadow-blue-600/20 cursor-pointer active:scale-95 transition-all text-xs"
             >
               Create Project & Select
