@@ -1769,6 +1769,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                   <div className="flex items-center gap-2">
                     <label className="text-xs font-semibold text-slate-500">Switch Project:</label>
                     <select
+                      data-tour="tour-basket-project-select"
                       value={pFolder.projectName}
                       onChange={(e) => setFilterProject(e.target.value)}
                       className="bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500 cursor-pointer"
@@ -1833,6 +1834,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
 
                             <button
                               type="button"
+                              data-tour="tour-basket-generate-po"
                               onClick={() => handleOpenPOModal(undefined, allPItems)}
                               className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
                             >

@@ -1641,6 +1641,7 @@ export const ProjectMaterialEntry: React.FC = () => {
 
             <button
               type="button"
+              data-tour="tour-select-new-project-btn"
               onClick={() => setIsAddProjectModalOpen(true)}
               className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-md shadow-blue-500/20 active:scale-95 border border-blue-400/30"
               title="Create New Machine Project"
