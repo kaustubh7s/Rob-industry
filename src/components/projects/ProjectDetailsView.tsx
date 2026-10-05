@@ -103,6 +103,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     vendors,
     currentUser,
     toggleMaterialReceived,
+    addPurchaseOrder,
     logAudit,
   } = useERP();
 
@@ -587,6 +588,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 const dateStr = new Date().toISOString().split('T')[0];
                 const targetDelDate = project.targetCompletionDate || new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
 
+                const poOrderedBy = project.orderedBy || currentUser?.name || 'Amit';
+
                 const poPayload: WhatsAppPOMessageOptions = {
                   poNumber: finalPONum,
                   vendorName: targetV,
@@ -600,6 +603,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   machineName: selectedMachineFolder !== 'ALL' ? selectedMachineFolder : (project.machineName || project.name),
                   dateOfIssue: dateStr,
                   expectedDeliveryDate: targetDelDate,
+                  orderedBy: poOrderedBy,
                   notes: project.notes || 'Supply with Material Test Certificate (MTC SS 304). High precision cutting required.',
                   items: finalItems.map((m) => ({
                     id: m.id,
@@ -613,9 +617,34 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     unit: m.unit || 'Nos',
                     vendor: m.vendor || (m as any).vendorName || targetV,
                     vendorName: m.vendor || (m as any).vendorName || targetV,
+                    orderedBy: poOrderedBy,
                     notes: m.notes,
                   })),
                 };
+
+                // Auto-save PO to Purchase Order Basket
+                addPurchaseOrder({
+                  poNumber: finalPONum,
+                  date: dateStr,
+                  vendor: targetV,
+                  expectedDate: targetDelDate,
+                  paymentTerms: matchedVendor?.paymentTerms || '30 Days Net',
+                  status: 'Sent',
+                  orderedBy: poOrderedBy,
+                  issuedBy: poOrderedBy,
+                  totalAmount: finalItems.reduce((acc, m) => acc + ((Number(m.quantity) || 1) * 500), 0),
+                  projectNames: [project.name],
+                  machineNames: [selectedMachineFolder !== 'ALL' ? selectedMachineFolder : (project.machineName || project.name)],
+                  notes: project.notes || 'Supply with Material Test Certificate (MTC SS 304). High precision cutting required.',
+                  items: finalItems.map((m) => ({
+                    material: m.description,
+                    sizeSpecs: m.sizeSpecs,
+                    qty: Number(m.quantity) || 1,
+                    unit: m.unit || 'Nos',
+                    rate: 500,
+                    amount: (Number(m.quantity) || 1) * 500,
+                  })),
+                });
 
                 // 1. Generate & download official PDF directly
                 const pdfName = generatePurchaseOrderPDF(poPayload);
@@ -640,7 +669,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 window.open(url, '_blank', 'noopener,noreferrer');
 
                 if (logAudit) {
-                  logAudit('WhatsApp PO PDF Dispatched', 'Projects', `Dispatched PO PDF "${pdfName}" for vendor ${targetV}`);
+                  logAudit('WhatsApp PO PDF Dispatched', 'Projects', `Dispatched PO PDF "${pdfName}" for vendor ${targetV} (Ordered by ${poOrderedBy})`);
                 }
               }}
               className="px-3.5 py-2 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-slate-950 text-xs font-black shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"

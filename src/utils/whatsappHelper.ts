@@ -14,6 +14,7 @@ export interface WhatsAppPOItem {
   materialGrade?: string;
   vendor?: string;
   vendorName?: string;
+  orderedBy?: string;
   notes?: string;
 }
 
@@ -30,6 +31,7 @@ export interface WhatsAppPOMessageOptions {
   machineName?: string;
   dateOfIssue?: string;
   expectedDeliveryDate?: string;
+  orderedBy?: string;
   notes?: string;
   items: WhatsAppPOItem[];
 }
@@ -56,6 +58,7 @@ export const formatWhatsAppPOMessage = (options: WhatsAppPOMessageOptions): stri
     projectName = 'jkjdsasds',
     dateOfIssue = new Date().toISOString().split('T')[0],
     expectedDeliveryDate = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+    orderedBy = 'Amit (Admin)',
     items,
   } = options;
 
@@ -75,6 +78,7 @@ export const formatWhatsAppPOMessage = (options: WhatsAppPOMessageOptions): stri
   msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
   msg += `📄 *PO Number:* ${poNumber}\n`;
   msg += `📁 *Project Name:* ${projectName}\n`;
+  msg += `👤 *ORDERED BY:* ${orderedBy}\n`;
   msg += `📅 *Date of Issue:* ${dateOfIssue}\n`;
   msg += `🎯 *Target Delivery:* ${expectedDeliveryDate}\n`;
   msg += `📦 *Total Materials:* ${items.length} Parts (${totalQty} Nos Total)\n`;
@@ -160,6 +164,7 @@ export const generatePurchaseOrderPDF = (options: WhatsAppPOMessageOptions): str
     machineName,
     dateOfIssue = new Date().toISOString().split('T')[0],
     expectedDeliveryDate = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+    orderedBy = 'Amit (Admin)',
     notes,
     items,
   } = options;
@@ -222,7 +227,7 @@ export const generatePurchaseOrderPDF = (options: WhatsAppPOMessageOptions): str
   // Two-Column Metadata Box (Project & Procurement Details + Order References)
   doc.setDrawColor(203, 213, 225);
   doc.setFillColor(248, 250, 252);
-  doc.roundedRect(14, 43, 182, 34, 1.5, 1.5, 'FD');
+  doc.roundedRect(14, 43, 182, 38, 1.5, 1.5, 'FD');
 
   // Left Column: PROJECT & PROCUREMENT DETAILS
   doc.setTextColor(100, 116, 139);
@@ -242,6 +247,7 @@ export const generatePurchaseOrderPDF = (options: WhatsAppPOMessageOptions): str
   doc.text(`Assigned Vendors: ${vendorSummaryStr}`.substring(0, 60), 18, 60);
   doc.text(`Scope: All ${sequentialItems.length} Materials (Sequential Vendor Grouping)`, 18, 65);
   doc.text('Delivery: RSB Manufacturing Works, Chhatrapati Sambhajinagar', 18, 70);
+  doc.text(`ORDERED BY: ${orderedBy}`, 18, 75);
 
   // Right Column: ORDER REFERENCES
   doc.setTextColor(100, 116, 139);
@@ -315,7 +321,7 @@ export const generatePurchaseOrderPDF = (options: WhatsAppPOMessageOptions): str
   });
 
   autoTable(doc, {
-    startY: 81,
+    startY: 84,
     head: [headers],
     body: rows,
     theme: 'grid',
@@ -384,49 +390,38 @@ export const generatePurchaseOrderPDF = (options: WhatsAppPOMessageOptions): str
     );
   }
 
-  // Exact 3-Tier Signatory Columns:
-  // Prepared By (Material Planning Dept) | Verified By (Stores & Procurement Head) | Authorized Signatory (Director / Plant Operations)
+  // Exact 2-Tier Signatory Columns:
+  // Prepared & Ordered By (ORDERED BY: [Admin]) | Authorized Signatory (Director / Plant Operations)
   const sigY = Math.max(finalY + 32, 248);
 
   doc.setDrawColor(148, 163, 184);
   doc.setLineDashPattern([1, 1], 0);
 
-  // 3 Signature lines
-  doc.line(18, sigY, 65, sigY);
-  doc.line(78, sigY, 130, sigY);
-  doc.line(142, sigY, 192, sigY);
+  // 2 Signature lines
+  doc.line(20, sigY, 90, sigY);
+  doc.line(120, sigY, 190, sigY);
 
   doc.setLineDashPattern([], 0);
 
-  // Column 1: Prepared By
+  // Column 1: Prepared & Ordered By
   doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text('Prepared By', 30, sigY + 5);
+  doc.text('Prepared & Ordered By', 35, sigY + 5);
   doc.setFontSize(7);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(100, 116, 139);
-  doc.text('Material Planning Dept', 23, sigY + 9.5);
+  doc.text(`ORDERED BY: ${orderedBy}`, 32, sigY + 9.5);
 
-  // Column 2: Verified By
+  // Column 2: Authorized Signatory
   doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text('Verified By', 93, sigY + 5);
+  doc.text('Authorized Signatory', 137, sigY + 5);
   doc.setFontSize(7);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(100, 116, 139);
-  doc.text('Stores & Procurement Head', 82, sigY + 9.5);
-
-  // Column 3: Authorized Signatory
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(15, 23, 42);
-  doc.text('Authorized Signatory', 151, sigY + 5);
-  doc.setFontSize(7);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(100, 116, 139);
-  doc.text('Director / Plant Operations', 147, sigY + 9.5);
+  doc.text('Director / Plant Operations', 133, sigY + 9.5);
 
   // Footer Note
   doc.setFontSize(6.5);

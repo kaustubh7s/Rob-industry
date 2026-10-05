@@ -197,6 +197,7 @@ interface ERPContextType {
   // Commercials: Purchase & Sales
   addPurchaseOrder: (po: Omit<PurchaseOrder, 'id'>) => void;
   updatePOStatus: (id: string, status: PurchaseOrder['status']) => void;
+  deletePurchaseOrder: (id: string) => void;
   addSalesOrder: (so: Omit<SalesOrder, 'id'>) => void;
   updateSOStatus: (id: string, status: SalesOrder['status']) => void;
 
@@ -245,7 +246,8 @@ interface ERPContextType {
     }[],
     expectedDate?: string,
     notes?: string,
-    customPoNumber?: string
+    customPoNumber?: string,
+    orderedBy?: string
   ) => PurchaseOrder;
   sendProcurementRFQ: (
     vendors: string[],
@@ -3085,13 +3087,24 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Purchase & Sales Handlers
   const addPurchaseOrder = (po: Omit<PurchaseOrder, 'id'>) => {
+    const finalOrderedBy = po.orderedBy || currentUser?.name || 'Amit';
     const newPO: PurchaseOrder = {
       ...po,
+      orderedBy: finalOrderedBy,
+      issuedBy: finalOrderedBy,
+      createdAt: po.createdAt || new Date().toISOString(),
       id: 'po-' + (purchaseOrders.length + 1) + '-' + Date.now().toString().slice(-4),
     };
     setPurchaseOrders((prev) => [newPO, ...prev]);
-    logAudit('PO Created', 'Purchase', `Generated PO ${newPO.poNumber} for ${newPO.vendor}`);
+    logAudit('PO Created', 'Purchase', `Generated PO ${newPO.poNumber} for ${newPO.vendor} (Ordered by ${finalOrderedBy})`);
     addNotification('PO Issued', `Purchase Order ${newPO.poNumber} issued to ${newPO.vendor}`, 'info', 'purchase');
+  };
+
+  const deletePurchaseOrder = (id: string) => {
+    const target = purchaseOrders.find((po) => po.id === id);
+    setPurchaseOrders((prev) => prev.filter((po) => po.id !== id));
+    logAudit('PO Deleted', 'Purchase', `Deleted PO ${target?.poNumber || id} from PO basket`);
+    addNotification('PO Deleted', `Purchase Order ${target?.poNumber || id} deleted`, 'info', 'purchase');
   };
 
   const updatePOStatus = (id: string, status: PurchaseOrder['status']) => {
@@ -3356,10 +3369,14 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       requirementId?: string;
       projectName?: string;
       machineName?: string;
+      materialType?: string;
+      vendor?: string;
+      description?: string;
     }[],
     expectedDate?: string,
     notes?: string,
-    customPoNumber?: string
+    customPoNumber?: string,
+    orderedBy?: string
   ): PurchaseOrder => {
     learnVendor(vendor);
     const count = String(purchaseOrders.length + 1).padStart(3, '0');
@@ -3367,6 +3384,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const totalAmount = items.reduce((sum, item) => sum + (item.amount || (item.qty * (item.rate || 0))), 0);
     const projectNames = Array.from(new Set(items.map((i) => i.projectName).filter(Boolean))) as string[];
     const machineNames = Array.from(new Set(items.map((i) => i.machineName).filter(Boolean))) as string[];
+    const finalOrderedBy = orderedBy || currentUser?.name || 'Amit';
 
     const newPO: PurchaseOrder = {
       id: 'po-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
@@ -3380,13 +3398,21 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       notes: notes || `Direct procurement order for ${items.length} items (${projectNames.join(', ')})`,
       projectNames,
       machineNames,
+      orderedBy: finalOrderedBy,
+      issuedBy: finalOrderedBy,
+      createdAt: new Date().toISOString(),
       items: items.map((i) => ({
-        material: i.material,
-        sizeSpecs: i.sizeSpecs,
+        material: i.material || i.description || 'Material Item',
+        description: i.description || i.material || 'Material Item',
+        sizeSpecs: i.sizeSpecs || '-',
         qty: i.qty,
         unit: i.unit,
         rate: i.rate || 0,
         amount: i.amount || (i.qty * (i.rate || 0)),
+        projectName: i.projectName,
+        machineName: i.machineName,
+        materialType: i.materialType,
+        vendor: i.vendor || vendor,
       })),
     };
 
@@ -3810,6 +3836,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         syncProjectToBOM,
         addPurchaseOrder,
         updatePOStatus,
+        deletePurchaseOrder,
         addSalesOrder,
         updateSOStatus,
         saveCostingRecord,

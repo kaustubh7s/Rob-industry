@@ -20,7 +20,7 @@ import { exportToExcel, exportToPdfReport } from '../../utils/excelIntegration';
 import { Modal } from '../common/Modal';
 
 export const PurchaseManager: React.FC = () => {
-  const { purchaseOrders, addPurchaseOrder, updatePOStatus, vendors, materials } = useERP();
+  const { purchaseOrders, addPurchaseOrder, updatePOStatus, vendors, materials, currentUser } = useERP();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [isNewPOModalOpen, setIsNewPOModalOpen] = useState(false);
@@ -44,7 +44,8 @@ export const PurchaseManager: React.FC = () => {
   const filteredPOs = purchaseOrders.filter((po) => {
     return (
       po.poNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      po.vendor.toLowerCase().includes(searchTerm.toLowerCase())
+      po.vendor.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (po.orderedBy || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
   });
 
@@ -52,9 +53,12 @@ export const PurchaseManager: React.FC = () => {
 
   const handleCreatePO = (e: React.FormEvent) => {
     e.preventDefault();
+    const finalOrderedBy = currentUser?.name || 'Amit';
     addPurchaseOrder({
       ...form,
       totalAmount: totalPOAmount,
+      orderedBy: finalOrderedBy,
+      issuedBy: finalOrderedBy,
     });
     setIsNewPOModalOpen(false);
   };
@@ -103,7 +107,12 @@ export const PurchaseManager: React.FC = () => {
               <div>
                 <span className="font-mono text-sm font-black text-amber-400">{po.poNumber}</span>
                 <h4 className="text-sm font-bold text-white mt-1">{po.vendor}</h4>
-                <p className="text-xs text-slate-400">Date: {po.date} &bull; Expected: {po.expectedDate}</p>
+                <div className="flex items-center gap-2 mt-1 text-xs text-slate-400 flex-wrap">
+                  <span>Date: {po.date} &bull; Expected: {po.expectedDate}</span>
+                  <span className="px-2 py-0.5 rounded bg-slate-800 text-indigo-300 font-bold border border-slate-700">
+                    Ordered By: {po.orderedBy || currentUser?.name || 'Amit'}
+                  </span>
+                </div>
               </div>
 
               <div className="flex items-center gap-1.5">

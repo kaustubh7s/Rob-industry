@@ -35,10 +35,13 @@ import {
   Cpu,
   Folder,
   MessageSquare,
+  Copy,
+  UserCheck,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 import { ProjectMaterialRequirementItem, VendorItem, PurchaseOrder, RFQRecord, ProjectItem } from '../../types/erp';
 import { exportToExcel } from '../../utils/excelIntegration';
+import { formatINR } from '../../utils/calculations';
 import {
   formatWhatsAppPOMessage,
   createWhatsAppUrl,
@@ -50,6 +53,7 @@ import {
 
 interface ProcurementBasketProps {
   initialProjectFilter?: string;
+  initialViewMode?: 'projectFolders' | 'vendorGroups' | 'table' | 'poBasket';
   onNavigateToEntry?: () => void;
   onNavigateToProjects?: () => void;
   onNavigateToMembers?: () => void;
@@ -58,6 +62,7 @@ interface ProcurementBasketProps {
 
 export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
   initialProjectFilter,
+  initialViewMode,
   onNavigateToEntry,
   onNavigateToProjects,
   onNavigateToMembers,
@@ -76,11 +81,18 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
     trashItems,
     currentUser,
     purchaseOrders,
+    addPurchaseOrder,
+    updatePOStatus,
+    deletePurchaseOrder,
     rfqs,
   } = useERP();
 
-  // Primary View Mode: 'projectFolders' | 'vendorGroups' | 'table'
-  const [viewMode, setViewMode] = useState<'projectFolders' | 'vendorGroups' | 'table'>('projectFolders');
+  // Primary View Mode: 'projectFolders' | 'vendorGroups' | 'table' | 'poBasket'
+  const [viewMode, setViewMode] = useState<'projectFolders' | 'vendorGroups' | 'table' | 'poBasket'>(() => {
+    if (initialViewMode) return initialViewMode;
+    if (initialProjectFilter && initialProjectFilter !== 'ALL') return 'projectFolders';
+    return 'poBasket';
+  });
 
   // Multi-Selection State (Set of Requirement IDs)
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -186,6 +198,86 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
   const [poCandidateItems, setPoCandidateItems] = useState<ProjectMaterialRequirementItem[]>([]);
   const [poItemsToGenerate, setPoItemsToGenerate] = useState<ProjectMaterialRequirementItem[]>([]);
   const [generatedPOPreview, setGeneratedPOPreview] = useState<PurchaseOrder | null>(null);
+
+  // PO Basket View States & Filter Controls
+  const [poSearchQuery, setPoSearchQuery] = useState('');
+  const [poStatusFilter, setPoStatusFilter] = useState('ALL');
+  const [poVendorFilter, setPoVendorFilter] = useState('ALL');
+  const [poOrderedByFilter, setPoOrderedByFilter] = useState('ALL');
+  const [selectedPoForSlip, setSelectedPoForSlip] = useState<PurchaseOrder | null>(null);
+  const [isDirectPOModalOpen, setIsDirectPOModalOpen] = useState(false);
+  const [directPOForm, setDirectPOForm] = useState({
+    poNumber: '',
+    vendor: 'Manav Metal',
+    expectedDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+    paymentTerms: '30 Days Net',
+    notes: 'Material test certificate SS 304 required with delivery.',
+    projectName: '',
+    machineName: '',
+    items: [
+      { material: 'SS Flat 80 x 6 x 485', sizeSpecs: '80 x 6 x 485', qty: 2, unit: 'Nos', rate: 450, amount: 900 }
+    ]
+  });
+
+  const allPoVendors = useMemo(() => {
+    const set = new Set<string>();
+    purchaseOrders.forEach((po) => {
+      if (po.vendor) set.add(po.vendor);
+    });
+    return Array.from(set);
+  }, [purchaseOrders]);
+
+  const allPoOrderedByUsers = useMemo(() => {
+    const set = new Set<string>();
+    purchaseOrders.forEach((po) => {
+      if (po.orderedBy) set.add(po.orderedBy);
+    });
+    if (currentUser?.name) set.add(currentUser.name);
+    return Array.from(set);
+  }, [purchaseOrders, currentUser]);
+
+  const filteredPurchaseOrders = useMemo(() => {
+    return purchaseOrders.filter((po) => {
+      const q = poSearchQuery.trim().toLowerCase();
+      const matchSearch =
+        !q ||
+        po.poNumber.toLowerCase().includes(q) ||
+        po.vendor.toLowerCase().includes(q) ||
+        (po.orderedBy || '').toLowerCase().includes(q) ||
+        (po.status || '').toLowerCase().includes(q) ||
+        (po.notes || '').toLowerCase().includes(q) ||
+        (po.projectNames || []).some((p) => p.toLowerCase().includes(q)) ||
+        (po.machineNames || []).some((m) => m.toLowerCase().includes(q)) ||
+        po.items.some(
+          (i) =>
+            i.material.toLowerCase().includes(q) ||
+            i.sizeSpecs.toLowerCase().includes(q)
+        );
+
+      const matchStatus = poStatusFilter === 'ALL' || po.status === poStatusFilter;
+      const matchVendor = poVendorFilter === 'ALL' || po.vendor === poVendorFilter;
+      const matchOrderedBy =
+        poOrderedByFilter === 'ALL' ||
+        (po.orderedBy || 'Amit').toLowerCase().includes(poOrderedByFilter.toLowerCase());
+
+      return matchSearch && matchStatus && matchVendor && matchOrderedBy;
+    });
+  }, [purchaseOrders, poSearchQuery, poStatusFilter, poVendorFilter, poOrderedByFilter]);
+
+  const poBasketMetrics = useMemo(() => {
+    const total = purchaseOrders.length;
+    const totalValue = purchaseOrders.reduce((sum, po) => sum + (po.totalAmount || 0), 0);
+    const sentCount = purchaseOrders.filter((po) => po.status === 'Sent' || po.status === 'Draft' || po.status === 'Partially Received').length;
+    const receivedCount = purchaseOrders.filter((po) => po.status === 'Received').length;
+    const activeAdmin = currentUser?.name || 'Amit';
+    return {
+      total,
+      totalValue,
+      sentCount,
+      receivedCount,
+      activeAdmin,
+    };
+  }, [purchaseOrders, currentUser]);
 
   // Available Vendors in PO Candidate Selection
   const availableVendorsInPO = useMemo(() => {
@@ -298,6 +390,32 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
   const paginatedPOPages = useMemo(() => {
     return chunkPOItems(poItemsToGenerate);
   }, [poItemsToGenerate]);
+
+  const paginatedSavedPOPages = useMemo(() => {
+    if (!selectedPoForSlip) return [];
+    const defaultProject = (selectedPoForSlip.projectNames && selectedPoForSlip.projectNames[0]) || 'Mahalaxmi 3';
+    const defaultMachine = (selectedPoForSlip.machineNames && selectedPoForSlip.machineNames[0]) || 'Machine';
+    const itemsAsReq = selectedPoForSlip.items.map((i, idx) => ({
+      id: `saved-item-${idx}`,
+      projectId: '',
+      projectName: i.projectName || defaultProject,
+      machineId: '',
+      machineName: i.machineName || defaultMachine,
+      machineType: i.machineName || defaultMachine,
+      materialType: (i.materialType as any) || 'SS Flat',
+      description: i.description || i.material,
+      sizeSpecs: i.sizeSpecs,
+      quantity: i.qty,
+      unit: i.unit || 'Nos',
+      vendor: i.vendor || selectedPoForSlip.vendor,
+      vendorName: i.vendor || selectedPoForSlip.vendor,
+      poStatus: (selectedPoForSlip.status === 'Sent' ? 'Issued' : 'Pending') as any,
+      vendorStatus: 'Assigned' as any,
+      createdAt: selectedPoForSlip.date,
+      updatedAt: selectedPoForSlip.date,
+    })) as unknown as ProjectMaterialRequirementItem[];
+    return chunkPOItems(itemsAsReq);
+  }, [selectedPoForSlip]);
 
   // Selectable PO Columns Configuration
   const [poColumnConfig, setPoColumnConfig] = useState({
@@ -706,20 +824,23 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
 
     const poItems = poItemsToGenerate.map((i) => ({
       material: i.description,
+      description: i.description,
       sizeSpecs: i.sizeSpecs,
       qty: Number(i.quantity) || 1,
       unit: i.unit || 'Nos',
       requirementId: i.id,
       projectName: i.projectName,
       machineName: i.machineName || i.machineType || 'Machine',
+      materialType: i.materialType,
       vendor: i.vendor || i.vendorName,
     }));
 
-    const newPO = generateProcurementPO(poTargetVendor, poItems, poExpectedDate, poNotes, poCustomNumber);
+    const currentAdminName = currentUser?.name || 'Amit';
+    const newPO = generateProcurementPO(poTargetVendor, poItems, poExpectedDate, poNotes, poCustomNumber, currentAdminName);
 
     if (newPO) {
       setGeneratedPOPreview(newPO);
-      showToast(`Master Purchase Order ${newPO.poNumber} generated successfully with all ${poItemsToGenerate.length} items!`);
+      showToast(`Master Purchase Order ${newPO.poNumber} generated successfully and auto-saved to PO Basket! (Ordered by: ${currentAdminName})`);
       setSelectedIds([]);
     }
   };
@@ -743,6 +864,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
     const finalPONum = poNum || `PO-RSB-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
     const dateStr = new Date().toISOString().split('T')[0];
     const targetDelDate = poExpectedDate || new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+    const currentAdminName = currentUser?.name || 'Amit';
 
     const poPayload: WhatsAppPOMessageOptions = {
       poNumber: finalPONum,
@@ -757,6 +879,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
       machineName: targetItems[0]?.machineName || targetItems[0]?.machineType || 'Standard Machine',
       dateOfIssue: dateStr,
       expectedDeliveryDate: targetDelDate,
+      orderedBy: currentAdminName,
       notes: poNotes || 'Supply with Material Test Certificate (MTC SS 304). High precision cutting required.',
       items: targetItems.map((i) => ({
         id: i.id,
@@ -770,9 +893,42 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
         unit: i.unit || 'Nos',
         vendor: i.vendor || i.vendorName || 'Unassigned',
         vendorName: i.vendor || i.vendorName || 'Unassigned',
+        orderedBy: currentAdminName,
         notes: i.notes,
       })),
     };
+
+    // Auto-save generated PO directly into the PO Basket so all POs appear in table view
+    const alreadySaved = purchaseOrders.some((p) => p.poNumber === finalPONum);
+    if (!alreadySaved) {
+      addPurchaseOrder({
+        poNumber: finalPONum,
+        date: dateStr,
+        vendor: targetV,
+        expectedDate: targetDelDate,
+        paymentTerms: 'Immediate / 30 Days',
+        status: 'Sent',
+        orderedBy: currentAdminName,
+        issuedBy: currentAdminName,
+        notes: poNotes || 'Supply with Material Test Certificate (MTC SS 304). High precision cutting required.',
+        projectNames: Array.from(new Set(targetItems.map((i) => i.projectName).filter(Boolean))) as string[],
+        machineNames: Array.from(new Set(targetItems.map((i) => i.machineName || i.machineType).filter(Boolean))) as string[],
+        totalAmount: targetItems.reduce((acc, i) => acc + ((Number(i.quantity) || 1) * 500), 0),
+        items: targetItems.map((i) => ({
+          material: i.description,
+          description: i.description,
+          sizeSpecs: i.sizeSpecs,
+          qty: Number(i.quantity) || 1,
+          unit: i.unit || 'Nos',
+          rate: 500,
+          amount: (Number(i.quantity) || 1) * 500,
+          projectName: i.projectName,
+          machineName: i.machineName || i.machineType || 'Machine',
+          materialType: i.materialType,
+          vendor: i.vendor || i.vendorName,
+        })),
+      });
+    }
 
     // 1. Generate & auto-download official RSB Purchase Order PDF directly
     const pdfName = generatePurchaseOrderPDF(poPayload);
@@ -796,7 +952,38 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
     const url = createWhatsAppUrl(phone, msg);
     window.open(url, '_blank', 'noopener,noreferrer');
 
-    showToast(`✓ Master PO PDF "${pdfName}" downloaded & WhatsApp opened for ${phone}!`);
+    showToast(`✓ Master PO "${finalPONum}" auto-saved in PO Basket, PDF downloaded & WhatsApp opened for ${phone}!`);
+  };
+
+  // Export All Saved POs to Excel Workbook
+  const handleExportAllPOsToExcel = () => {
+    if (filteredPurchaseOrders.length === 0) {
+      alert('No Purchase Orders to export.');
+      return;
+    }
+
+    const dataToExport = filteredPurchaseOrders.map((po, idx) => ({
+      'Sr No': idx + 1,
+      'PO Number': po.poNumber,
+      'Date of Issue': po.date,
+      'Expected Delivery': po.expectedDate,
+      'Vendor': po.vendor,
+      'ORDERED BY': po.orderedBy || currentUser?.name || 'Amit',
+      'Projects': (po.projectNames || []).join(', ') || 'General',
+      'Machines': (po.machineNames || []).join(', ') || 'General',
+      'Total Items': po.items.length,
+      'Total Amount (₹)': po.totalAmount || 0,
+      'Payment Terms': po.paymentTerms || '30 Days Net',
+      'Status': po.status,
+      'Notes': po.notes || '',
+    }));
+
+    exportToExcel(
+      dataToExport,
+      `RSB_PO_Basket_${new Date().toISOString().split('T')[0]}`,
+      'RSB Purchase Orders Basket'
+    );
+    showToast(`✓ Exported ${filteredPurchaseOrders.length} Purchase Orders to Excel!`);
   };
 
   // Manual Basket Item Removals (Marks as Ordered / Fulfilled so it leaves the basket without deleting the project or BOM)
@@ -1017,34 +1204,95 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-blue-700 text-white flex items-center justify-center font-black shadow-sm">
-            <ShoppingCart className="w-5 h-5 text-amber-300" />
+            {viewMode === 'poBasket' ? (
+              <FileText className="w-5 h-5 text-amber-300" />
+            ) : (
+              <ShoppingCart className="w-5 h-5 text-amber-300" />
+            )}
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-lg font-black text-slate-900 tracking-tight">
-                Order Basket
+                {viewMode === 'poBasket' ? 'PO Basket & Purchase Orders Register' : 'Order Basket'}
               </h1>
-              <span className="px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800 text-[10px] font-black uppercase tracking-wider border border-indigo-200">
-                Multi-Vendor Allocation Hub
+              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                viewMode === 'poBasket'
+                  ? 'bg-amber-100 text-amber-900 border-amber-300'
+                  : 'bg-indigo-100 text-indigo-800 border-indigo-200'
+              }`}>
+                {viewMode === 'poBasket' ? `Auto-Saved POs (${purchaseOrders.length})` : 'Multi-Vendor Allocation Hub'}
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold border border-slate-200 flex items-center gap-1">
+                <UserCheck className="w-3 h-3 text-emerald-600" />
+                <span>ORDERED BY: <strong className="text-slate-900">{currentUser?.name || 'Amit'}</strong></span>
               </span>
             </div>
             <p className="text-xs text-slate-500 font-medium mt-0.5">
-              Material Planning &rarr; Project & Machine Folders &rarr; Bulk Vendor Allocation &rarr; RFQ & Purchase Orders
+              {viewMode === 'poBasket'
+                ? 'All generated & dispatched Purchase Orders are auto-saved here in table view with live search, PDF & WhatsApp controls'
+                : 'Material Planning → Project & Machine Folders → Bulk Vendor Allocation → RFQ & Purchase Orders'}
             </p>
           </div>
         </div>
 
         {/* Action Controls */}
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleExportBasketExcel}
-            className="px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
-            title="Download full order basket as Excel workbook"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Export Excel</span>
-          </button>
+          {viewMode === 'poBasket' ? (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setDirectPOForm({
+                    poNumber: `PO-2026-${String(purchaseOrders.length + 1).padStart(3, '0')}`,
+                    vendor: vendors[0]?.name || 'Manav Metal',
+                    expectedDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+                    paymentTerms: '30 Days Net',
+                    notes: 'Material test certificate SS 304 required with delivery.',
+                    projectName: projects[0]?.name || '',
+                    machineName: '',
+                    items: [
+                      { material: 'SS Flat 80 x 6 x 485', sizeSpecs: '80 x 6 x 485', qty: 2, unit: 'Nos', rate: 450, amount: 900 }
+                    ]
+                  });
+                  setIsDirectPOModalOpen(true);
+                }}
+                className="px-3 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Issue Direct PO</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleExportAllPOsToExcel}
+                className="px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                title="Download all Purchase Orders as Excel workbook"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Export POs Excel</span>
+              </button>
+            </>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setViewMode('poBasket')}
+                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                title="View All Auto-Saved Purchase Orders in Table Register"
+              >
+                <FileText className="w-3.5 h-3.5 text-amber-200" />
+                <span>📑 PO Basket ({purchaseOrders.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleExportBasketExcel}
+                className="px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                title="Download full order basket as Excel workbook"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Export Excel</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1057,145 +1305,286 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
       )}
 
       {/* ======================================================================= */}
-      {/* 2. STATS & WORKFLOW METRIC TILES (3 KEY METRICS) */}
+      {/* 2. STATS & WORKFLOW METRIC TILES */}
       {/* ======================================================================= */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex items-center justify-between">
-          <div>
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-              Total In Basket
-            </span>
-            <span className="text-xl font-black text-slate-900 mt-0.5 block">
-              {metrics.total} Items
-            </span>
-            <span className="text-[11px] font-semibold text-slate-600">
-              Total Qty: {metrics.totalQty}
-            </span>
+      {viewMode === 'poBasket' ? (
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                Total POs Saved
+              </span>
+              <span className="text-xl font-black text-slate-900 mt-0.5 block">
+                {poBasketMetrics.total} Orders
+              </span>
+              <span className="text-[11px] font-semibold text-slate-600">
+                Filtered: {filteredPurchaseOrders.length}
+              </span>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+              <FileText className="w-4 h-4" />
+            </div>
           </div>
-          <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-            <Layers className="w-4 h-4" />
-          </div>
-        </div>
 
-        <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex items-center justify-between">
-          <div>
-            <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider block">
-              Needs Vendor Assignment
-            </span>
-            <span className="text-xl font-black text-amber-700 mt-0.5 block">
-              {metrics.unassigned} Items
-            </span>
-            <span className="text-[11px] font-semibold text-amber-800">
-              {metrics.unassigned > 0 ? 'Action required' : 'All materials assigned'}
-            </span>
+          <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">
+                Total PO Value
+              </span>
+              <span className="text-xl font-black text-emerald-700 mt-0.5 block">
+                {formatINR(poBasketMetrics.totalValue)}
+              </span>
+              <span className="text-[11px] font-semibold text-emerald-800">
+                Across {allPoVendors.length} Suppliers
+              </span>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <TrendingUp className="w-4 h-4" />
+            </div>
           </div>
-          <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-            <Clock className="w-4 h-4" />
-          </div>
-        </div>
 
-        <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex items-center justify-between">
-          <div>
-            <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">
-              Vendor Allocated
-            </span>
-            <span className="text-xl font-black text-emerald-900 mt-0.5 block">
-              {metrics.assigned} Items
-            </span>
-            <span className="text-[11px] font-semibold text-emerald-700">
-              Across {allVendorsList.length} Vendors
-            </span>
+          <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider block">
+                Pending / In Transit
+              </span>
+              <span className="text-xl font-black text-amber-700 mt-0.5 block">
+                {poBasketMetrics.sentCount} POs
+              </span>
+              <span className="text-[11px] font-semibold text-amber-800">
+                {poBasketMetrics.receivedCount} Fulfilled & Received
+              </span>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+              <Clock className="w-4 h-4" />
+            </div>
           </div>
-          <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-            <Building2 className="w-4 h-4" />
+
+          <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold text-purple-600 uppercase tracking-wider block">
+                ORDERED BY (Admin)
+              </span>
+              <span className="text-lg font-black text-purple-950 mt-0.5 block truncate max-w-[140px]">
+                {poBasketMetrics.activeAdmin}
+              </span>
+              <span className="text-[11px] font-semibold text-purple-700">
+                Auto-Synced from Admin
+              </span>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-black text-xs">
+              {poBasketMetrics.activeAdmin[0]?.toUpperCase() || 'A'}
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                Total In Basket
+              </span>
+              <span className="text-xl font-black text-slate-900 mt-0.5 block">
+                {metrics.total} Items
+              </span>
+              <span className="text-[11px] font-semibold text-slate-600">
+                Total Qty: {metrics.totalQty}
+              </span>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+              <Layers className="w-4 h-4" />
+            </div>
+          </div>
+
+          <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider block">
+                Needs Vendor Assignment
+              </span>
+              <span className="text-xl font-black text-amber-700 mt-0.5 block">
+                {metrics.unassigned} Items
+              </span>
+              <span className="text-[11px] font-semibold text-amber-800">
+                {metrics.unassigned > 0 ? 'Action required' : 'All materials assigned'}
+              </span>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+              <Clock className="w-4 h-4" />
+            </div>
+          </div>
+
+          <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">
+                Vendor Allocated
+              </span>
+              <span className="text-xl font-black text-emerald-900 mt-0.5 block">
+                {metrics.assigned} Items
+              </span>
+              <span className="text-[11px] font-semibold text-emerald-700">
+                Across {allVendorsList.length} Vendors
+              </span>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <Building2 className="w-4 h-4" />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ======================================================================= */}
       {/* 3. CONTROL BAR: VIEW SWITCHER, FILTERS, SEARCH & BULK ACTIONS */}
       {/* ======================================================================= */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          {/* View Mode Toggle: Project Folders | Vendor Groups | Table View */}
-          <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200 flex-wrap gap-1">
-            <button
-              type="button"
-              onClick={() => setViewMode('projectFolders')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                viewMode === 'projectFolders'
-                  ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80 font-black'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Folder className="w-3.5 h-3.5 text-blue-600" />
-              <span>📁 Project & Machine Folders ({projectMachineFolders.length})</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('vendorGroups')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                viewMode === 'vendorGroups'
-                  ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80 font-black'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Building2 className="w-3.5 h-3.5 text-indigo-600" />
-              <span>🏢 Group By Vendor ({vendorGroups.length})</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('table')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                viewMode === 'table'
-                  ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80 font-black'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>📋 All Materials (Table View)</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Search & Filter Bar */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 pt-1">
-          {/* Search */}
-          <div className="relative lg:col-span-2">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by part description, size (80 x 6 x 485), project, machine..."
-              className="w-full bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 rounded-xl pl-9 pr-3 py-2 text-xs font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 transition-all"
-            />
-            {searchQuery && (
+        {viewMode !== 'poBasket' && (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            {/* View Mode Toggle: Project Folders | Vendor Groups | Table View | PO Basket */}
+            <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200 flex-wrap gap-1">
               <button
                 type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                onClick={() => setViewMode('projectFolders')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  viewMode === 'projectFolders'
+                    ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80 font-black'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
               >
-                <X className="w-3.5 h-3.5" />
+                <Folder className="w-3.5 h-3.5 text-blue-600" />
+                <span>📁 Project & Machine Folders ({projectMachineFolders.length})</span>
               </button>
-            )}
+              <button
+                type="button"
+                onClick={() => setViewMode('vendorGroups')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  viewMode === 'vendorGroups'
+                    ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80 font-black'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+                <span>🏢 Group By Vendor ({vendorGroups.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('table')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  viewMode === 'table'
+                    ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80 font-black'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>📋 All Materials ({filteredItems.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('poBasket')}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer text-amber-800 bg-amber-50 hover:bg-amber-100 hover:text-amber-950 border border-amber-200/80"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>📑 PO Basket &amp; Saved POs</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-amber-200 text-amber-900">
+                  {purchaseOrders.length}
+                </span>
+              </button>
+            </div>
           </div>
+        )}
 
-          {/* Project Filter */}
-          <div>
-            <select
-              value={filterProject}
-              onChange={(e) => setFilterProject(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500 cursor-pointer"
-            >
-              <option value="ALL">📁 All Projects ({allProjectNames.length})</option>
-              {allProjectNames.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
+        {/* Search & Filter Bar */}
+        {viewMode === 'poBasket' ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-1">
+            {/* PO Universal Search Bar */}
+            <div className="relative lg:col-span-2">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={poSearchQuery}
+                onChange={(e) => setPoSearchQuery(e.target.value)}
+                placeholder="Search by PO #, Vendor, ORDERED BY (Amit), Project, Material specs..."
+                className="w-full bg-slate-50 border border-slate-200 focus:bg-white focus:border-amber-500 rounded-xl pl-9 pr-8 py-2 text-xs font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-amber-400 transition-all"
+              />
+              {poSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setPoSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* PO Status Filter */}
+            <div>
+              <select
+                value={poStatusFilter}
+                onChange={(e) => setPoStatusFilter(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-amber-500 cursor-pointer"
+              >
+                <option value="ALL">🏷️ All PO Statuses</option>
+                <option value="Sent">Sent / Issued</option>
+                <option value="Draft">Draft</option>
+                <option value="Partially Received">Partially Received</option>
+                <option value="Received">Received / Completed</option>
+                <option value="Cancelled">Cancelled</option>
+              </select>
+            </div>
+
+            {/* PO Vendor Filter */}
+            <div>
+              <select
+                value={poVendorFilter}
+                onChange={(e) => setPoVendorFilter(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-amber-500 cursor-pointer"
+              >
+                <option value="ALL">🏢 All Suppliers ({allPoVendors.length})</option>
+                {allPoVendors.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 pt-1">
+            {/* Search */}
+            <div className="relative lg:col-span-2">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by part description, size (80 x 6 x 485), project, machine..."
+                className="w-full bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 rounded-xl pl-9 pr-3 py-2 text-xs font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 transition-all"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Project Filter */}
+            <div>
+              <select
+                value={filterProject}
+                onChange={(e) => setFilterProject(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500 cursor-pointer"
+              >
+                <option value="ALL">📁 All Projects ({allProjectNames.length})</option>
+                {allProjectNames.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
 
           {/* Material Type Filter */}
           <div>
@@ -1226,6 +1615,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
             </select>
           </div>
         </div>
+      )}
       </div>
 
       {/* ======================================================================= */}
@@ -1816,6 +2206,371 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ======================== 4D. PO BASKET & AUTO-SAVED PURCHASE ORDERS TABLE ============================ */}
+      {viewMode === 'poBasket' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            {/* Top Table Context Banner */}
+            <div className="px-4 py-3 bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 text-white flex flex-wrap items-center justify-between gap-3 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-amber-400" />
+                <span className="text-xs font-black tracking-wide uppercase">
+                  Official Purchase Orders Register
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30 text-[10px] font-mono font-bold">
+                  {filteredPurchaseOrders.length} of {purchaseOrders.length} POs
+                </span>
+              </div>
+
+              <div className="flex items-center gap-3 text-xs text-slate-300">
+                <span className="hidden sm:inline">Default Issuer:</span>
+                <span className="px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-xs font-black flex items-center gap-1.5">
+                  <UserCheck className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>ORDERED BY: {currentUser?.name || 'Amit'}</span>
+                </span>
+              </div>
+            </div>
+
+            {/* Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
+                    <th className="py-3 px-3">PO Number</th>
+                    <th className="py-3 px-3">Date & ETA</th>
+                    <th className="py-3 px-3">Vendor / Supplier</th>
+                    <th className="py-3 px-3">Project & Scope</th>
+                    <th className="py-3 px-3 text-center">Items</th>
+                    <th className="py-3 px-3 text-right font-mono">Total (₹)</th>
+                    <th className="py-3 px-3 text-center">Status</th>
+                    <th className="py-3 px-3 text-center w-36">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium">
+                  {filteredPurchaseOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-14 text-center text-slate-400">
+                        <FileText className="w-12 h-12 mx-auto text-slate-300 mb-3 animate-pulse" />
+                        <h4 className="text-sm font-black text-slate-800">
+                          {poSearchQuery || poStatusFilter !== 'ALL' || poVendorFilter !== 'ALL'
+                            ? 'No Purchase Orders match your filter criteria'
+                            : 'No Purchase Orders have been generated yet'}
+                        </h4>
+                        <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                          {poSearchQuery || poStatusFilter !== 'ALL'
+                            ? 'Try clearing your search query or selecting "All PO Statuses" above.'
+                            : 'Select materials from the Order Basket and click "WhatsApp PO" or "PO Sheet" to generate and auto-save them here.'}
+                        </p>
+                        <div className="flex items-center justify-center gap-2 mt-4">
+                          {(poSearchQuery || poStatusFilter !== 'ALL' || poVendorFilter !== 'ALL') && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPoSearchQuery('');
+                                setPoStatusFilter('ALL');
+                                setPoVendorFilter('ALL');
+                              }}
+                              className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer"
+                            >
+                              Reset Filters
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setViewMode('projectFolders')}
+                            className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all cursor-pointer shadow-xs"
+                          >
+                            Browse Order Basket Materials →
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredPurchaseOrders.map((po, idx) => {
+                      const orderedByName = po.orderedBy || currentUser?.name || 'Amit';
+                      const isEven = idx % 2 === 0;
+                      const vendorPhone = getVendorMobile(po.vendor, vendors);
+
+                      return (
+                        <tr
+                          key={po.id || idx}
+                          className={`transition-all hover:bg-amber-50/40 group ${
+                            isEven ? 'bg-white' : 'bg-slate-50/40'
+                          }`}
+                        >
+                          {/* PO Number */}
+                          <td className="py-3 px-3">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono font-black text-xs text-slate-900 bg-slate-100 hover:bg-slate-200 px-2 py-0.5 rounded-md border border-slate-200 transition-colors">
+                                {po.poNumber}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  try {
+                                    navigator.clipboard.writeText(po.poNumber);
+                                    showToast(`Copied "${po.poNumber}" to clipboard!`);
+                                  } catch (e) {}
+                                }}
+                                className="opacity-0 group-hover:opacity-100 p-1 rounded text-slate-400 hover:text-slate-700 transition-opacity"
+                                title="Copy PO Number"
+                              >
+                                <Copy className="w-3 h-3" />
+                              </button>
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-medium block mt-0.5">
+                              Terms: {po.paymentTerms || '30 Days Net'}
+                            </span>
+                          </td>
+
+                          {/* Date & Delivery */}
+                          <td className="py-3 px-3">
+                            <div className="flex items-center gap-1 text-slate-900 font-bold">
+                              <Calendar className="w-3 h-3 text-slate-400" />
+                              <span>{po.date}</span>
+                            </div>
+                            <span className="text-[10px] text-emerald-700 font-semibold block mt-0.5">
+                              ETA: {po.expectedDate}
+                            </span>
+                          </td>
+
+                          {/* Vendor */}
+                          <td className="py-3 px-3">
+                            <div className="flex items-center gap-1.5">
+                              <Building2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                              <span className="font-bold text-slate-900">{po.vendor}</span>
+                            </div>
+                            <span className="text-[10px] text-slate-500 font-medium block mt-0.5 pl-5">
+                              {vendorPhone}
+                            </span>
+                          </td>
+
+                          {/* Project Names & Machines */}
+                          <td className="py-3 px-3 max-w-[200px]">
+                            <div className="flex flex-wrap gap-1">
+                              {(po.projectNames && po.projectNames.length > 0
+                                ? po.projectNames
+                                : ['General Fabrication']
+                              ).map((p, pIdx) => (
+                                <span
+                                  key={pIdx}
+                                  className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 text-[10px] font-bold truncate max-w-[140px]"
+                                  title={p}
+                                >
+                                  📁 {p}
+                                </span>
+                              ))}
+                              {po.machineNames && po.machineNames.length > 0 && (
+                                <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-semibold truncate max-w-[120px]">
+                                  ⚙️ {po.machineNames.join(', ')}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Items Count & Mini Preview */}
+                          <td className="py-3 px-3 text-center">
+                            <span className="px-2 py-1 rounded-md bg-slate-100 text-slate-900 font-black text-xs border border-slate-200">
+                              {po.items.length} {po.items.length === 1 ? 'Part' : 'Parts'}
+                            </span>
+                            <span className="text-[10px] text-slate-500 block mt-0.5 truncate max-w-[110px] mx-auto" title={po.items.map(i => i.material).join(', ')}>
+                              {po.items[0]?.material || 'SS Items'}
+                            </span>
+                          </td>
+
+                          {/* Total Amount */}
+                          <td className="py-3 px-3 text-right">
+                            <span className="font-mono font-black text-xs text-emerald-700 block">
+                              {formatINR(po.totalAmount || 0)}
+                            </span>
+                            <span className="text-[9px] text-slate-400 font-medium">
+                              Incl. Specs
+                            </span>
+                          </td>
+
+                          {/* Status Dropdown */}
+                          <td className="py-3 px-3 text-center">
+                            <select
+                              value={po.status}
+                              onChange={(e) => {
+                                updatePOStatus(po.id, e.target.value as any);
+                                showToast(`Updated ${po.poNumber} status to "${e.target.value}"`);
+                              }}
+                              className={`text-[10px] font-black px-2 py-1 rounded-lg border cursor-pointer focus:outline-none ${
+                                po.status === 'Sent'
+                                  ? 'bg-blue-50 text-blue-700 border-blue-300'
+                                  : po.status === 'Received'
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                  : po.status === 'Partially Received'
+                                  ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                  : po.status === 'Cancelled'
+                                  ? 'bg-rose-50 text-rose-700 border-rose-300'
+                                  : 'bg-slate-100 text-slate-700 border-slate-300'
+                              }`}
+                            >
+                              <option value="Sent">Sent</option>
+                              <option value="Draft">Draft</option>
+                              <option value="Partially Received">Partially Received</option>
+                              <option value="Received">Received</option>
+                              <option value="Cancelled">Cancelled</option>
+                            </select>
+                          </td>
+
+                          {/* Quick Actions Toolbar */}
+                          <td className="py-3 px-3 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              {/* View Slip Modal */}
+                              <button
+                                type="button"
+                                onClick={() => setSelectedPoForSlip(po)}
+                                className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+                                title="View Purchase Order Slip & Specifications"
+                              >
+                                <Eye className="w-3.5 h-3.5 text-indigo-600" />
+                              </button>
+
+                              {/* Instant PDF Download */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const poPayload: WhatsAppPOMessageOptions = {
+                                    poNumber: po.poNumber,
+                                    vendorName: po.vendor,
+                                    vendorMobile: vendorPhone,
+                                    paymentTerms: po.paymentTerms || '30 Days Net',
+                                    status: po.status,
+                                    projectName: (po.projectNames && po.projectNames[0]) || 'RSB Manufacturing',
+                                    machineName: (po.machineNames && po.machineNames[0]) || 'Standard Machine',
+                                    dateOfIssue: po.date,
+                                    expectedDeliveryDate: po.expectedDate,
+                                    orderedBy: orderedByName,
+                                    notes: po.notes,
+                                    items: po.items.map((i, iIdx) => ({
+                                      id: `po-item-${iIdx}`,
+                                      projectName: (po.projectNames && po.projectNames[0]) || 'RSB',
+                                      machineName: (po.machineNames && po.machineNames[0]) || 'Machine',
+                                      description: i.material,
+                                      materialType: 'SS Part',
+                                      materialGrade: 'SS 304',
+                                      sizeSpecs: i.sizeSpecs,
+                                      quantity: i.qty,
+                                      unit: i.unit,
+                                      vendor: po.vendor,
+                                      orderedBy: orderedByName,
+                                    })),
+                                  };
+                                  const pdf = generatePurchaseOrderPDF(poPayload);
+                                  showToast(`Downloaded "${pdf}" successfully!`);
+                                }}
+                                className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition-colors cursor-pointer"
+                                title="Download Official PO PDF"
+                              >
+                                <Download className="w-3.5 h-3.5 text-emerald-700" />
+                              </button>
+
+                              {/* WhatsApp Direct Dispatch */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const poPayload: WhatsAppPOMessageOptions = {
+                                    poNumber: po.poNumber,
+                                    vendorName: po.vendor,
+                                    vendorMobile: vendorPhone,
+                                    paymentTerms: po.paymentTerms || '30 Days Net',
+                                    status: po.status,
+                                    projectName: (po.projectNames && po.projectNames[0]) || 'RSB Manufacturing',
+                                    machineName: (po.machineNames && po.machineNames[0]) || 'Standard Machine',
+                                    dateOfIssue: po.date,
+                                    expectedDeliveryDate: po.expectedDate,
+                                    orderedBy: orderedByName,
+                                    notes: po.notes,
+                                    items: po.items.map((i, iIdx) => ({
+                                      id: `po-item-${iIdx}`,
+                                      projectName: (po.projectNames && po.projectNames[0]) || 'RSB',
+                                      machineName: (po.machineNames && po.machineNames[0]) || 'Machine',
+                                      description: i.material,
+                                      materialType: 'SS Part',
+                                      materialGrade: 'SS 304',
+                                      sizeSpecs: i.sizeSpecs,
+                                      quantity: i.qty,
+                                      unit: i.unit,
+                                      vendor: po.vendor,
+                                      orderedBy: orderedByName,
+                                    })),
+                                  };
+                                  const pdf = generatePurchaseOrderPDF(poPayload);
+                                  const msg = formatWhatsAppPOMessage(poPayload);
+                                  try {
+                                    navigator.clipboard.writeText(msg);
+                                  } catch (e) {}
+                                  const url = createWhatsAppUrl(vendorPhone, msg);
+                                  window.open(url, '_blank', 'noopener,noreferrer');
+                                  showToast(`Dispatched PO ${po.poNumber} on WhatsApp & downloaded PDF!`);
+                                }}
+                                className="p-1.5 rounded-lg bg-[#25D366]/20 hover:bg-[#25D366]/30 text-emerald-950 border border-[#25D366]/40 transition-colors cursor-pointer"
+                                title="Send on WhatsApp & Download PDF"
+                              >
+                                <Send className="w-3.5 h-3.5 text-emerald-800 fill-emerald-800" />
+                              </button>
+
+                              {/* Print */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedPoForSlip(po);
+                                  setTimeout(() => window.print(), 300);
+                                }}
+                                className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer hidden sm:inline-flex"
+                                title="Print PO Slip"
+                              >
+                                <Printer className="w-3.5 h-3.5 text-slate-600" />
+                              </button>
+
+                              {/* Delete PO */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (window.confirm(`Are you sure you want to delete Purchase Order "${po.poNumber}" for ${po.vendor}?`)) {
+                                    deletePurchaseOrder(po.id);
+                                    showToast(`Deleted Purchase Order ${po.poNumber}`);
+                                  }
+                                }}
+                                className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                                title="Delete Purchase Order"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Bottom PO Summary Footer */}
+            {filteredPurchaseOrders.length > 0 && (
+              <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-slate-800">
+                    Showing {filteredPurchaseOrders.length} of {purchaseOrders.length} Purchase Orders
+                  </span>
+                  <span className="text-slate-400">•</span>
+                  <span>All POs auto-saved with complete item specifications</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="font-medium">
+                    Total Value: <strong className="text-emerald-700 font-black">{formatINR(filteredPurchaseOrders.reduce((sum, p) => sum + (p.totalAmount || 0), 0))}</strong>
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -2507,6 +3262,10 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                                       {Array.from(new Set(poItemsToGenerate.map((i) => cleanVendorName(i.vendor || i.vendorName)).filter((v) => v !== 'Unassigned'))).join(', ') || 'All Assigned Vendors'}
                                     </span>
                                   </div>
+                                  <div className="text-[11px] text-slate-700">
+                                    <span className="font-bold text-slate-500 text-[10px]">ORDERED BY: </span>
+                                    <span className="font-bold text-slate-900">{currentUser?.name || 'Amit'}</span>
+                                  </div>
                                   <div className="text-[10px] text-slate-500">
                                     Scope: All {poItemsToGenerate.length} Materials (Sequential Vendor Grouping)
                                   </div>
@@ -2660,14 +3419,12 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                         </div>
                       ) : (
                         <div className="po-signatures-footer space-y-2 mt-auto shrink-0 break-inside-avoid">
-                          <div className="grid grid-cols-3 gap-4 pt-2 text-center text-xs text-slate-700 border-t-2 border-slate-900">
+                          <div className="grid grid-cols-2 gap-8 pt-2 text-center text-xs text-slate-700 border-t-2 border-slate-900">
                             <div className="border-t border-dashed border-slate-600 pt-1.5">
-                              <span className="block font-black text-slate-950 text-[11px] leading-tight">Prepared By</span>
-                              <span className="text-[9.5px] text-slate-600 font-semibold leading-tight block mt-0.5">Material Planning Dept</span>
-                            </div>
-                            <div className="border-t border-dashed border-slate-600 pt-1.5">
-                              <span className="block font-black text-slate-950 text-[11px] leading-tight">Verified By</span>
-                              <span className="text-[9.5px] text-slate-600 font-semibold leading-tight block mt-0.5">Stores & Procurement Head</span>
+                              <span className="block font-black text-slate-950 text-[11px] leading-tight">Prepared &amp; Ordered By</span>
+                              <span className="text-[9.5px] text-slate-600 font-semibold leading-tight block mt-0.5">
+                                ORDERED BY: {currentUser?.name || 'Amit'}
+                              </span>
                             </div>
                             <div className="border-t border-dashed border-slate-600 pt-1.5">
                               <span className="block font-black text-slate-950 text-[11px] leading-tight">Authorized Signatory</span>
@@ -2756,6 +3513,644 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 5F. INTERACTIVE PO SLIP & DETAILS MODAL (IDENTICAL TO ORDER BASKET PO LAYOUT) */}
+      {selectedPoForSlip && (
+        <div className="printable-po-modal-overlay fixed inset-0 bg-slate-950/80 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="printable-po-modal-wrapper bg-white rounded-2xl max-w-4xl w-full p-4 sm:p-6 space-y-4 shadow-2xl border border-slate-300 my-auto max-h-[92vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 no-print">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center font-black">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-black text-slate-900">
+                    Purchase Order Slip: {selectedPoForSlip.poNumber}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Official RSB Material Purchase Order • Supplier: {selectedPoForSlip.vendor}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedPoForSlip(null)}
+                className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Printable Document Sheet (Exact Original Order Basket Design) */}
+            <div className="printable-po-document space-y-6">
+              {paginatedSavedPOPages.map((pageChunk) => (
+                <div
+                  key={pageChunk.pageIndex}
+                  className="po-page-sheet bg-white rounded-xl p-5 sm:p-6 border-2 border-slate-800 shadow-sm text-slate-900 font-sans flex flex-col justify-between min-h-[275mm] space-y-4"
+                >
+                  {/* Top Header & Table Area */}
+                  <div className="space-y-4 flex-1">
+                    {pageChunk.isFirstPage ? (
+                      <>
+                        {/* Company Header Block */}
+                        <div className="border-b-2 border-slate-900 pb-3 text-left flex flex-row items-start justify-between gap-2">
+                          <div className="flex items-start gap-3">
+                            <div className="w-10 h-10 bg-slate-950 text-amber-400 font-black text-sm rounded-lg flex items-center justify-center tracking-tight border border-amber-400/30 shrink-0">
+                              RSB
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h4 className="text-xl font-black text-slate-950 tracking-tight uppercase">
+                                  RSB PRIVATE LIMITED
+                                </h4>
+                              </div>
+                              <p className="text-xs font-bold text-slate-700 mt-0.5">
+                                Manufacturing Industry
+                              </p>
+                              <p className="text-[10px] text-slate-500">
+                                F, 16/4, Naregaon Main Rd, Naregaon, Chilkalthana, Chhatrapati Sambhajinagar, Maharashtra 431007
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right bg-slate-100 px-3.5 py-2 rounded-lg border border-slate-300 shrink-0">
+                            <span className="text-[9.5px] uppercase font-black text-slate-600 block">
+                              DOCUMENT TYPE
+                            </span>
+                            <strong className="text-xs font-black text-slate-950 block tracking-wide">
+                              MATERIAL PURCHASE ORDER
+                            </strong>
+                            <span className="text-[10px] font-bold text-emerald-800 font-mono">
+                              STATUS: {selectedPoForSlip.status.toUpperCase()}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Metadata 2-Column Info Grid */}
+                        <div className="grid grid-cols-2 gap-3 text-xs">
+                          <div className="border border-slate-300 rounded-lg p-3 bg-slate-50/70 space-y-1">
+                            <span className="text-[9.5px] font-black uppercase text-slate-600 tracking-wider block border-b border-slate-200 pb-1">
+                              PROJECT &amp; PROCUREMENT DETAILS:
+                            </span>
+                            <div className="pt-0.5 space-y-0.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] font-bold text-slate-500">Project:</span>
+                                <strong className="text-sm font-black text-slate-900 block">
+                                  {(selectedPoForSlip.projectNames && selectedPoForSlip.projectNames[0]) || selectedPoForSlip.items[0]?.projectName || 'Mahalaxmi 3'}
+                                </strong>
+                              </div>
+                              <div className="text-[11px] text-slate-700">
+                                <span className="font-bold text-slate-500 text-[10px]">Assigned Vendors: </span>
+                                <span className="font-bold text-indigo-900">
+                                  {Array.from(new Set(selectedPoForSlip.items.map((i) => cleanVendorName(i.vendor || selectedPoForSlip.vendor)).filter(Boolean))).join(', ') || cleanVendorName(selectedPoForSlip.vendor)}
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-slate-700">
+                                <span className="font-bold text-slate-500 text-[10px]">ORDERED BY: </span>
+                                <span className="font-bold text-slate-900">{selectedPoForSlip.orderedBy || currentUser?.name || 'Amit'}</span>
+                              </div>
+                              <div className="text-[10px] text-slate-500">
+                                Scope: All {selectedPoForSlip.items.length} Materials (Sequential Vendor Grouping)
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="border border-slate-300 rounded-lg p-3 bg-slate-50/70 space-y-1">
+                            <span className="text-[9.5px] font-black uppercase text-slate-600 tracking-wider block border-b border-slate-200 pb-1">
+                              ORDER REFERENCES:
+                            </span>
+                            <div className="grid grid-cols-3 gap-2 text-[11px] pt-0.5">
+                              <div>
+                                <span className="text-slate-500 text-[10px] block">PO Number:</span>
+                                <strong className="font-mono font-black text-slate-900">
+                                  {selectedPoForSlip.poNumber}
+                                </strong>
+                              </div>
+                              <div>
+                                <span className="text-slate-500 text-[10px] block">Date of Issue:</span>
+                                <strong className="text-slate-900">
+                                  {selectedPoForSlip.date}
+                                </strong>
+                              </div>
+                              <div>
+                                <span className="text-slate-500 text-[10px] block">Target Delivery:</span>
+                                <strong className="text-emerald-800 font-bold">
+                                  {selectedPoForSlip.expectedDate}
+                                </strong>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      /* Continuation Header on Page 2+ */
+                      <div className="border-b-2 border-slate-900 pb-2.5 text-left flex flex-row items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 bg-slate-950 text-amber-400 font-black text-xs rounded-lg flex items-center justify-center border border-amber-400/30 shrink-0">
+                            RSB
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-black text-slate-950 uppercase tracking-tight">
+                              RSB PRIVATE LIMITED — PURCHASE ORDER CONTINUATION
+                            </h4>
+                            <p className="text-[10px] text-slate-600 font-bold mt-0.5">
+                              Project: <span className="text-slate-900">{(selectedPoForSlip.projectNames && selectedPoForSlip.projectNames[0]) || 'Project'}</span> | PO No: <span className="font-mono text-slate-950">{selectedPoForSlip.poNumber}</span>
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right bg-slate-100 px-3 py-1 rounded-lg border border-slate-300 shrink-0">
+                          <span className="text-[9.5px] font-black text-slate-800 uppercase block">
+                            PAGE {pageChunk.pageIndex} OF {pageChunk.totalPages}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Professional Excel-Style Grid Table (9 Exact Columns) */}
+                    <div className="border border-slate-400 overflow-x-auto rounded-lg">
+                      <table className="w-full text-left text-[11px] border-collapse font-sans">
+                        <thead>
+                          <tr className="bg-slate-200 text-slate-950 font-black border-b border-slate-400 uppercase text-[9.5px]">
+                            <th className="px-1.5 py-1 w-8 text-center border-r border-slate-300">#</th>
+                            <th className="px-2 py-1 border-r border-slate-300">Project Name</th>
+                            <th className="px-2 py-1 border-r border-slate-300">Machine Name</th>
+                            <th className="px-2 py-1 border-r border-slate-300">Material Description</th>
+                            <th className="px-2 py-1 border-r border-slate-300">Material Type</th>
+                            <th className="px-2 py-1 border-r border-slate-300 font-mono">Size Specification</th>
+                            <th className="px-1.5 py-1 text-center border-r border-slate-300">Qty</th>
+                            <th className="px-1.5 py-1 text-center border-r border-slate-300">Unit</th>
+                            <th className="px-2 py-1 border-r border-slate-300">Assigned Vendor</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-300 bg-white text-[10.5px]">
+                          {pageChunk.items.map(({ item, globalIndex }, rIdx) => (
+                            <tr
+                              key={item.id || globalIndex}
+                              className={rIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'}
+                            >
+                              <td className="px-1.5 py-1 text-center font-bold text-slate-700 border-r border-slate-300">
+                                {globalIndex}
+                              </td>
+                              <td className="px-2 py-1 font-bold text-slate-900 border-r border-slate-300">
+                                {item.projectName}
+                              </td>
+                              <td className="px-2 py-1 font-bold text-indigo-950 border-r border-slate-300">
+                                {item.machineName || item.machineType || 'Machine'}
+                              </td>
+                              <td className="px-2 py-1 font-bold text-slate-900 border-r border-slate-300">
+                                {item.description}
+                              </td>
+                              <td className="px-2 py-1 font-semibold text-slate-800 border-r border-slate-300">
+                                {item.materialType}
+                              </td>
+                              <td className="px-2 py-1 font-mono font-bold text-blue-900 border-r border-slate-300">
+                                {item.sizeSpecs}
+                              </td>
+                              <td className="px-1.5 py-1 text-center font-black text-slate-950 border-r border-slate-300">
+                                {item.quantity}
+                              </td>
+                              <td className="px-1.5 py-1 text-center font-semibold text-slate-700 border-r border-slate-300">
+                                {item.unit || 'Nos'}
+                              </td>
+                              <td className="px-2 py-1 font-black text-slate-900 border-r border-slate-300">
+                                {cleanVendorName(item.vendor || item.vendorName || selectedPoForSlip.vendor)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Notes / Remarks */}
+                    {pageChunk.isLastPage && selectedPoForSlip.notes && (
+                      <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-slate-700">
+                        <span className="font-bold text-slate-600 block text-[10px] uppercase">Notes:</span>
+                        <p>{selectedPoForSlip.notes}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Signatures Footer (Exact 2-tier: Prepared & Ordered By | Authorized Signatory) */}
+                  {!pageChunk.isLastPage ? (
+                    <div className="border-t border-slate-300 pt-1.5 text-center text-[9.5px] text-slate-500 font-semibold flex items-center justify-between mt-auto shrink-0">
+                      <span>RSB Private Limited • Purchase Order: {selectedPoForSlip.poNumber}</span>
+                      <span className="font-black text-indigo-700 uppercase tracking-wide">
+                        Page {pageChunk.pageIndex} of {pageChunk.totalPages} — Continued on Next Page →
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="po-signatures-footer space-y-2 mt-auto shrink-0 break-inside-avoid">
+                      <div className="grid grid-cols-2 gap-8 pt-2 text-center text-xs text-slate-700 border-t-2 border-slate-900">
+                        <div className="border-t border-dashed border-slate-600 pt-1.5">
+                          <span className="block font-black text-slate-950 text-[11px] leading-tight">Prepared &amp; Ordered By</span>
+                          <span className="text-[9.5px] text-slate-600 font-semibold leading-tight block mt-0.5">
+                            ORDERED BY: {selectedPoForSlip.orderedBy || currentUser?.name || 'Amit'}
+                          </span>
+                        </div>
+                        <div className="border-t border-dashed border-slate-600 pt-1.5">
+                          <span className="block font-black text-slate-950 text-[11px] leading-tight">Authorized Signatory</span>
+                          <span className="text-[9.5px] text-slate-600 font-semibold leading-tight block mt-0.5">Director / Plant Operations</span>
+                        </div>
+                      </div>
+                      <div className="border-t border-slate-200 pt-1 text-center text-[9px] text-slate-400 font-medium flex items-center justify-between">
+                        <span>RSB ERP System • Ref: {selectedPoForSlip.poNumber}</span>
+                        <span>Generated: {selectedPoForSlip.date}</span>
+                        <span className="font-bold text-slate-600">Page {pageChunk.pageIndex} of {pageChunk.totalPages} (End of Order)</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Print, Download & Close Actions */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-3 border-t border-slate-200 no-print">
+              <button
+                type="button"
+                onClick={() => setSelectedPoForSlip(null)}
+                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 border border-slate-300"
+              >
+                <ArrowLeft className="w-3.5 h-3.5 text-slate-500" />
+                <span>Back to PO Register</span>
+              </button>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const vendorPhone = getVendorMobile(selectedPoForSlip.vendor, vendors);
+                    const poPayload: WhatsAppPOMessageOptions = {
+                      poNumber: selectedPoForSlip.poNumber,
+                      vendorName: selectedPoForSlip.vendor,
+                      vendorMobile: vendorPhone,
+                      paymentTerms: selectedPoForSlip.paymentTerms || '30 Days Net',
+                      status: selectedPoForSlip.status,
+                      projectName: (selectedPoForSlip.projectNames && selectedPoForSlip.projectNames[0]) || 'RSB Manufacturing',
+                      machineName: (selectedPoForSlip.machineNames && selectedPoForSlip.machineNames[0]) || 'Standard Machine',
+                      dateOfIssue: selectedPoForSlip.date,
+                      expectedDeliveryDate: selectedPoForSlip.expectedDate,
+                      orderedBy: selectedPoForSlip.orderedBy || currentUser?.name || 'Amit',
+                      notes: selectedPoForSlip.notes,
+                      items: selectedPoForSlip.items.map((i, iIdx) => ({
+                        id: `po-item-${iIdx}`,
+                        projectName: (selectedPoForSlip.projectNames && selectedPoForSlip.projectNames[0]) || 'RSB',
+                        machineName: (selectedPoForSlip.machineNames && selectedPoForSlip.machineNames[0]) || 'Machine',
+                        description: i.material,
+                        materialType: 'SS Part',
+                        materialGrade: 'SS 304',
+                        sizeSpecs: i.sizeSpecs,
+                        quantity: i.qty,
+                        unit: i.unit,
+                        vendor: selectedPoForSlip.vendor,
+                        orderedBy: selectedPoForSlip.orderedBy || currentUser?.name || 'Amit',
+                      })),
+                    };
+                    const pdf = generatePurchaseOrderPDF(poPayload);
+                    const msg = formatWhatsAppPOMessage(poPayload);
+                    try {
+                      navigator.clipboard.writeText(msg);
+                    } catch (e) {}
+                    const url = createWhatsAppUrl(vendorPhone, msg);
+                    window.open(url, '_blank', 'noopener,noreferrer');
+                    showToast(`Dispatched PO ${selectedPoForSlip.poNumber} on WhatsApp & downloaded PDF!`);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-slate-950 text-xs font-black transition-all flex items-center gap-1.5 shadow-md shadow-emerald-900/30 cursor-pointer active:scale-95"
+                >
+                  <Send className="w-3.5 h-3.5 fill-slate-950" />
+                  <span>Share on WhatsApp</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const vendorPhone = getVendorMobile(selectedPoForSlip.vendor, vendors);
+                    const poPayload: WhatsAppPOMessageOptions = {
+                      poNumber: selectedPoForSlip.poNumber,
+                      vendorName: selectedPoForSlip.vendor,
+                      vendorMobile: vendorPhone,
+                      paymentTerms: selectedPoForSlip.paymentTerms || '30 Days Net',
+                      status: selectedPoForSlip.status,
+                      projectName: (selectedPoForSlip.projectNames && selectedPoForSlip.projectNames[0]) || 'RSB Manufacturing',
+                      machineName: (selectedPoForSlip.machineNames && selectedPoForSlip.machineNames[0]) || 'Standard Machine',
+                      dateOfIssue: selectedPoForSlip.date,
+                      expectedDeliveryDate: selectedPoForSlip.expectedDate,
+                      orderedBy: selectedPoForSlip.orderedBy || currentUser?.name || 'Amit',
+                      notes: selectedPoForSlip.notes,
+                      items: selectedPoForSlip.items.map((i, iIdx) => ({
+                        id: `po-item-${iIdx}`,
+                        projectName: (selectedPoForSlip.projectNames && selectedPoForSlip.projectNames[0]) || 'RSB',
+                        machineName: (selectedPoForSlip.machineNames && selectedPoForSlip.machineNames[0]) || 'Machine',
+                        description: i.material,
+                        materialType: 'SS Part',
+                        materialGrade: 'SS 304',
+                        sizeSpecs: i.sizeSpecs,
+                        quantity: i.qty,
+                        unit: i.unit,
+                        vendor: selectedPoForSlip.vendor,
+                        orderedBy: selectedPoForSlip.orderedBy || currentUser?.name || 'Amit',
+                      })),
+                    };
+                    const pdf = generatePurchaseOrderPDF(poPayload);
+                    showToast(`Downloaded "${pdf}" successfully!`);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download PDF</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Print Slip</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5G. CREATE DIRECT PURCHASE ORDER MODAL */}
+      {isDirectPOModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 space-y-5 shadow-2xl border border-slate-200 animate-fadeIn my-8">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-blue-600 text-white flex items-center justify-center font-black">
+                  <Plus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 tracking-tight">
+                    Issue Direct Purchase Order
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Create and auto-save a new PO into the PO Basket register
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDirectPOModalOpen(false)}
+                className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              {/* Top Details Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">PO Number</label>
+                  <input
+                    type="text"
+                    value={directPOForm.poNumber}
+                    onChange={(e) => setDirectPOForm({ ...directPOForm, poNumber: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-mono font-bold text-slate-900 focus:bg-white focus:border-indigo-500"
+                    placeholder="PO-2026-001"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Target Vendor</label>
+                  <input
+                    type="text"
+                    list="vendor-suggestions"
+                    value={directPOForm.vendor}
+                    onChange={(e) => setDirectPOForm({ ...directPOForm, vendor: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold text-slate-900 focus:bg-white focus:border-indigo-500"
+                    placeholder="e.g. Manav Metal"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">ORDERED BY (Admin)</label>
+                  <div className="w-full bg-slate-100 border border-slate-300 rounded-xl px-3 py-2 font-black text-indigo-900 flex items-center gap-1.5">
+                    <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>{currentUser?.name || 'Amit'}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Expected Delivery Date</label>
+                  <input
+                    type="date"
+                    value={directPOForm.expectedDate}
+                    onChange={(e) => setDirectPOForm({ ...directPOForm, expectedDate: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold text-slate-900 focus:bg-white focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Project Name (Optional)</label>
+                  <input
+                    type="text"
+                    value={directPOForm.projectName}
+                    onChange={(e) => setDirectPOForm({ ...directPOForm, projectName: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold text-slate-900 focus:bg-white focus:border-indigo-500"
+                    placeholder="e.g. jkjdsasds"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Payment Terms</label>
+                  <input
+                    type="text"
+                    value={directPOForm.paymentTerms}
+                    onChange={(e) => setDirectPOForm({ ...directPOForm, paymentTerms: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold text-slate-900 focus:bg-white focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              {/* Items Table */}
+              <div className="space-y-2 pt-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-800 text-xs">Purchase Order Items</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDirectPOForm({
+                        ...directPOForm,
+                        items: [
+                          ...directPOForm.items,
+                          { material: 'SS Flat', sizeSpecs: '50 x 6 x 300', qty: 1, unit: 'Nos', rate: 450, amount: 450 }
+                        ]
+                      });
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold hover:bg-indigo-100 transition-colors flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" /> Add Item
+                  </button>
+                </div>
+
+                <div className="border border-slate-200 rounded-2xl overflow-hidden">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px]">
+                      <tr>
+                        <th className="p-2">Description</th>
+                        <th className="p-2 font-mono">Size Specs</th>
+                        <th className="p-2 text-center w-16">Qty</th>
+                        <th className="p-2 text-right w-24">Rate (₹)</th>
+                        <th className="p-2 text-right w-24">Amount (₹)</th>
+                        <th className="p-2 text-center w-10"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {directPOForm.items.map((item, idx) => (
+                        <tr key={idx} className="bg-white">
+                          <td className="p-2">
+                            <input
+                              type="text"
+                              value={item.material}
+                              onChange={(e) => {
+                                const newItems = [...directPOForm.items];
+                                newItems[idx].material = e.target.value;
+                                setDirectPOForm({ ...directPOForm, items: newItems });
+                              }}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 font-bold"
+                            />
+                          </td>
+                          <td className="p-2">
+                            <input
+                              type="text"
+                              value={item.sizeSpecs}
+                              onChange={(e) => {
+                                const newItems = [...directPOForm.items];
+                                newItems[idx].sizeSpecs = e.target.value;
+                                setDirectPOForm({ ...directPOForm, items: newItems });
+                              }}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1.5 font-mono text-blue-700 font-bold"
+                            />
+                          </td>
+                          <td className="p-2 text-center">
+                            <input
+                              type="number"
+                              min={1}
+                              value={item.qty}
+                              onChange={(e) => {
+                                const newItems = [...directPOForm.items];
+                                newItems[idx].qty = Number(e.target.value) || 1;
+                                newItems[idx].amount = newItems[idx].qty * (newItems[idx].rate || 0);
+                                setDirectPOForm({ ...directPOForm, items: newItems });
+                              }}
+                              className="w-16 bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-center font-bold"
+                            />
+                          </td>
+                          <td className="p-2 text-right">
+                            <input
+                              type="number"
+                              min={0}
+                              value={item.rate}
+                              onChange={(e) => {
+                                const newItems = [...directPOForm.items];
+                                newItems[idx].rate = Number(e.target.value) || 0;
+                                newItems[idx].amount = newItems[idx].qty * newItems[idx].rate;
+                                setDirectPOForm({ ...directPOForm, items: newItems });
+                              }}
+                              className="w-20 bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-right font-mono"
+                            />
+                          </td>
+                          <td className="p-2 text-right font-mono font-bold text-emerald-700">
+                            {formatINR(item.amount)}
+                          </td>
+                          <td className="p-2 text-center">
+                            {directPOForm.items.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDirectPOForm({
+                                    ...directPOForm,
+                                    items: directPOForm.items.filter((_, i) => i !== idx)
+                                  });
+                                }}
+                                className="text-slate-400 hover:text-rose-600 p-1"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Notes & Instructions</label>
+                <textarea
+                  rows={2}
+                  value={directPOForm.notes}
+                  onChange={(e) => setDirectPOForm({ ...directPOForm, notes: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-medium text-slate-800"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-slate-200">
+              <span className="font-bold text-slate-800">
+                Total Order Value:{' '}
+                <strong className="text-emerald-700 font-mono font-black text-sm">
+                  {formatINR(directPOForm.items.reduce((sum, i) => sum + i.amount, 0))}
+                </strong>
+              </span>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsDirectPOModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!directPOForm.vendor.trim()) {
+                      alert('Please specify a vendor.');
+                      return;
+                    }
+                    const finalOrderedBy = currentUser?.name || 'Amit';
+                    const totalAmt = directPOForm.items.reduce((sum, i) => sum + i.amount, 0);
+                    addPurchaseOrder({
+                      poNumber: directPOForm.poNumber || `PO-2026-${String(purchaseOrders.length + 1).padStart(3, '0')}`,
+                      date: new Date().toISOString().split('T')[0],
+                      vendor: directPOForm.vendor,
+                      expectedDate: directPOForm.expectedDate,
+                      paymentTerms: directPOForm.paymentTerms,
+                      status: 'Sent',
+                      orderedBy: finalOrderedBy,
+                      issuedBy: finalOrderedBy,
+                      totalAmount: totalAmt,
+                      notes: directPOForm.notes,
+                      projectNames: directPOForm.projectName ? [directPOForm.projectName] : ['General Fabrication'],
+                      items: directPOForm.items.map((i) => ({
+                        material: i.material,
+                        sizeSpecs: i.sizeSpecs,
+                        qty: i.qty,
+                        unit: i.unit,
+                        rate: i.rate,
+                        amount: i.amount,
+                      })),
+                    });
+                    setIsDirectPOModalOpen(false);
+                    showToast(`✓ Purchase Order ${directPOForm.poNumber} issued and saved to PO Basket! (Ordered by: ${finalOrderedBy})`);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer"
+                >
+                  Save & Issue PO
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

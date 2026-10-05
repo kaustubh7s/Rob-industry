@@ -414,6 +414,11 @@ export interface PurchaseOrderItem {
   unit: string;
   rate: number;
   amount: number;
+  description?: string;
+  projectName?: string;
+  machineName?: string;
+  materialType?: string;
+  vendor?: string;
 }
 
 export interface PurchaseOrder {
@@ -427,6 +432,9 @@ export interface PurchaseOrder {
   expectedDate: string;
   status: 'Draft' | 'Sent' | 'Partially Received' | 'Received' | 'Cancelled';
   notes?: string;
+  orderedBy?: string;
+  issuedBy?: string;
+  createdAt?: string;
   linkedRequirementId?: string;
   projectNames?: string[];
   machineNames?: string[];

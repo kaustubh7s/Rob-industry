@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import {
   FolderKanban,
-  ShoppingCart,
+  FileText,
   Trash2,
   ShieldCheck,
   Zap,
@@ -25,6 +25,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     currentUser,
     projects,
     projectRequirements,
+    purchaseOrders,
     trashItems,
   } = useERP();
 
@@ -71,10 +72,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     },
     {
       id: 'procurement',
-      label: 'Order Basket',
-      icon: ShoppingCart,
+      label: 'PO Basket',
+      icon: FileText,
       shortcut: 'Ctrl+3',
-      badge: projectRequirements.length > 0 ? String(projectRequirements.length) : null,
+      badge: purchaseOrders.length > 0 ? String(purchaseOrders.length) : null,
+      badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
     },
     {
       id: 'microsoft',

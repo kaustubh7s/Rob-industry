@@ -1363,12 +1363,13 @@ export const ProjectMaterialEntry: React.FC = () => {
     setActiveTab(mode);
   };
 
-  // View Mode Switcher: Procurement Basket
+  // View Mode Switcher: Procurement Basket / PO Basket
   if (activeViewMode === 'procurement') {
     return (
       <div className="space-y-4">
         <ProcurementBasket
           initialProjectFilter={basketProjectFilter}
+          initialViewMode={basketProjectFilter ? 'projectFolders' : 'poBasket'}
           onNavigateToEntry={() => handleSwitchView('entry')}
           onNavigateToProjects={() => handleSwitchView('projects')}
         />
