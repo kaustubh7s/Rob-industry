@@ -873,6 +873,7 @@ export const ProjectMaterialEntry: React.FC = () => {
 
     confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
     setSaveToast(`✨ Created Project "${newPrj.name}" & Learned Machine "${resolvedMachine}"!`);
+    window.dispatchEvent(new CustomEvent('rsb:tour:project-created', { detail: { project: newPrj } }));
     setTimeout(() => setSaveToast(null), 4000);
   };
 
@@ -1063,6 +1064,7 @@ export const ProjectMaterialEntry: React.FC = () => {
     }
 
     setRows((prev) => normalizeSrNumbers([...prev, newRow]));
+    window.dispatchEvent(new CustomEvent('rsb:tour:material-added', { detail: { newRow } }));
     setQuickDesc('');
     setQuickSize('');
 
@@ -1265,6 +1267,7 @@ export const ProjectMaterialEntry: React.FC = () => {
       const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       setLastAutoSavedTime(timeStr);
       setSaveToast(`🎉 Successfully saved Order for "${targetProject}" (${rows.length} materials) • ☁️ Synced to DB & Cloud at ${timeStr}`);
+      window.dispatchEvent(new CustomEvent('rsb:tour:order-saved', { detail: { project: targetProject, count: rows.length } }));
       setTimeout(() => setSaveToast(null), 4500);
     } catch (err) {
       console.error('Error saving project order:', err);
@@ -1814,7 +1817,7 @@ export const ProjectMaterialEntry: React.FC = () => {
         </div>
 
         {/* BOTTOM PART: ADD MATERIAL ROW (DIRECTLY TOGETHER IN THE SAME WORKFLOW CARD) */}
-        <div className="bg-slate-900/90 border border-slate-700/80 rounded-xl p-4 space-y-3 pt-3.5">
+        <div data-tour="tour-material-input-form" className="bg-slate-900/90 border border-slate-700/80 rounded-xl p-4 space-y-3 pt-3.5">
           <div className="flex items-center justify-between pb-2 border-b border-slate-800">
             <div className="flex items-center gap-2">
               <Plus className="w-4 h-4 text-blue-400" />

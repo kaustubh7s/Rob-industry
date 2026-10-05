@@ -682,7 +682,13 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
 
   // Selection Handlers
   const handleToggleSelectRow = (id: string) => {
-    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+    setSelectedIds((prev) => {
+      const next = prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id];
+      if (next.length > 0) {
+        window.dispatchEvent(new CustomEvent('rsb:tour:item-selected', { detail: { id, count: next.length } }));
+      }
+      return next;
+    });
   };
 
   const handleSelectAll = () => {
@@ -690,6 +696,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
       setSelectedIds([]);
     } else {
       setSelectedIds(filteredItems.map((i) => i.id));
+      window.dispatchEvent(new CustomEvent('rsb:tour:item-selected', { detail: { count: filteredItems.length } }));
     }
   };
 
@@ -699,7 +706,11 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
     if (allSelected) {
       setSelectedIds((prev) => prev.filter((id) => !pIds.includes(id)));
     } else {
-      setSelectedIds((prev) => Array.from(new Set([...prev, ...pIds])));
+      setSelectedIds((prev) => {
+        const next = Array.from(new Set([...prev, ...pIds]));
+        window.dispatchEvent(new CustomEvent('rsb:tour:item-selected', { detail: { count: next.length } }));
+        return next;
+      });
     }
   };
 
@@ -726,6 +737,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
 
     bulkAssignMaterialVendor(selectedIds, finalVendor);
     showToast(`Successfully assigned vendor "${finalVendor}" to ${selectedIds.length} materials!`);
+    window.dispatchEvent(new CustomEvent('rsb:tour:vendor-assigned', { detail: { vendor: finalVendor } }));
     setIsAssignVendorModalOpen(false);
     setSelectedIds([]);
     setCustomVendorName('');
@@ -815,6 +827,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
     setPoCustomNumber(`PO-RSB-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`);
     setGeneratedPOPreview(null);
     setIsPOModalOpen(true);
+    window.dispatchEvent(new CustomEvent('rsb:tour:po-generated', { detail: { itemsCount: items.length } }));
   };
 
   const handleConfirmGeneratePO = () => {
