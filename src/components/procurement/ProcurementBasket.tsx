@@ -37,6 +37,7 @@ import {
   MessageSquare,
   Copy,
   UserCheck,
+  Boxes,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 import { ProjectMaterialRequirementItem, VendorItem, PurchaseOrder, RFQRecord, ProjectItem } from '../../types/erp';
@@ -266,13 +267,13 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
 
   const poBasketMetrics = useMemo(() => {
     const total = purchaseOrders.length;
-    const totalValue = purchaseOrders.reduce((sum, po) => sum + (po.totalAmount || 0), 0);
+    const totalParts = purchaseOrders.reduce((sum, po) => sum + (po.items?.length || 0), 0);
     const sentCount = purchaseOrders.filter((po) => po.status === 'Sent' || po.status === 'Draft' || po.status === 'Partially Received').length;
     const receivedCount = purchaseOrders.filter((po) => po.status === 'Received').length;
     const activeAdmin = currentUser?.name || 'Amit';
     return {
       total,
-      totalValue,
+      totalParts,
       sentCount,
       receivedCount,
       activeAdmin,
@@ -1329,18 +1330,18 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
 
           <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex items-center justify-between">
             <div>
-              <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">
-                Total PO Value
+              <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider block">
+                Total Material Items
               </span>
-              <span className="text-xl font-black text-emerald-700 mt-0.5 block">
-                {formatINR(poBasketMetrics.totalValue)}
+              <span className="text-xl font-black text-slate-900 mt-0.5 block">
+                {poBasketMetrics.totalParts} Parts
               </span>
-              <span className="text-[11px] font-semibold text-emerald-800">
+              <span className="text-[11px] font-semibold text-slate-500">
                 Across {allPoVendors.length} Suppliers
               </span>
             </div>
-            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <TrendingUp className="w-4 h-4" />
+            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+              <Boxes className="w-4 h-4" />
             </div>
           </div>
 
@@ -2246,7 +2247,6 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                     <th className="py-3 px-3">Vendor / Supplier</th>
                     <th className="py-3 px-3">Project & Scope</th>
                     <th className="py-3 px-3 text-center">Items</th>
-                    <th className="py-3 px-3 text-right font-mono">Total (₹)</th>
                     <th className="py-3 px-3 text-center">Status</th>
                     <th className="py-3 px-3 text-center w-36">Actions</th>
                   </tr>
@@ -2254,7 +2254,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                 <tbody className="divide-y divide-slate-100 font-medium">
                   {filteredPurchaseOrders.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="py-14 text-center text-slate-400">
+                      <td colSpan={7} className="py-14 text-center text-slate-400">
                         <FileText className="w-12 h-12 mx-auto text-slate-300 mb-3 animate-pulse" />
                         <h4 className="text-sm font-black text-slate-800">
                           {poSearchQuery || poStatusFilter !== 'ALL' || poVendorFilter !== 'ALL'
@@ -2380,16 +2380,6 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                             </span>
                             <span className="text-[10px] text-slate-500 block mt-0.5 truncate max-w-[110px] mx-auto" title={po.items.map(i => i.material).join(', ')}>
                               {po.items[0]?.material || 'SS Items'}
-                            </span>
-                          </td>
-
-                          {/* Total Amount */}
-                          <td className="py-3 px-3 text-right">
-                            <span className="font-mono font-black text-xs text-emerald-700 block">
-                              {formatINR(po.totalAmount || 0)}
-                            </span>
-                            <span className="text-[9px] text-slate-400 font-medium">
-                              Incl. Specs
                             </span>
                           </td>
 
@@ -3999,9 +3989,8 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                       <tr>
                         <th className="p-2">Description</th>
                         <th className="p-2 font-mono">Size Specs</th>
-                        <th className="p-2 text-center w-16">Qty</th>
-                        <th className="p-2 text-right w-24">Rate (₹)</th>
-                        <th className="p-2 text-right w-24">Amount (₹)</th>
+                        <th className="p-2 text-center w-20">Qty</th>
+                        <th className="p-2 text-center w-20">Unit</th>
                         <th className="p-2 text-center w-10"></th>
                       </tr>
                     </thead>
@@ -4040,28 +4029,22 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                               onChange={(e) => {
                                 const newItems = [...directPOForm.items];
                                 newItems[idx].qty = Number(e.target.value) || 1;
-                                newItems[idx].amount = newItems[idx].qty * (newItems[idx].rate || 0);
                                 setDirectPOForm({ ...directPOForm, items: newItems });
                               }}
                               className="w-16 bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-center font-bold"
                             />
                           </td>
-                          <td className="p-2 text-right">
+                          <td className="p-2 text-center">
                             <input
-                              type="number"
-                              min={0}
-                              value={item.rate}
+                              type="text"
+                              value={item.unit || 'Nos'}
                               onChange={(e) => {
                                 const newItems = [...directPOForm.items];
-                                newItems[idx].rate = Number(e.target.value) || 0;
-                                newItems[idx].amount = newItems[idx].qty * newItems[idx].rate;
+                                newItems[idx].unit = e.target.value;
                                 setDirectPOForm({ ...directPOForm, items: newItems });
                               }}
-                              className="w-20 bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-right font-mono"
+                              className="w-16 bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-center font-bold"
                             />
-                          </td>
-                          <td className="p-2 text-right font-mono font-bold text-emerald-700">
-                            {formatINR(item.amount)}
                           </td>
                           <td className="p-2 text-center">
                             {directPOForm.items.length > 1 && (
@@ -4099,9 +4082,9 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
 
             <div className="flex items-center justify-between pt-3 border-t border-slate-200">
               <span className="font-bold text-slate-800">
-                Total Order Value:{' '}
-                <strong className="text-emerald-700 font-mono font-black text-sm">
-                  {formatINR(directPOForm.items.reduce((sum, i) => sum + i.amount, 0))}
+                Total Material Items:{' '}
+                <strong className="text-indigo-700 font-mono font-black text-sm">
+                  {directPOForm.items.length} Parts ({directPOForm.items.reduce((sum, i) => sum + (Number(i.qty) || 0), 0)} Qty)
                 </strong>
               </span>
 
