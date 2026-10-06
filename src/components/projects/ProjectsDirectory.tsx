@@ -610,8 +610,8 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
           </button>
         </div>
       ) : viewMode === 'cards' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filteredProjects.map((prj) => {
+        <div data-tour="tour-projects-grid" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {filteredProjects.map((prj, idx) => {
             const prjDate = prj.startDate || prj.date || prj.createdDate || '01-09-2026';
             const deliveryDate = prj.targetCompletionDate || prj.targetDate || '30-10-2026';
             const clientName = prj.customer || prj.clientName || 'Cadila Healthcare Ltd';
@@ -624,6 +624,7 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
             return (
               <div
                 key={prj.id}
+                data-tour={idx === 0 ? 'tour-directory-first-project-card' : undefined}
                 className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs hover:shadow-md hover:border-blue-400 transition-all space-y-4 group flex flex-col justify-between"
               >
                 <div className="space-y-3">
@@ -730,7 +731,11 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => onSelectProject(prj)}
+                    data-tour={idx === 0 ? 'tour-directory-open-project' : undefined}
+                    onClick={() => {
+                      onSelectProject(prj);
+                      window.dispatchEvent(new CustomEvent('rsb:tour:directory-project-selected', { detail: { project: prj } }));
+                    }}
                     className="flex-1 py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold shadow-xs flex items-center justify-center gap-1.5 transition-all active:scale-98 cursor-pointer"
                   >
                     <span>Open Project</span>
@@ -739,9 +744,11 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
 
                   <button
                     type="button"
+                    data-tour={idx === 0 ? 'tour-directory-basket-btn' : undefined}
                     title={`Open Order Basket for ${prj.name}`}
                     onClick={(e) => {
                       e.stopPropagation();
+                      window.dispatchEvent(new CustomEvent('rsb:tour:directory-project-selected', { detail: { project: prj } }));
                       if (onOpenProcurementBasketWithProject) {
                         onOpenProcurementBasketWithProject(prj.name);
                       } else if (onOpenProcurementBasket) {

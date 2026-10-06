@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ChevronRight, ChevronLeft, X, Sparkles, CheckCircle2, ArrowRight, Keyboard, Zap } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { ChevronRight, ChevronLeft, X, Sparkles, ArrowRight } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useERP } from '../../context/ERPContext';
 
@@ -11,6 +11,8 @@ export interface TourStep {
   stepNum: number;
   openModalEvent?: string;
   isShortcutOverlay?: boolean;
+  offsetX?: number;
+  offsetY?: number;
 }
 
 const TOUR_STEPS: TourStep[] = [
@@ -37,16 +39,16 @@ const TOUR_STEPS: TourStep[] = [
   },
   {
     id: 'step-4-ctrl-2-shortcut',
-    targetSelector: '[data-tour="tour-po-basket-nav"]',
-    label: '4. Press Ctrl+2 to Go to Order Basket',
+    targetSelector: '[data-tour="tour-directory-basket-btn"], [data-tour="tour-directory-first-project-card"], [data-tour="tour-projects-grid"]',
+    label: '4. Press Ctrl+2 to Go to Projects Directory',
     stepNum: 4,
     isShortcutOverlay: true,
   },
   {
-    id: 'step-5-switch-project',
-    targetSelector: '[data-tour="tour-basket-project-select"], [data-tour="tour-po-basket-nav"]',
-    tabId: 'procurement',
-    label: '5. Select / Switch Project',
+    id: 'step-5-select-directory-project',
+    targetSelector: '[data-tour="tour-directory-basket-btn"], [data-tour="tour-directory-open-project"], [data-tour="tour-directory-first-project-card"]',
+    tabId: 'projects',
+    label: '5. Click Basket on Project Card',
     stepNum: 5,
   },
   {
@@ -55,6 +57,8 @@ const TOUR_STEPS: TourStep[] = [
     tabId: 'procurement',
     label: '6. Tick Material Row Checkbox',
     stepNum: 6,
+    offsetX: 48, // Offset to the right so the checkbox remains 100% accessible and unobstructed
+    offsetY: -12,
   },
   {
     id: 'step-7-assign-vendor',
@@ -156,7 +160,7 @@ export const InteractiveGlidingTour: React.FC<InteractiveGlidingTourProps> = ({
       clearInterval(checkElementInterval);
       clearTimeout(safetyTimeout);
     };
-  }, [currentStepIndex, isOpen, step, updateTargetPosition]);
+  }, [currentStepIndex, isOpen, step, updateTargetPosition, activeTab, setActiveTab]);
 
   // Window resize & scroll listeners
   useEffect(() => {
@@ -171,7 +175,7 @@ export const InteractiveGlidingTour: React.FC<InteractiveGlidingTourProps> = ({
     };
   }, [isOpen, updateTargetPosition]);
 
-  // Reactive Listeners for Real User Actions (Wait until user enters value or completes action)
+  // Reactive Listeners for Real User Actions
   useEffect(() => {
     if (!isOpen) return;
 
@@ -189,14 +193,21 @@ export const InteractiveGlidingTour: React.FC<InteractiveGlidingTourProps> = ({
       }
     };
 
-    // 3. Order Saved -> Advance from Step 3 to Step 4 (Show Ctrl+2)
+    // 3. Order Saved -> Advance from Step 3 to Step 4 (Show Ctrl+2 to Projects Directory)
     const handleOrderSaved = () => {
       if (currentStepIndex === 2) {
         setCurrentStepIndex(3);
       }
     };
 
-    // 5. Basket Project Selected -> Advance from Step 5 to Step 6
+    // 5. Directory Project Selected -> Advance from Step 5 to Step 6
+    const handleDirectoryProjectSelected = () => {
+      if (currentStepIndex === 4) {
+        setCurrentStepIndex(5);
+      }
+    };
+
+    // 5b. Basket Project Selected -> Advance from Step 5 to Step 6
     const handleBasketProjectSelected = () => {
       if (currentStepIndex === 4) {
         setCurrentStepIndex(5);
@@ -228,6 +239,7 @@ export const InteractiveGlidingTour: React.FC<InteractiveGlidingTourProps> = ({
     window.addEventListener('rsb:tour:project-created', handleProjectCreated);
     window.addEventListener('rsb:tour:material-added', handleMaterialAdded);
     window.addEventListener('rsb:tour:order-saved', handleOrderSaved);
+    window.addEventListener('rsb:tour:directory-project-selected', handleDirectoryProjectSelected);
     window.addEventListener('rsb:tour:basket-project-selected', handleBasketProjectSelected);
     window.addEventListener('rsb:tour:item-selected', handleItemSelected);
     window.addEventListener('rsb:tour:vendor-assigned', handleVendorAssigned);
@@ -237,6 +249,7 @@ export const InteractiveGlidingTour: React.FC<InteractiveGlidingTourProps> = ({
       window.removeEventListener('rsb:tour:project-created', handleProjectCreated);
       window.removeEventListener('rsb:tour:material-added', handleMaterialAdded);
       window.removeEventListener('rsb:tour:order-saved', handleOrderSaved);
+      window.removeEventListener('rsb:tour:directory-project-selected', handleDirectoryProjectSelected);
       window.removeEventListener('rsb:tour:basket-project-selected', handleBasketProjectSelected);
       window.removeEventListener('rsb:tour:item-selected', handleItemSelected);
       window.removeEventListener('rsb:tour:vendor-assigned', handleVendorAssigned);
@@ -244,7 +257,7 @@ export const InteractiveGlidingTour: React.FC<InteractiveGlidingTourProps> = ({
     };
   }, [isOpen, currentStepIndex]);
 
-  // Keyboard navigation & Ctrl+2 / Ctrl+3 detection during Step 4
+  // Keyboard navigation & Ctrl+2 detection during Step 4
   useEffect(() => {
     if (!isOpen) return;
 
@@ -254,11 +267,11 @@ export const InteractiveGlidingTour: React.FC<InteractiveGlidingTourProps> = ({
         return;
       }
 
-      // Detect Ctrl+2 or Ctrl+3 when waiting on step 4
-      if ((e.ctrlKey || e.metaKey) && (e.key === '2' || e.key === '3')) {
+      // Detect Ctrl+2 when waiting on step 4
+      if ((e.ctrlKey || e.metaKey) && e.key === '2') {
         if (currentStepIndex === 3) {
           e.preventDefault();
-          setActiveTab('procurement');
+          setActiveTab('projects');
           setCurrentStepIndex(4);
         }
       }
@@ -271,7 +284,7 @@ export const InteractiveGlidingTour: React.FC<InteractiveGlidingTourProps> = ({
   // Tab change detection for step 4
   useEffect(() => {
     if (!isOpen) return;
-    if (currentStepIndex === 3 && (activeTab === 'procurement' || activeTab === 'projects')) {
+    if (currentStepIndex === 3 && activeTab === 'projects') {
       setCurrentStepIndex(4);
     }
   }, [isOpen, activeTab, currentStepIndex]);
@@ -279,6 +292,8 @@ export const InteractiveGlidingTour: React.FC<InteractiveGlidingTourProps> = ({
   const handleNext = () => {
     if (currentStepIndex < TOUR_STEPS.length - 1) {
       if (currentStepIndex === 3) {
+        setActiveTab('projects');
+      } else if (currentStepIndex === 4) {
         setActiveTab('procurement');
       }
       setCurrentStepIndex((prev) => prev + 1);
@@ -301,13 +316,13 @@ export const InteractiveGlidingTour: React.FC<InteractiveGlidingTourProps> = ({
   let beaconY = window.innerHeight / 2;
 
   if (targetRect) {
-    beaconX = targetRect.left + targetRect.width / 2;
-    beaconY = targetRect.top + targetRect.height / 2;
+    beaconX = targetRect.left + targetRect.width / 2 + (step?.offsetX || 0);
+    beaconY = targetRect.top + targetRect.height / 2 + (step?.offsetY || 0);
   }
 
   return (
     <div className="fixed inset-0 z-[9999] pointer-events-none select-none overflow-hidden font-sans">
-      {/* STEP 4: BIG PROMINENT CTRL+2 ON SCREEN (NO AUTO-REDIRECT) */}
+      {/* STEP 4: BIG PROMINENT CTRL+2 ON SCREEN (NAVIGATES TO PROJECTS DIRECTORY) */}
       {step?.isShortcutOverlay && !isCompleted && (
         <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4 pointer-events-auto z-[10000] animate-fadeIn">
           <div className="bg-gradient-to-b from-slate-900 via-slate-850 to-indigo-950 border-2 border-cyan-400/80 rounded-3xl p-6 sm:p-8 max-w-lg w-full text-center shadow-2xl shadow-cyan-500/20 space-y-6 relative overflow-hidden">
@@ -325,7 +340,7 @@ export const InteractiveGlidingTour: React.FC<InteractiveGlidingTourProps> = ({
                 Order Saved Successfully!
               </h2>
               <p className="text-xs sm:text-sm text-slate-300">
-                Now proceed to the <span className="text-cyan-300 font-bold">Order Basket & PO Station</span> to assign vendors and generate your purchase orders.
+                Now proceed to the <span className="text-cyan-300 font-bold">Projects Directory</span> to view and manage your factory projects.
               </p>
             </div>
 
@@ -350,12 +365,12 @@ export const InteractiveGlidingTour: React.FC<InteractiveGlidingTourProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  setActiveTab('procurement');
+                  setActiveTab('projects');
                   setCurrentStepIndex(4);
                 }}
                 className="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/30 cursor-pointer active:scale-95"
               >
-                <span>Open Order Basket Now</span>
+                <span>Open Projects Directory Now</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
 
@@ -384,7 +399,7 @@ export const InteractiveGlidingTour: React.FC<InteractiveGlidingTourProps> = ({
                 Tutorial Completed!
               </h2>
               <p className="text-xs text-slate-300">
-                You've mastered the entire end-to-end factory workflow: Project Creation ➔ Material Entry ➔ Order Basket ➔ Vendor Assignment ➔ Purchase Order Generation.
+                You've mastered the entire factory workflow: Project Creation ➔ Material Entry ➔ Projects Directory ➔ Vendor Assignment ➔ Purchase Order Generation.
               </p>
             </div>
 
@@ -404,14 +419,13 @@ export const InteractiveGlidingTour: React.FC<InteractiveGlidingTourProps> = ({
       {/* GLIDING TRANSPARENT GLOWING SIZING-CHANGE BEACON (FOR NON-OVERLAY STEPS) */}
       {!step?.isShortcutOverlay && !isCompleted && (
         <div
-          className="absolute pointer-events-auto transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]"
+          className="absolute pointer-events-none transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]"
           style={{
             transform: `translate3d(${beaconX}px, ${beaconY}px, 0)`,
             willChange: 'transform',
           }}
-          onClick={handleNext}
         >
-          <div className="relative -top-7 -left-7 w-14 h-14 flex items-center justify-center cursor-pointer group">
+          <div className="relative -top-7 -left-7 w-14 h-14 flex items-center justify-center pointer-events-none group">
             {/* Animated Transparent Outer Ripple 1 */}
             <span className="absolute w-16 h-16 rounded-full bg-cyan-400/25 animate-ping duration-1000 pointer-events-none" />
 
@@ -422,16 +436,16 @@ export const InteractiveGlidingTour: React.FC<InteractiveGlidingTourProps> = ({
             <div className="absolute w-10 h-10 rounded-full bg-gradient-to-r from-cyan-400/40 to-blue-500/40 blur-md pointer-events-none" />
 
             {/* Center Dynamic Sizing Dot */}
-            <div className="relative w-7 h-7 rounded-full bg-cyan-400/90 hover:bg-cyan-300 border-2 border-white shadow-xl shadow-cyan-400/80 flex items-center justify-center transition-transform group-hover:scale-125 animate-bounce">
+            <div className="relative w-7 h-7 rounded-full bg-cyan-400/90 hover:bg-cyan-300 border-2 border-white shadow-xl shadow-cyan-400/80 flex items-center justify-center transition-transform group-hover:scale-125 animate-bounce pointer-events-none">
               <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
             </div>
 
-            {/* Minimal Floating Micro-Pill Tag */}
-            <div className="absolute -top-9 px-3 py-1 rounded-full bg-slate-900/95 hover:bg-slate-900 border border-cyan-400/70 shadow-2xl shadow-cyan-950/60 flex items-center gap-2 text-white text-[11px] font-black tracking-wide whitespace-nowrap backdrop-blur-md transition-all ring-1 ring-white/10">
+            {/* Minimal Floating Micro-Pill Tag (Interactive Controls) */}
+            <div className="absolute -top-9 px-3 py-1 rounded-full bg-slate-900/95 hover:bg-slate-900 border border-cyan-400/70 shadow-2xl shadow-cyan-950/60 flex items-center gap-2 text-white text-[11px] font-black tracking-wide whitespace-nowrap backdrop-blur-md transition-all ring-1 ring-white/10 pointer-events-auto">
               <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse shrink-0" />
-              <span className="text-white">{step.label}</span>
+              <span className="text-white">{step?.label}</span>
               <span className="text-[10px] font-mono text-cyan-300 ml-0.5 font-bold">
-                ({step.stepNum}/8)
+                ({step?.stepNum}/8)
               </span>
 
               {/* Micro Controls (Manual Skip / Close) */}
@@ -480,4 +494,3 @@ export const InteractiveGlidingTour: React.FC<InteractiveGlidingTourProps> = ({
     </div>
   );
 };
-
