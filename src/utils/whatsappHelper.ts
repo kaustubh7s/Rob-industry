@@ -52,82 +52,83 @@ export const cleanVendorName = (vendor?: string): string => {
   return clean;
 };
 
-export const formatWhatsAppPOMessage = (options: WhatsAppPOMessageOptions): string => {
+export const formatShortWhatsAppPOMessage = (options: WhatsAppPOMessageOptions): string => {
   const {
     poNumber = `PO-RSB-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
-    projectName = 'jkjdsasds',
-    dateOfIssue = new Date().toISOString().split('T')[0],
+    projectName,
     expectedDeliveryDate = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
-    orderedBy = 'Amit (Admin)',
-    items,
+    items = [],
   } = options;
 
   const totalQty = items.reduce((acc, i) => acc + (Number(i.quantity) || 0), 0);
+  const itemCount = items.length;
 
-  // Group breakdown by vendor in sequence
-  const vendorBreakdown: Record<string, number> = {};
-  items.forEach((item) => {
-    const v = cleanVendorName(item.vendor || item.vendorName);
-    vendorBreakdown[v] = (vendorBreakdown[v] || 0) + 1;
-  });
-  const vendorEntries = Object.entries(vendorBreakdown);
-
-  let msg = `*🏭 RSB PRIVATE LIMITED*\n`;
-  msg += `_Manufacturing Industry_\n`;
-  msg += `*DOCUMENT TYPE:* MATERIAL PURCHASE ORDER\n`;
+  let msg = `*🏭 RSB PRIVATE LIMITED - Purchase Order*\n`;
   msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
   msg += `📄 *PO Number:* ${poNumber}\n`;
-  msg += `📁 *Project Name:* ${projectName}\n`;
-  msg += `👤 *ORDERED BY:* ${orderedBy}\n`;
-  msg += `📅 *Date of Issue:* ${dateOfIssue}\n`;
-  msg += `🎯 *Target Delivery:* ${expectedDeliveryDate}\n`;
-  msg += `📦 *Total Materials:* ${items.length} Parts (${totalQty} Nos Total)\n`;
-
-  if (vendorEntries.length > 0) {
-    msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
-    msg += `🏢 *ASSIGNED VENDORS & SCOPE:*\n`;
-    vendorEntries.forEach(([vnd, count]) => {
-      msg += `• *${vnd}:* ${count} ${count === 1 ? 'Part' : 'Parts'}\n`;
-    });
+  if (projectName) {
+    msg += `📁 *Project:* ${projectName}\n`;
   }
-
+  msg += `📦 *Scope:* ${itemCount} ${itemCount === 1 ? 'Part' : 'Parts'} (${totalQty} Nos Total)\n`;
+  msg += `🎯 *Target Delivery:* ${expectedDeliveryDate}\n`;
   msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
-  msg += `📎 *Official Master Purchase Order PDF is attached with this message.*\n\n`;
-  msg += `📍 *Delivery Address:*\nRSB PRIVATE LIMITED\nF, 16/4, Naregaon Main Rd, Naregaon, Chilkalthana,\nChhatrapati Sambhajinagar, Maharashtra 431007\n`;
-  msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
-  msg += `_RSB Cloud Manufacturing ERP_`;
+  msg += `📎 *Please find attached our official Purchase Order PDF.*\n`;
+  msg += `_RSB Manufacturing ERP_`;
 
   return msg;
 };
 
+export const formatWhatsAppPOMessage = (options: WhatsAppPOMessageOptions): string => {
+  return formatShortWhatsAppPOMessage(options);
+};
+
 /**
- * Resolves accurate phone number for vendor
+ * Resolves accurate phone number for vendor from registered suppliers database
  */
 export const getVendorMobile = (
   vendorName: string,
   vendorsList: { name: string; mobile?: string }[] = []
 ): string => {
-  const norm = (vendorName || '').trim().toLowerCase();
-  if (norm === 'kaustubh' || norm.includes('kaustubh')) {
-    return '+91 7276939301';
-  }
+  if (!vendorName) return '';
+  const norm = vendorName.trim().toLowerCase();
+
+  // 1. Exact match in registered vendors list
   const matched = vendorsList.find((v) => (v.name || '').trim().toLowerCase() === norm);
-  if (matched && matched.mobile) {
-    return matched.mobile;
+  if (matched && matched.mobile && matched.mobile.trim()) {
+    return matched.mobile.trim();
   }
+
+  // 2. Fuzzy / partial match in registered vendors list
+  const partial = vendorsList.find((v) => {
+    const vName = (v.name || '').trim().toLowerCase();
+    return vName && (norm.includes(vName) || vName.includes(norm));
+  });
+  if (partial && partial.mobile && partial.mobile.trim()) {
+    return partial.mobile.trim();
+  }
+
+  // 3. Known industry defaults
   if (norm.includes('manav')) return '+91 98250 12345';
   if (norm.includes('apex')) return '+91 94260 88776';
   if (norm.includes('precision')) return '+91 98980 33211';
   if (norm.includes('jindal')) return '+91 98110 44552';
-  return '+91 7276939301';
+
+  // 4. If the vendorName itself contains a 10-digit number
+  const digitsInName = vendorName.replace(/\D/g, '');
+  if (digitsInName.length >= 10) {
+    return '+91 ' + digitsInName.slice(-10);
+  }
+
+  return '';
 };
 
 /**
  * Cleans phone number and formats for WhatsApp wa.me link
  */
 export const cleanWhatsAppNumber = (phone?: string): string => {
-  if (!phone) return '917276939301';
+  if (!phone) return '';
   let digits = phone.replace(/\D/g, '');
+  if (!digits) return '';
   
   // If Indian 10-digit number without country code, prepend 91
   if (digits.length === 10) {
@@ -138,24 +139,27 @@ export const cleanWhatsAppNumber = (phone?: string): string => {
     digits = '91' + digits.substring(1);
   }
   
-  return digits || '917276939301';
+  return digits;
 };
 
 /**
  * Creates direct WhatsApp Web / App intent URL
  */
 export const createWhatsAppUrl = (phone: string | undefined, message: string): string => {
-  const cleanPhone = cleanWhatsAppNumber(phone || '7276939301');
+  const cleanPhone = cleanWhatsAppNumber(phone);
   const encodedText = encodeURIComponent(message);
   
-  return `https://wa.me/${cleanPhone}?text=${encodedText}`;
+  if (cleanPhone) {
+    return `https://wa.me/${cleanPhone}?text=${encodedText}`;
+  }
+  return `https://wa.me/?text=${encodedText}`;
 };
 
 /**
  * Generates official RSB PRIVATE LIMITED Material Purchase Order PDF
  * matching the exact corporate multi-column layout and 3-tier signature structure.
  */
-export const generatePurchaseOrderPDF = (options: WhatsAppPOMessageOptions): string => {
+export const buildPurchaseOrderPDFDoc = (options: WhatsAppPOMessageOptions): { doc: jsPDF; safeFileName: string } => {
   const {
     poNumber = `PO-RSB-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
     vendorName,
@@ -434,7 +438,51 @@ export const generatePurchaseOrderPDF = (options: WhatsAppPOMessageOptions): str
 
   const fileVendorTag = (vendorName || projectName || 'Master_PO').replace(/[^a-zA-Z0-9_-]/g, '_');
   const safeFileName = `RSB_PO_${poNumber.replace(/[^a-zA-Z0-9_-]/g, '_')}_${fileVendorTag}.pdf`;
+  return { doc, safeFileName };
+};
+
+export const generatePurchaseOrderPDF = (options: WhatsAppPOMessageOptions): string => {
+  const { doc, safeFileName } = buildPurchaseOrderPDFDoc(options);
   doc.save(safeFileName);
   return safeFileName;
+};
+
+export const shareOrSendWhatsAppPO = async (
+  phone: string,
+  options: WhatsAppPOMessageOptions
+): Promise<{ method: 'share' | 'wa_link'; fileName: string }> => {
+  const { doc, safeFileName } = buildPurchaseOrderPDFDoc(options);
+  const msg = formatShortWhatsAppPOMessage(options);
+
+  // Check if running on mobile device with native file sharing capabilities
+  const isMobile = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  if (isMobile && typeof navigator.canShare === 'function') {
+    try {
+      const pdfBlob = doc.output('blob');
+      const pdfFile = new File([pdfBlob], safeFileName, { type: 'application/pdf' });
+      if (navigator.canShare({ files: [pdfFile] })) {
+        await navigator.share({
+          title: `RSB Purchase Order - ${options.poNumber || 'PO'}`,
+          text: msg,
+          files: [pdfFile],
+        });
+        return { method: 'share', fileName: safeFileName };
+      }
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        return { method: 'share', fileName: safeFileName };
+      }
+    }
+  }
+
+  // Desktop / Standard Flow: Auto-download PO PDF & immediately open WhatsApp Web
+  doc.save(safeFileName);
+  try {
+    navigator.clipboard.writeText(msg);
+  } catch (e) {}
+  
+  const url = createWhatsAppUrl(phone, msg);
+  window.open(url, '_blank', 'noopener,noreferrer');
+  return { method: 'wa_link', fileName: safeFileName };
 };
 

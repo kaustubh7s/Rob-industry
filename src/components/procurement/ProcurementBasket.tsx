@@ -45,8 +45,10 @@ import { exportToExcel } from '../../utils/excelIntegration';
 import { formatINR } from '../../utils/calculations';
 import {
   formatWhatsAppPOMessage,
+  formatShortWhatsAppPOMessage,
   createWhatsAppUrl,
   generatePurchaseOrderPDF,
+  shareOrSendWhatsAppPO,
   getVendorMobile,
   cleanVendorName,
   WhatsAppPOMessageOptions,
@@ -120,7 +122,14 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
   const [isAssignVendorModalOpen, setIsAssignVendorModalOpen] = useState(false);
   const [selectedVendorForAssign, setSelectedVendorForAssign] = useState('');
   const [customVendorName, setCustomVendorName] = useState('');
+  const [customVendorPhone, setCustomVendorPhone] = useState('');
   const [isAddCustomVendorMode, setIsAddCustomVendorMode] = useState(false);
+
+  // Customizable WhatsApp Dispatch Modal State
+  const [whatsAppDispatchTarget, setWhatsAppDispatchTarget] = useState<{
+    poPayload: WhatsAppPOMessageOptions;
+    phone: string;
+  } | null>(null);
 
   // Single Item Smart Suggestion Modal / Drawer
   const [smartSuggestItem, setSmartSuggestItem] = useState<ProjectMaterialRequirementItem | null>(null);
@@ -724,7 +733,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
     setIsAssignVendorModalOpen(true);
   };
 
-  const handleConfirmBulkAssign = () => {
+  const handleConfirmBulkAssign = (openWhatsAppPO: boolean = false) => {
     const finalVendor = isAddCustomVendorMode ? customVendorName.trim() : selectedVendorForAssign;
     if (!finalVendor) {
       alert('Please specify or select a vendor name.');
@@ -735,13 +744,53 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
       learnVendor(finalVendor);
     }
 
+    const assignedVendorMobile = isAddCustomVendorMode && customVendorPhone.trim()
+      ? customVendorPhone.trim()
+      : getVendorMobile(finalVendor, vendors);
+
+    const targetMaterialItems = filteredItems.filter((i) => selectedIds.includes(i.id));
+
     bulkAssignMaterialVendor(selectedIds, finalVendor);
-    showToast(`Successfully assigned vendor "${finalVendor}" to ${selectedIds.length} materials!`);
+    showToast(`✓ Assigned "${finalVendor}" (${assignedVendorMobile}) to ${selectedIds.length} materials! PO is ready to send.`);
     window.dispatchEvent(new CustomEvent('rsb:tour:vendor-assigned', { detail: { vendor: finalVendor } }));
     setIsAssignVendorModalOpen(false);
     setSelectedIds([]);
     setCustomVendorName('');
+    setCustomVendorPhone('');
     setIsAddCustomVendorMode(false);
+
+    if (openWhatsAppPO) {
+      const generatedPONum = `PO-RSB-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+      const poPayload: WhatsAppPOMessageOptions = {
+        poNumber: generatedPONum,
+        vendorName: finalVendor,
+        vendorMobile: assignedVendorMobile,
+        paymentTerms: '30 Days Net',
+        status: 'Sent',
+        projectName: targetMaterialItems[0]?.projectName || 'RSB Manufacturing',
+        machineName: targetMaterialItems[0]?.machineName || targetMaterialItems[0]?.machineType || 'Standard Machine',
+        dateOfIssue: new Date().toISOString().split('T')[0],
+        expectedDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+        orderedBy: currentUser?.name || 'Amit',
+        items: targetMaterialItems.map((i, iIdx) => ({
+          id: `po-item-${iIdx}`,
+          projectName: i.projectName || 'RSB',
+          machineName: i.machineName || i.machineType || 'Machine',
+          description: i.description,
+          materialType: i.materialType || 'SS Part',
+          materialGrade: 'SS 304',
+          sizeSpecs: i.sizeSpecs,
+          quantity: Number(i.quantity) || 1,
+          unit: i.unit || 'Nos',
+          vendor: finalVendor,
+          orderedBy: currentUser?.name || 'Amit',
+        })),
+      };
+      setWhatsAppDispatchTarget({
+        poPayload,
+        phone: assignedVendorMobile || '',
+      });
+    }
   };
 
   // Quick 1-Click Suggestion Apply
@@ -818,10 +867,20 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
     setPoCandidateItems(sortedByVendor);
     setPoItemsToGenerate(sortedByVendor);
 
-    const targetV =
-      vendorName && vendorName !== 'Unassigned'
+    const distinctItemVendors: string[] = Array.from(
+      new Set(
+        sortedByVendor
+          .map((i) => i.vendor || i.vendorName)
+          .filter((v): v is string => Boolean(v && v !== 'Unassigned' && v.trim() !== ''))
+      )
+    );
+
+    const targetV: string =
+      (vendorName && vendorName !== 'Unassigned'
         ? vendorName
-        : 'Kaustubh (Master Material PO)';
+        : distinctItemVendors.length > 0
+        ? distinctItemVendors[0]
+        : allVendorsList[0] || 'Manav Metal') || 'Manav Metal';
 
     setPoTargetVendor(targetV);
     setPoCustomNumber(`PO-RSB-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`);
@@ -872,9 +931,22 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
       return;
     }
 
-    // Default target phone is strictly Kaustubh: +91 7276939301
-    const targetV = vendorName || 'Kaustubh (RSB Manufacturing)';
-    const phone = '+91 7276939301';
+    const distinctItemVendors: string[] = Array.from(
+      new Set(
+        targetItems
+          .map((i) => i.vendor || i.vendorName)
+          .filter((v): v is string => Boolean(v && v !== 'Unassigned' && v.trim() !== ''))
+      )
+    );
+
+    const targetV: string =
+      (vendorName && vendorName !== 'Unassigned'
+        ? vendorName
+        : distinctItemVendors.length > 0
+        ? distinctItemVendors[0]
+        : allVendorsList[0] || 'Manav Metal') || 'Manav Metal';
+
+    const phone = getVendorMobile(targetV, vendors);
     const finalPONum = poNum || `PO-RSB-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
     const dateStr = new Date().toISOString().split('T')[0];
     const targetDelDate = poExpectedDate || new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
@@ -884,9 +956,6 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
       poNumber: finalPONum,
       vendorName: targetV,
       vendorMobile: phone,
-      vendorContactPerson: 'Kaustubh',
-      vendorAddress: 'Plot 18, MIDC Waluj, Chhatrapati Sambhajinagar - 431136',
-      vendorGstin: '27AABCK7276P1Z8',
       paymentTerms: 'Immediate / 30 Days',
       status: 'Sent',
       projectName: pName || targetItems[0]?.projectName || filterProject || 'jkjdsasds',
@@ -2246,7 +2315,6 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
               </div>
 
               <div className="flex items-center gap-3 text-xs text-slate-300">
-                <span className="hidden sm:inline">Default Issuer:</span>
                 <span className="px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-xs font-black flex items-center gap-1.5">
                   <UserCheck className="w-3.5 h-3.5 text-indigo-400" />
                   <span>ORDERED BY: {currentUser?.name || 'Amit'}</span>
@@ -2263,15 +2331,14 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                     <th className="py-3 px-3">Date & ETA</th>
                     <th className="py-3 px-3">Vendor / Supplier</th>
                     <th className="py-3 px-3">Project & Scope</th>
-                    <th className="py-3 px-3 text-center">Items</th>
-                    <th className="py-3 px-3 text-center">Status</th>
+                    <th className="py-3 px-3">Items</th>
                     <th className="py-3 px-3 text-center w-36">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
                   {filteredPurchaseOrders.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-14 text-center text-slate-400">
+                      <td colSpan={6} className="py-14 text-center text-slate-400">
                         <FileText className="w-12 h-12 mx-auto text-slate-300 mb-3 animate-pulse" />
                         <h4 className="text-sm font-black text-slate-800">
                           {poSearchQuery || poStatusFilter !== 'ALL' || poVendorFilter !== 'ALL'
@@ -2316,16 +2383,14 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                       return (
                         <tr
                           key={po.id || idx}
-                          className={`transition-all hover:bg-amber-50/40 group ${
+                          className={`transition-all hover:bg-slate-50/80 group ${
                             isEven ? 'bg-white' : 'bg-slate-50/40'
                           }`}
                         >
                           {/* PO Number */}
-                          <td className="py-3 px-3">
+                          <td className="py-3 px-3 font-mono font-bold text-xs text-slate-900">
                             <div className="flex items-center gap-1.5">
-                              <span className="font-mono font-black text-xs text-slate-900 bg-slate-100 hover:bg-slate-200 px-2 py-0.5 rounded-md border border-slate-200 transition-colors">
-                                {po.poNumber}
-                              </span>
+                              <span>{po.poNumber}</span>
                               <button
                                 type="button"
                                 onClick={() => {
@@ -2334,98 +2399,49 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                                     showToast(`Copied "${po.poNumber}" to clipboard!`);
                                   } catch (e) {}
                                 }}
-                                className="opacity-0 group-hover:opacity-100 p-1 rounded text-slate-400 hover:text-slate-700 transition-opacity"
+                                className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-slate-400 hover:text-slate-700 transition-opacity cursor-pointer"
                                 title="Copy PO Number"
                               >
                                 <Copy className="w-3 h-3" />
                               </button>
                             </div>
-                            <span className="text-[10px] text-slate-400 font-medium block mt-0.5">
-                              Terms: {po.paymentTerms || '30 Days Net'}
-                            </span>
                           </td>
 
                           {/* Date & Delivery */}
-                          <td className="py-3 px-3">
-                            <div className="flex items-center gap-1 text-slate-900 font-bold">
-                              <Calendar className="w-3 h-3 text-slate-400" />
-                              <span>{po.date}</span>
-                            </div>
-                            <span className="text-[10px] text-emerald-700 font-semibold block mt-0.5">
-                              ETA: {po.expectedDate}
-                            </span>
+                          <td className="py-3 px-3 text-xs text-slate-800">
+                            <div>{po.date}</div>
+                            {po.expectedDate && (
+                              <div className="text-[11px] text-slate-500 mt-0.5">
+                                ETA: {po.expectedDate}
+                              </div>
+                            )}
                           </td>
 
                           {/* Vendor */}
-                          <td className="py-3 px-3">
-                            <div className="flex items-center gap-1.5">
-                              <Building2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                              <span className="font-bold text-slate-900">{po.vendor}</span>
-                            </div>
-                            <span className="text-[10px] text-slate-500 font-medium block mt-0.5 pl-5">
-                              {vendorPhone}
-                            </span>
+                          <td className="py-3 px-3 text-xs text-slate-900">
+                            <div className="font-semibold">{po.vendor}</div>
+                            {vendorPhone && (
+                              <div className="text-[11px] text-slate-500 mt-0.5">
+                                {vendorPhone}
+                              </div>
+                            )}
                           </td>
 
                           {/* Project Names & Machines */}
-                          <td className="py-3 px-3 max-w-[200px]">
-                            <div className="flex flex-wrap gap-1">
-                              {(po.projectNames && po.projectNames.length > 0
-                                ? po.projectNames
-                                : ['General Fabrication']
-                              ).map((p, pIdx) => (
-                                <span
-                                  key={pIdx}
-                                  className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 text-[10px] font-bold truncate max-w-[140px]"
-                                  title={p}
-                                >
-                                  📁 {p}
-                                </span>
-                              ))}
-                              {po.machineNames && po.machineNames.length > 0 && (
-                                <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-semibold truncate max-w-[120px]">
-                                  ⚙️ {po.machineNames.join(', ')}
-                                </span>
-                              )}
+                          <td className="py-3 px-3 text-xs text-slate-800 max-w-[220px]">
+                            <div className="font-semibold truncate">
+                              {(po.projectNames && po.projectNames.length > 0 ? po.projectNames.join(', ') : 'General Project')}
                             </div>
+                            {po.machineNames && po.machineNames.length > 0 && (
+                              <div className="text-[11px] text-slate-500 mt-0.5 truncate">
+                                {po.machineNames.join(', ')}
+                              </div>
+                            )}
                           </td>
 
-                          {/* Items Count & Mini Preview */}
-                          <td className="py-3 px-3 text-center">
-                            <span className="px-2 py-1 rounded-md bg-slate-100 text-slate-900 font-black text-xs border border-slate-200">
-                              {po.items.length} {po.items.length === 1 ? 'Part' : 'Parts'}
-                            </span>
-                            <span className="text-[10px] text-slate-500 block mt-0.5 truncate max-w-[110px] mx-auto" title={po.items.map(i => i.material).join(', ')}>
-                              {po.items[0]?.material || 'SS Items'}
-                            </span>
-                          </td>
-
-                          {/* Status Dropdown */}
-                          <td className="py-3 px-3 text-center">
-                            <select
-                              value={po.status}
-                              onChange={(e) => {
-                                updatePOStatus(po.id, e.target.value as any);
-                                showToast(`Updated ${po.poNumber} status to "${e.target.value}"`);
-                              }}
-                              className={`text-[10px] font-black px-2 py-1 rounded-lg border cursor-pointer focus:outline-none ${
-                                po.status === 'Sent'
-                                  ? 'bg-blue-50 text-blue-700 border-blue-300'
-                                  : po.status === 'Received'
-                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                                  : po.status === 'Partially Received'
-                                  ? 'bg-amber-50 text-amber-800 border-amber-300'
-                                  : po.status === 'Cancelled'
-                                  ? 'bg-rose-50 text-rose-700 border-rose-300'
-                                  : 'bg-slate-100 text-slate-700 border-slate-300'
-                              }`}
-                            >
-                              <option value="Sent">Sent</option>
-                              <option value="Draft">Draft</option>
-                              <option value="Partially Received">Partially Received</option>
-                              <option value="Received">Received</option>
-                              <option value="Cancelled">Cancelled</option>
-                            </select>
+                          {/* Items (Simple Text) */}
+                          <td className="py-3 px-3 text-xs font-semibold text-slate-900">
+                            {po.items.length} {po.items.length === 1 ? 'Item' : 'Items'}
                           </td>
 
                           {/* Quick Actions Toolbar */}
@@ -2480,7 +2496,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                                 <Download className="w-3.5 h-3.5 text-emerald-700" />
                               </button>
 
-                              {/* WhatsApp Direct Dispatch */}
+                              {/* WhatsApp Direct Dispatch (Customizable Number & Short Message) */}
                               <button
                                 type="button"
                                 onClick={() => {
@@ -2510,14 +2526,10 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                                       orderedBy: orderedByName,
                                     })),
                                   };
-                                  const pdf = generatePurchaseOrderPDF(poPayload);
-                                  const msg = formatWhatsAppPOMessage(poPayload);
-                                  try {
-                                    navigator.clipboard.writeText(msg);
-                                  } catch (e) {}
-                                  const url = createWhatsAppUrl(vendorPhone, msg);
-                                  window.open(url, '_blank', 'noopener,noreferrer');
-                                  showToast(`Dispatched PO ${po.poNumber} on WhatsApp & downloaded PDF!`);
+                                  setWhatsAppDispatchTarget({
+                                    poPayload,
+                                    phone: vendorPhone || '',
+                                  });
                                 }}
                                 className="p-1.5 rounded-lg bg-[#25D366]/20 hover:bg-[#25D366]/30 text-emerald-950 border border-[#25D366]/40 transition-colors cursor-pointer"
                                 title="Send on WhatsApp & Download PDF"
@@ -2587,6 +2599,196 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
       {/* 5. MODALS: BULK ASSIGN, SMART SUGGESTIONS, RFQ, EDIT ITEM, AND ZERO-RATE PO */}
       {/* ======================================================================= */}
 
+      {/* 5. CUSTOMIZABLE WHATSAPP PO DISPATCH MODAL */}
+      {whatsAppDispatchTarget && (
+        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-5 space-y-3.5 shadow-2xl border border-slate-200 animate-fadeIn">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-[#25D366]/20 text-emerald-800 border border-[#25D366]/40 flex items-center justify-center font-bold">
+                  <Send className="w-4 h-4 fill-emerald-700 text-emerald-700" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900">
+                    Send Purchase Order on WhatsApp
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    {whatsAppDispatchTarget.poPayload.poNumber} • {whatsAppDispatchTarget.poPayload.items.length} {whatsAppDispatchTarget.poPayload.items.length === 1 ? 'Part' : 'Parts'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWhatsAppDispatchTarget(null)}
+                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* 1. VENDOR SELECTION & FAST SEND TO ASSIGNED VENDOR */}
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5">
+              <label className="text-xs font-bold text-slate-800 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Select Recipient Vendor:</span>
+                </span>
+                <span className="text-[10px] font-bold text-slate-500">
+                  {vendors.length} Vendors Registered
+                </span>
+              </label>
+
+              <select
+                value={whatsAppDispatchTarget.poPayload.vendorName}
+                onChange={(e) => {
+                  const newVendorName = e.target.value;
+                  const newPhone = getVendorMobile(newVendorName, vendors);
+                  setWhatsAppDispatchTarget({
+                    ...whatsAppDispatchTarget,
+                    phone: newPhone,
+                    poPayload: {
+                      ...whatsAppDispatchTarget.poPayload,
+                      vendorName: newVendorName,
+                      vendorMobile: newPhone,
+                    },
+                  });
+                }}
+                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-500 cursor-pointer shadow-2xs"
+              >
+                {allVendorsList.map((v) => {
+                  const mob = getVendorMobile(v, vendors);
+                  return (
+                    <option key={v} value={v}>
+                      {v} (📞 {mob})
+                    </option>
+                  );
+                })}
+              </select>
+
+              {/* Quick Assigned Vendor Send Button */}
+              <div className="pt-1 flex items-center justify-between gap-2">
+                <div className="text-[11px] text-slate-600 truncate">
+                  Assigned: <strong className="text-slate-900 font-bold">{whatsAppDispatchTarget.poPayload.vendorName}</strong>
+                  <span className="text-slate-400 mx-1">•</span>
+                  <span className="font-mono text-emerald-800 font-bold">{getVendorMobile(whatsAppDispatchTarget.poPayload.vendorName, vendors)}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const vendorPhone = getVendorMobile(whatsAppDispatchTarget.poPayload.vendorName, vendors);
+                    const target = whatsAppDispatchTarget;
+                    setWhatsAppDispatchTarget(null);
+                    const res = await shareOrSendWhatsAppPO(vendorPhone, target.poPayload);
+                    if (res.method === 'share') {
+                      showToast(`Opened share dialog with ${res.fileName} attached!`);
+                    } else {
+                      showToast(`Downloaded "${res.fileName}" & opened WhatsApp for ${vendorPhone}!`);
+                    }
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-slate-950 text-xs font-black shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shrink-0"
+                >
+                  <Send className="w-3.5 h-3.5 fill-slate-950" />
+                  <span>Send to Vendor</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 2. CUSTOM NUMBER OPTION & CUSTOM SEND BUTTON */}
+            <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+              <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
+                <span>Or Enter Custom WhatsApp Number:</span>
+                <span className="text-[10px] text-slate-400 font-normal">Type any number to override</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <div className="px-2.5 py-1.5 rounded-xl bg-slate-100 border border-slate-300 font-bold font-mono text-xs text-slate-700 shrink-0">
+                  🇮🇳 +91
+                </div>
+                <input
+                  type="text"
+                  value={whatsAppDispatchTarget.phone}
+                  onChange={(e) =>
+                    setWhatsAppDispatchTarget({
+                      ...whatsAppDispatchTarget,
+                      phone: e.target.value,
+                    })
+                  }
+                  placeholder="e.g. 7276939301"
+                  className="w-full px-3 py-1.5 rounded-xl bg-white border border-slate-300 text-xs font-bold font-mono text-slate-900 focus:outline-none focus:border-emerald-500"
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const phone = whatsAppDispatchTarget.phone.trim();
+                    const target = whatsAppDispatchTarget;
+                    setWhatsAppDispatchTarget(null);
+                    const res = await shareOrSendWhatsAppPO(phone, target.poPayload);
+                    if (res.method === 'share') {
+                      showToast(`Opened share dialog with ${res.fileName} attached!`);
+                    } else {
+                      showToast(`Downloaded "${res.fileName}" & opened WhatsApp for ${phone}!`);
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shrink-0"
+                >
+                  <Send className="w-3 h-3 text-emerald-400 fill-emerald-400" />
+                  <span>Send to Custom</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Short Message Preview */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-bold text-slate-600">
+                  Short Message Preview:
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const msg = formatShortWhatsAppPOMessage(whatsAppDispatchTarget.poPayload);
+                    try {
+                      navigator.clipboard.writeText(msg);
+                      showToast('Message text copied to clipboard!');
+                    } catch (e) {}
+                  }}
+                  className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
+                >
+                  <Copy className="w-3 h-3" />
+                  <span>Copy Text</span>
+                </button>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-900 text-emerald-300 font-mono text-[10.5px] leading-relaxed whitespace-pre-wrap max-h-24 overflow-y-auto border border-slate-800">
+                {formatShortWhatsAppPOMessage(whatsAppDispatchTarget.poPayload)}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  const pdf = generatePurchaseOrderPDF(whatsAppDispatchTarget.poPayload);
+                  showToast(`Downloaded "${pdf}"!`);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5 text-slate-600" />
+                <span>Download PDF Only</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setWhatsAppDispatchTarget(null)}
+                className="px-4 py-1.5 rounded-xl text-slate-500 hover:bg-slate-100 text-xs font-bold transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 5A. BULK VENDOR ASSIGNMENT MODAL */}
       {isAssignVendorModalOpen && (
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
@@ -2608,7 +2810,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
               <button
                 type="button"
                 onClick={() => setIsAssignVendorModalOpen(false)}
-                className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700"
+                className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2625,12 +2827,19 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                     onChange={(e) => setSelectedVendorForAssign(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-500"
                   >
-                    {allVendorsList.map((v) => (
-                      <option key={v} value={v}>
-                        {v}
-                      </option>
-                    ))}
+                    {allVendorsList.map((v) => {
+                      const mob = getVendorMobile(v, vendors);
+                      return (
+                        <option key={v} value={v}>
+                          {v} (📞 {mob})
+                        </option>
+                      );
+                    })}
                   </select>
+                  <div className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-100 mt-2 flex items-center justify-between text-xs">
+                    <span className="text-indigo-900 font-bold">{selectedVendorForAssign}</span>
+                    <span className="text-indigo-700 font-mono font-medium">📞 {getVendorMobile(selectedVendorForAssign, vendors)}</span>
+                  </div>
                   <button
                     type="button"
                     onClick={() => setIsAddCustomVendorMode(true)}
@@ -2640,22 +2849,41 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                   </button>
                 </div>
               ) : (
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Enter New Vendor Name:
-                  </label>
-                  <input
-                    type="text"
-                    value={customVendorName}
-                    onChange={(e) => setCustomVendorName(e.target.value)}
-                    placeholder="e.g. Shree Ram Steels & Forgings"
-                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-500"
-                    autoFocus
-                  />
+                <div className="space-y-2.5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      New Vendor Name:
+                    </label>
+                    <input
+                      type="text"
+                      value={customVendorName}
+                      onChange={(e) => setCustomVendorName(e.target.value)}
+                      placeholder="e.g. Shree Ram Steels & Forgings"
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-500"
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Vendor WhatsApp Mobile Number:
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-1.5 rounded-lg bg-slate-100 border border-slate-300 font-mono font-bold text-xs text-slate-700">
+                        🇮🇳 +91
+                      </span>
+                      <input
+                        type="text"
+                        value={customVendorPhone}
+                        onChange={(e) => setCustomVendorPhone(e.target.value)}
+                        placeholder="e.g. 98250 12345"
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-bold font-mono text-slate-900 focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                  </div>
                   <button
                     type="button"
                     onClick={() => setIsAddCustomVendorMode(false)}
-                    className="text-xs font-bold text-slate-500 hover:underline mt-2 inline-block cursor-pointer"
+                    className="text-xs font-bold text-slate-500 hover:underline inline-block cursor-pointer"
                   >
                     ← Back to Existing Vendors
                   </button>
@@ -2663,21 +2891,31 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
               )}
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setIsAssignVendorModalOpen(false)}
-                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer"
+                className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer"
               >
                 Cancel
               </button>
-              <button
-                type="button"
-                onClick={handleConfirmBulkAssign}
-                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold cursor-pointer shadow-xs"
-              >
-                Confirm Allocation
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleConfirmBulkAssign(false)}
+                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold cursor-pointer shadow-xs"
+                >
+                  Confirm Allocation
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleConfirmBulkAssign(true)}
+                  className="px-3.5 py-2 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-slate-950 text-xs font-black cursor-pointer shadow-xs flex items-center gap-1.5"
+                >
+                  <Send className="w-3.5 h-3.5 fill-slate-950" />
+                  <span>Assign & Send PO</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -3044,7 +3282,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                     Master Material Purchase Order • All {poItemsToGenerate.length} Parts Included
                   </span>
                   <span className="text-[10px] text-slate-400">
-                    Categorized by assigned vendors • Direct dispatch to Kaustubh (+91 7276939301)
+                    Categorized by assigned vendors • Direct vendor dispatch
                   </span>
                 </div>
               </div>
@@ -3076,7 +3314,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                     value={poTargetVendor}
                     onChange={(e) => setPoTargetVendor(e.target.value)}
                     className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-500"
-                    placeholder="Kaustubh (Master Material PO)"
+                    placeholder="e.g. Manav Metal"
                   />
                 </div>
 
@@ -3816,14 +4054,10 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                         orderedBy: selectedPoForSlip.orderedBy || currentUser?.name || 'Amit',
                       })),
                     };
-                    const pdf = generatePurchaseOrderPDF(poPayload);
-                    const msg = formatWhatsAppPOMessage(poPayload);
-                    try {
-                      navigator.clipboard.writeText(msg);
-                    } catch (e) {}
-                    const url = createWhatsAppUrl(vendorPhone, msg);
-                    window.open(url, '_blank', 'noopener,noreferrer');
-                    showToast(`Dispatched PO ${selectedPoForSlip.poNumber} on WhatsApp & downloaded PDF!`);
+                    setWhatsAppDispatchTarget({
+                      poPayload,
+                      phone: vendorPhone || '',
+                    });
                   }}
                   className="px-4 py-2 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-slate-950 text-xs font-black transition-all flex items-center gap-1.5 shadow-md shadow-emerald-900/30 cursor-pointer active:scale-95"
                 >

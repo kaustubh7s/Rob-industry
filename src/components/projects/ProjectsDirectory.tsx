@@ -163,23 +163,20 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
     });
   }, [projects, projectRequirements, orders]);
 
-  // Dynamic list of all machines in system
+  // Dynamic list of all machines in active projects
   const dynamicMachineList = useMemo(() => {
     const list = new Set<string>();
-    machines.forEach((m) => {
-      if (m.name) list.add(m.name);
-      if (m.type) list.add(m.type);
-    });
-    projects.forEach((p) => {
-      if (p.machineName) list.add(p.machineName);
-      if (p.machineType) list.add(p.machineType);
-    });
-    projectRequirements.forEach((r) => {
-      if (r.machineName) list.add(r.machineName);
-      if (r.machineType) list.add(r.machineType);
+    enrichedProjects.forEach((p) => {
+      if (p.machineTypes && p.machineTypes.length > 0) {
+        p.machineTypes.forEach((mt) => {
+          if (mt && mt.trim()) list.add(mt.trim());
+        });
+      }
+      if (p.machineName && p.machineName.trim()) list.add(p.machineName.trim());
+      if (p.machineType && p.machineType.trim()) list.add(p.machineType.trim());
     });
     return Array.from(list).filter(Boolean);
-  }, [machines, projects, projectRequirements]);
+  }, [enrichedProjects]);
 
   // Apply search and all filters
   const filteredProjects = useMemo(() => {
