@@ -38,6 +38,12 @@ export const SuperAdminPanel: React.FC = () => {
   const [activeAdminTab, setActiveAdminTab] = useState<'security_matrix' | 'company' | 'backup' | 'audit' | 'templates'>('security_matrix');
   const [importStatus, setImportStatus] = useState<string | null>(null);
 
+  const isKaustubhAdmin =
+    currentUser?.id === 'usr-kaustubh' ||
+    currentUser?.email?.toLowerCase() === 'kaustubh@rsbequipments.com' ||
+    currentUser?.name?.toLowerCase() === 'kaustubh' ||
+    currentUser?.role === 'kaustubh';
+
   const handleBackupFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -197,21 +203,23 @@ export const SuperAdminPanel: React.FC = () => {
             )}
           </div>
 
-          <div className="sm:col-span-2 p-6 rounded-2xl bg-rose-500/10 border border-rose-500/30 space-y-3">
-            <div className="flex items-center gap-2 text-rose-400">
-              <AlertTriangle className="w-5 h-5 shrink-0" />
-              <h4 className="text-sm font-bold">Factory State Reset</h4>
+          {isKaustubhAdmin && (
+            <div className="sm:col-span-2 p-6 rounded-2xl bg-rose-500/10 border border-rose-500/30 space-y-3">
+              <div className="flex items-center gap-2 text-rose-400">
+                <AlertTriangle className="w-5 h-5 shrink-0" />
+                <h4 className="text-sm font-bold">Factory State Reset</h4>
+              </div>
+              <p className="text-xs text-slate-400">
+                Clear all runtime data, suggestions, BOMs, active orders, and cached browser storage to restore a clean, pristine factory baseline.
+              </p>
+              <button
+                onClick={resetToDemoData}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-xl transition-all shadow-md"
+              >
+                Reset to Factory Baseline
+              </button>
             </div>
-            <p className="text-xs text-slate-400">
-              Clear all runtime data, suggestions, BOMs, active orders, and cached browser storage to restore a clean, pristine factory baseline.
-            </p>
-            <button
-              onClick={resetToDemoData}
-              className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-xl transition-all shadow-md"
-            >
-              Reset to Factory Baseline
-            </button>
-          </div>
+          )}
         </div>
       )}
 

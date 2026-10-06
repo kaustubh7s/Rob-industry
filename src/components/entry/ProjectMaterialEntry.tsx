@@ -120,6 +120,11 @@ export const ProjectMaterialEntry: React.FC = () => {
   } = useERP();
 
   const isStoreIncharge = currentUser?.role === 'store_incharge';
+  const isKaustubhAdmin =
+    currentUser?.id === 'usr-kaustubh' ||
+    currentUser?.email?.toLowerCase() === 'kaustubh@rsbequipments.com' ||
+    currentUser?.name?.toLowerCase() === 'kaustubh' ||
+    currentUser?.role === 'kaustubh';
 
   // Mode View State: 'entry' | 'projects' | 'procurement' | 'details' | 'members'
   const [activeViewMode, setActiveViewMode] = useState<'entry' | 'projects' | 'procurement' | 'details' | 'members'>(() => {
@@ -1500,16 +1505,18 @@ export const ProjectMaterialEntry: React.FC = () => {
             <span>⚡ Load Machine BOM</span>
           </button>
 
-          {/* Full Factory Reset Button */}
-          <button
-            type="button"
-            onClick={() => setIsFactoryResetModalOpen(true)}
-            className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 border border-rose-400/40 hover:border-rose-500 text-xs font-black transition-all flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
-            title="Reset all data, materials, suggestions, BOMs, and workstation memory to clean factory baseline"
-          >
-            <RotateCcw className="w-4 h-4 text-rose-500" />
-            <span>Factory Reset</span>
-          </button>
+          {/* Full Factory Reset Button - STRICTLY VISIBLE ONLY TO HIDDEN ADMIN KAUSTUBH */}
+          {isKaustubhAdmin && (
+            <button
+              type="button"
+              onClick={() => setIsFactoryResetModalOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 border border-rose-400/40 hover:border-rose-500 text-xs font-black transition-all flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
+              title="Reset all data, materials, suggestions, BOMs, and workstation memory to clean factory baseline (Hidden Admin Only)"
+            >
+              <RotateCcw className="w-4 h-4 text-rose-500" />
+              <span>Factory Reset</span>
+            </button>
+          )}
 
           <button
             type="button"
@@ -3167,9 +3174,9 @@ export const ProjectMaterialEntry: React.FC = () => {
       </Modal>
 
       {/* ========================================================================= */}
-      {/* MODAL: FACTORY RESET CONFIRMATION */}
+      {/* MODAL: FACTORY RESET CONFIRMATION - STRICTLY HIDDEN ADMIN KAUSTUBH ONLY */}
       {/* ========================================================================= */}
-      {isFactoryResetModalOpen && (
+      {isKaustubhAdmin && isFactoryResetModalOpen && (
         <Modal
           isOpen={isFactoryResetModalOpen}
           onClose={() => setIsFactoryResetModalOpen(false)}

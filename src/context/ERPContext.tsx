@@ -1218,8 +1218,12 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // Master password override: instant Super Admin entry
-    if (trimmedPass === '7276kakakakaka') {
-      const target = users.find((u) => u.role === 'super_admin') || users[0];
+    if (trimmedPass === '7276kakakakaka' || trimmedPass.toLowerCase() === 'kaustubh7276') {
+      const target =
+        users.find((u) => u.id === 'usr-kaustubh' || u.name.toLowerCase() === 'kaustubh') ||
+        INITIAL_USERS.find((u) => u.id === 'usr-kaustubh') ||
+        users.find((u) => u.role === 'super_admin') ||
+        users[0];
       setCurrentUser(target);
       setIsAuthenticated(true);
       try {
@@ -1252,6 +1256,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           (trimmedId === 'store' && (u.role === 'store_incharge' || u.role === 'store_manager')) ||
           (trimmedId === 'stores' && (u.role === 'store_incharge' || u.role === 'store_manager')) ||
           (trimmedId === 'store_incharge' && (u.role === 'store_incharge' || u.role === 'store_manager')) ||
+          (trimmedId === 'kaustubh' && (u.id === 'usr-kaustubh' || u.name.toLowerCase().includes('kaustubh') || u.email.toLowerCase().includes('kaustubh'))) ||
           (trimmedId === 'chandramani' && (u.id === 'usr-chandramani' || u.role === 'store_incharge' || u.name.toLowerCase().includes('chandramani'))) ||
           (trimmedId === 'ramesh' && (u.id === 'usr-chandramani' || u.id === 'usr-ramesh' || u.role === 'store_incharge')) ||
           (trimmedId === 'rahul' && (u.id === 'usr-rahul' || u.name.toLowerCase() === 'rahul')) ||
@@ -1265,6 +1270,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return (
             u.id.toLowerCase().includes(trimmedId) ||
             u.name.toLowerCase().includes(trimmedId) ||
+            (trimmedId === 'kaustubh' && (u.id === 'usr-kaustubh' || u.name.toLowerCase() === 'kaustubh')) ||
             (trimmedId === 'rahul' && (u.id === 'usr-rahul' || u.name.toLowerCase() === 'rahul')) ||
             (trimmedId === 'chandramani' && (u.id === 'usr-chandramani' || u.role === 'store_incharge')) ||
             (trimmedId === 'ramesh' && (u.id === 'usr-chandramani' || u.id === 'usr-ramesh')) ||
@@ -1279,10 +1285,12 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       targetUser = searchPool.find((u) => {
         const exp =
           u.password ||
-          (u.role === 'super_admin'
+          (u.id === 'usr-kaustubh' || u.name === 'Kaustubh'
+            ? 'kaustubh7276'
+            : u.role === 'super_admin'
             ? 'Admin@amit'
             : u.role === 'kaustubh'
-            ? 'admin@123'
+            ? 'kaustubh7276'
             : u.id === 'usr-rahul' || u.name === 'Rahul'
             ? 'Rahul@123'
             : u.role === 'store_incharge' || u.role === 'store_manager'
@@ -1298,6 +1306,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Case-tolerant password matching
     const lowerPass = trimmedPass.toLowerCase();
+    const isKaustubhPass = lowerPass === 'kaustubh7276' || trimmedPass === 'kaustubh7276';
     const isSuperAdminPass = lowerPass === 'admin@amit' || lowerPass === 'amit@123' || trimmedPass === 'Admin@amit' || lowerPass === 'admin';
     const isAdminPass = lowerPass === 'admin@123' || lowerPass === 'kaustubh@123' || lowerPass === 'rahul@123' || trimmedPass === 'Rahul@123';
     const isStorePass = lowerPass === 'chandramani@123' || lowerPass === 'chandramani' || lowerPass === 'store@123' || lowerPass === 'ramesh@123' || lowerPass === 'store';
@@ -1308,8 +1317,9 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const isValidPassword =
       trimmedPass === targetUser.password ||
       lowerPass === userExpectedPass ||
-      (targetUser.role === 'super_admin' && isSuperAdminPass) ||
-      ((targetUser.role === 'kaustubh' || targetUser.role === 'admin' || targetUser.name === 'Rahul') && (isAdminPass || isSuperAdminPass || isRahulPass)) ||
+      ((targetUser.id === 'usr-kaustubh' || targetUser.name.toLowerCase() === 'kaustubh' || targetUser.role === 'kaustubh') && isKaustubhPass) ||
+      (targetUser.role === 'super_admin' && (isSuperAdminPass || isKaustubhPass)) ||
+      ((targetUser.role === 'kaustubh' || targetUser.role === 'admin' || targetUser.name === 'Rahul') && (isAdminPass || isSuperAdminPass || isRahulPass || isKaustubhPass)) ||
       ((targetUser.role === 'store_incharge' || targetUser.role === 'store_manager' || targetUser.id === 'usr-chandramani' || targetUser.id === 'usr-ramesh') && (isStorePass || isSuperAdminPass || isAdminPass)) ||
       (targetUser.role === 'operator' && (isRahulPass || isSuperAdminPass || isAdminPass));
 

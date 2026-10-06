@@ -23,6 +23,26 @@ import {
 
 export const INITIAL_USERS: User[] = [
   {
+    id: 'usr-kaustubh',
+    name: 'Kaustubh',
+    email: 'kaustubh@rsbequipments.com',
+    role: 'super_admin',
+    password: 'kaustubh7276',
+    department: 'Executive Management & Hidden Admin',
+    authLevel: 'Tier 1: Super Admin',
+    status: 'Active',
+    lastActive: 'Active Now',
+    permissions: {
+      canEditMaterials: true,
+      canApproveOrders: true,
+      canDeleteRecords: true,
+      canManageUsers: true,
+      canExportReports: true,
+      canOverrideLock: true,
+      canVerifyInward: true,
+    },
+  },
+  {
     id: 'usr-admin',
     name: 'Administrator',
     email: 'admin@rsbequipments.com',
