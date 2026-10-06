@@ -38,7 +38,7 @@ import {
   QCStatus,
   DispatchStatus,
 } from '../../types/erp';
-import { formatINR, formatCompactINR } from '../../utils/calculations';
+import { formatINR, formatCompactINR, formatDate } from '../../utils/calculations';
 import { exportToExcel, exportToPdfReport, parseExcelFile } from '../../utils/excelIntegration';
 import { StatusBadge } from '../common/StatusBadge';
 import { Modal } from '../common/Modal';
@@ -146,7 +146,7 @@ export const ProjectMaterialRequirementsTable: React.FC = () => {
       const matchProd = filterProdStatus === 'ALL' || req.productionStatus === filterProdStatus;
 
       return matchSearch && matchProject && matchMachine && matchMatType && matchStock && matchProd;
-    });
+    }).sort((a, b) => (Number(a.srNo) || 0) - (Number(b.srNo) || 0));
   }, [projectRequirements, searchTerm, filterProject, filterMachine, filterMaterialType, filterStockStatus, filterProdStatus]);
 
   // Dashboard Aggregates
@@ -216,7 +216,7 @@ export const ProjectMaterialRequirementsTable: React.FC = () => {
       'Project': r.projectName,
       'Customer': r.customerName,
       'PO Number': r.poNumber,
-      'PO Date': r.poDate,
+      'PO Date': formatDate(r.poDate || r.date),
       'Vendor': r.vendor,
       'BOM Ref': r.bomRef,
       'Stock Status': r.stockStatus,
@@ -228,7 +228,7 @@ export const ProjectMaterialRequirementsTable: React.FC = () => {
       'Assigned Operator': r.assignedOperator || '-',
       'QC Status': r.qcStatus,
       'Dispatch Status': r.dispatchStatus,
-      'Delivery Date': r.deliveryDate,
+      'Delivery Date': formatDate(r.deliveryDate),
       'Material Cost (INR)': r.materialCost,
       'Labor Cost (INR)': r.laborCost,
       'Machine Cost (INR)': r.machineCost,

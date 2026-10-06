@@ -31,7 +31,7 @@ import {
 import { useERP } from '../../context/ERPContext';
 import { ProjectItem, ProjectStatus, MachineCategory } from '../../types/erp';
 import { StatusBadge } from '../common/StatusBadge';
-import { formatINR } from '../../utils/calculations';
+import { formatINR, formatDate } from '../../utils/calculations';
 import { exportToExcel, exportToPdfReport } from '../../utils/excelIntegration';
 import { Modal } from '../common/Modal';
 import { SupabaseConnectModal } from '../admin/SupabaseConnectModal';
@@ -313,7 +313,7 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
       'Vendor': p.vendor,
       'Total Materials': `${p.totalMaterials} Items`,
       'Total Quantity': p.totalQuantity,
-      'Created Date': p.createdDate,
+      'Created Date': formatDate(p.createdDate || p.startDate),
       'Last Updated Date': p.lastUpdatedDate,
       'Order Source': p.orderSource,
       'PO Number': p.poNumber,
@@ -340,7 +340,7 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
       p.vendor,
       `${p.totalMaterials} Items`,
       String(p.totalQuantity),
-      p.createdDate,
+      formatDate(p.createdDate || p.startDate),
       p.lastUpdatedDate,
     ]);
     exportToPdfReport(
@@ -609,8 +609,8 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
       ) : viewMode === 'cards' ? (
         <div data-tour="tour-projects-grid" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {filteredProjects.map((prj, idx) => {
-            const prjDate = prj.startDate || prj.date || prj.createdDate || '01-09-2026';
-            const deliveryDate = prj.targetCompletionDate || prj.targetDate || '30-10-2026';
+            const prjDate = formatDate(prj.startDate || prj.date || prj.createdDate);
+            const deliveryDate = formatDate(prj.targetCompletionDate || prj.targetDate);
             const clientName = prj.customer || prj.clientName || 'Cadila Healthcare Ltd';
             const matCount = prj.totalMaterials ?? prj.materialsCount ?? 0;
             const ordBy = prj.orderedBy || 'Amit';
@@ -878,7 +878,7 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
 
                       {/* Start Date */}
                       <td className="p-3.5 font-mono text-slate-600 whitespace-nowrap">
-                        {prj.startDate || prj.date || prj.createdDate}
+                        {formatDate(prj.startDate || prj.date || prj.createdDate)}
                       </td>
 
                       {/* Status */}
@@ -974,26 +974,6 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
               className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 font-bold placeholder:text-slate-400 focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 outline-none text-sm transition-all shadow-xs"
               autoFocus
             />
-          </div>
-
-          {/* Machine / Assembly Name */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-              Machine / Assembly Name (Optional)
-            </label>
-            <input
-              type="text"
-              list="learned-machines-directory"
-              value={newProjectForm.machineName}
-              onChange={(e) => setNewProjectForm({ ...newProjectForm, machineName: e.target.value })}
-              placeholder="e.g. Liquid Filling Line, Conveyor Cell, Washing System"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 font-semibold placeholder:text-slate-400 focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 outline-none text-sm transition-all shadow-xs"
-            />
-            <datalist id="learned-machines-directory">
-              {dynamicMachineList.map((m) => (
-                <option key={m} value={m} />
-              ))}
-            </datalist>
           </div>
 
           {/* 2. Client Name & 3. Client Number (Self-Learning Combobox) */}

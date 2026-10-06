@@ -278,6 +278,8 @@ export interface ProjectMaterialRequirementItem {
 
   // Material Inward / Arrival Tracking
   isReceived?: boolean;
+  receivedQuantity?: number;
+  pendingQuantity?: number;
   receivedAt?: string;
   receivedBy?: string;
   receivedByInitials?: string;
@@ -408,6 +410,7 @@ export interface QCInspection {
 }
 
 export interface PurchaseOrderItem {
+  srNo?: number;
   material: string;
   sizeSpecs: string;
   qty: number;

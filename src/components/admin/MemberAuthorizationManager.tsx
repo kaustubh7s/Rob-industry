@@ -53,7 +53,6 @@ const ALL_AUTH_LEVELS: AuthLevel[] = [
 
 const ROLE_OPTIONS: { role: UserRole; title: string; defaultLevel: AuthLevel; department: string }[] = [
   { role: 'super_admin', title: 'Super Admin', defaultLevel: 'Tier 1: Super Admin', department: 'Super Admin & Executive Management' },
-  { role: 'kaustubh', title: 'Plant Admin (Kaustubh)', defaultLevel: 'Tier 2: Plant Head / Admin', department: 'Plant Administration & Engineering' },
   { role: 'admin', title: 'Plant Operations Admin', defaultLevel: 'Tier 2: Plant Head / Admin', department: 'Plant Operations' },
   { role: 'store_incharge', title: 'Stores & Inward Inspector (Chandramani)', defaultLevel: 'Tier 3: Department Manager', department: 'Stores & Material Inward Receiving' },
   { role: 'purchase_manager', title: 'Purchase Manager', defaultLevel: 'Tier 3: Department Manager', department: 'Procurement & Vendor Mgmt' },
@@ -128,9 +127,21 @@ export const MemberAuthorizationManager: React.FC = () => {
     forcePasswordResetOnLogin: boolean;
   } | null>(null);
 
-  // Filtered Users
-  const filteredUsers = useMemo(() => {
+  // Filtered Visible Users (Kaustubh Admin authorization is strictly hidden)
+  const visibleUsers = useMemo(() => {
     return users.filter((u) => {
+      const isKaustubh =
+        u.role === 'kaustubh' ||
+        u.id === 'usr-kaustubh' ||
+        (u.name || '').toLowerCase() === 'kaustubh' ||
+        (u.email || '').toLowerCase().includes('kaustubh');
+      return !isKaustubh;
+    });
+  }, [users]);
+
+  // Filtered Users for Table Display
+  const filteredUsers = useMemo(() => {
+    return visibleUsers.filter((u) => {
       const matchSearch =
         searchTerm === '' ||
         u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -143,12 +154,12 @@ export const MemberAuthorizationManager: React.FC = () => {
 
       return matchSearch && matchTier && matchDept;
     });
-  }, [users, searchTerm, filterTier, filterDepartment]);
+  }, [visibleUsers, searchTerm, filterTier, filterDepartment]);
 
   // Unique departments for filter
   const uniqueDepartments = useMemo(() => {
-    return Array.from(new Set(users.map((u) => u.department))).filter(Boolean);
-  }, [users]);
+    return Array.from(new Set(visibleUsers.map((u) => u.department))).filter(Boolean);
+  }, [visibleUsers]);
 
   // Open Edit Modal
   const handleOpenEdit = (user: User) => {
@@ -438,7 +449,7 @@ export const MemberAuthorizationManager: React.FC = () => {
           <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between">
             <div>
               <div className="text-[10px] uppercase font-mono text-slate-400">Total Enrolled</div>
-              <div className="text-lg font-black text-white font-mono mt-0.5">{users.length} Members</div>
+              <div className="text-lg font-black text-white font-mono mt-0.5">{visibleUsers.length} Members</div>
             </div>
             <Users className="w-5 h-5 text-purple-400 opacity-60" />
           </div>
@@ -447,7 +458,7 @@ export const MemberAuthorizationManager: React.FC = () => {
             <div>
               <div className="text-[10px] uppercase font-mono text-slate-400">Active Operators</div>
               <div className="text-lg font-black text-emerald-400 font-mono mt-0.5">
-                {users.filter((u) => u.id === currentUser.id || u.role === currentUser.role || u.email === currentUser.email).length} Online
+                {visibleUsers.filter((u) => u.id === currentUser.id || u.role === currentUser.role || u.email === currentUser.email).length} Online
               </div>
             </div>
             <Activity className="w-5 h-5 text-emerald-400 opacity-60" />

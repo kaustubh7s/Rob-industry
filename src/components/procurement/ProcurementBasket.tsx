@@ -42,7 +42,7 @@ import {
 import { useERP } from '../../context/ERPContext';
 import { ProjectMaterialRequirementItem, VendorItem, PurchaseOrder, RFQRecord, ProjectItem } from '../../types/erp';
 import { exportToExcel } from '../../utils/excelIntegration';
-import { formatINR } from '../../utils/calculations';
+import { formatINR, formatDate } from '../../utils/calculations';
 import {
   formatWhatsAppPOMessage,
   formatShortWhatsAppPOMessage,
@@ -324,7 +324,13 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
   }
 
   const chunkPOItems = (items: ProjectMaterialRequirementItem[]): POPageChunk[] => {
-    const indexed = items.map((item, idx) => ({ item, globalIndex: idx + 1 }));
+    const sorted = [...items].sort((a, b) => (Number(a.srNo) || 0) - (Number(b.srNo) || 0));
+    const indexed = sorted.map((item, idx) => ({
+      item,
+      globalIndex: (item.srNo !== undefined && item.srNo !== null && !isNaN(Number(item.srNo)) && Number(item.srNo) > 0)
+        ? Number(item.srNo)
+        : idx + 1,
+    }));
     const SINGLE_PAGE_MAX = 24;
     const FIRST_PAGE_MAX = 27;
     const MIDDLE_PAGE_MAX = 33;
@@ -468,7 +474,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
 
       const rName = (r.projectName || '').trim().toLowerCase();
       return activeProjectNames.has(rName) || activeProjectNumbers.has(rName);
-    });
+    }).sort((a, b) => (Number(a.srNo) || 0) - (Number(b.srNo) || 0));
   }, [projectRequirements, projects]);
 
   // Extract all unique project names from active list
@@ -949,8 +955,9 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
       expectedDeliveryDate: targetDelDate,
       orderedBy: currentAdminName,
       notes: poNotes || 'Supply with Material Test Certificate (MTC SS 304). High precision cutting required.',
-      items: targetItems.map((i) => ({
+      items: targetItems.map((i, idx) => ({
         id: i.id,
+        srNo: (i.srNo !== undefined && i.srNo !== null && !isNaN(Number(i.srNo)) && Number(i.srNo) > 0) ? Number(i.srNo) : idx + 1,
         projectName: i.projectName || pName || filterProject || 'jkjdsasds',
         machineName: i.machineName || i.machineType || 'Standard Machine',
         description: i.description,
@@ -982,7 +989,8 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
         projectNames: Array.from(new Set(targetItems.map((i) => i.projectName).filter(Boolean))) as string[],
         machineNames: Array.from(new Set(targetItems.map((i) => i.machineName || i.machineType).filter(Boolean))) as string[],
         totalAmount: targetItems.reduce((acc, i) => acc + ((Number(i.quantity) || 1) * 500), 0),
-        items: targetItems.map((i) => ({
+        items: targetItems.map((i, idx) => ({
+          srNo: (i.srNo !== undefined && i.srNo !== null && !isNaN(Number(i.srNo)) && Number(i.srNo) > 0) ? Number(i.srNo) : idx + 1,
           material: i.description,
           description: i.description,
           sizeSpecs: i.sizeSpecs,
@@ -1091,7 +1099,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
   // Export Order Basket Excel
   const handleExportBasketExcel = () => {
     const dataToExport = filteredItems.map((item, idx) => ({
-      'Sr No': idx + 1,
+      'Sr No': (item.srNo !== undefined && item.srNo !== null && !isNaN(Number(item.srNo)) && Number(item.srNo) > 0) ? Number(item.srNo) : idx + 1,
       'Project Name': item.projectName,
       'Machine': item.machineName || item.machineType || 'Machine',
       'Material Description': item.description,
@@ -1117,7 +1125,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
 
     const dataToExport = poItemsToGenerate.map((item, idx) => {
       const rowData: Record<string, any> = {};
-      if (poColumnConfig.srNo) rowData['Sr No'] = idx + 1;
+      if (poColumnConfig.srNo) rowData['Sr No'] = (item.srNo !== undefined && item.srNo !== null && !isNaN(Number(item.srNo)) && Number(item.srNo) > 0) ? Number(item.srNo) : idx + 1;
       if (poColumnConfig.projectName) rowData['Project Name'] = item.projectName;
       if (poColumnConfig.machineName) rowData['Machine Name'] = item.machineName || item.machineType || 'Machine';
       if (poColumnConfig.description) rowData['Material Description'] = item.description;
@@ -1126,7 +1134,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
       if (poColumnConfig.quantity) rowData['Quantity'] = Number(item.quantity) || 1;
       if (poColumnConfig.unit) rowData['Unit'] = item.unit || 'Nos';
       if (poColumnConfig.vendor) rowData['Assigned Vendor'] = item.vendor || item.vendorName || 'Unassigned';
-      if (poColumnConfig.requiredDate) rowData['Required Date'] = poExpectedDate;
+      if (poColumnConfig.requiredDate) rowData['Required Date'] = formatDate(poExpectedDate);
       if (poColumnConfig.notes) rowData['Notes / Remarks'] = item.notes || poNotes;
       return rowData;
     });

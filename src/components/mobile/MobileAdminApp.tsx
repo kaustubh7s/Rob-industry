@@ -573,34 +573,47 @@ export const MobileAdminApp: React.FC = () => {
         {/* ======================================================================= */}
         {activeTab === 'team' && (
           <div className="space-y-3 animate-fadeIn">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
-              Active Plant Members ({users.length})
-            </span>
+            {(() => {
+              const visibleUsers = users.filter((u) => {
+                const isKaustubh =
+                  u.role === 'kaustubh' ||
+                  u.id === 'usr-kaustubh' ||
+                  (u.name || '').toLowerCase() === 'kaustubh' ||
+                  (u.email || '').toLowerCase().includes('kaustubh');
+                return !isKaustubh;
+              });
 
-            <div className="space-y-2">
-              {users.map((u) => (
-                <div key={u.id} className="p-3 bg-slate-900 rounded-xl border border-slate-800 flex items-center justify-between">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold text-blue-400 shrink-0">
-                      {u.name[0]}
-                    </div>
-                    <div className="min-w-0">
-                      <h5 className="text-xs font-bold text-white truncate">{u.name}</h5>
-                      <span className="text-[10px] text-slate-400 block truncate">{u.department}</span>
-                    </div>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold shrink-0 ${
-                    u.role === 'super_admin'
-                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
-                      : u.role === 'kaustubh'
-                      ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
-                      : 'bg-slate-800 text-slate-300 border border-slate-700'
-                  }`}>
-                    {u.role === 'super_admin' ? 'Super Admin' : u.role === 'kaustubh' ? 'Admin' : u.role}
+              return (
+                <>
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
+                    Active Plant Members ({visibleUsers.length})
                   </span>
-                </div>
-              ))}
-            </div>
+
+                  <div className="space-y-2">
+                    {visibleUsers.map((u) => (
+                      <div key={u.id} className="p-3 bg-slate-900 rounded-xl border border-slate-800 flex items-center justify-between">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold text-blue-400 shrink-0">
+                            {u.name[0]}
+                          </div>
+                          <div className="min-w-0">
+                            <h5 className="text-xs font-bold text-white truncate">{u.name}</h5>
+                            <span className="text-[10px] text-slate-400 block truncate">{u.department}</span>
+                          </div>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold shrink-0 ${
+                          u.role === 'super_admin'
+                            ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                            : 'bg-slate-800 text-slate-300 border border-slate-700'
+                        }`}>
+                          {u.role === 'super_admin' ? 'Super Admin' : u.role}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              );
+            })()}
           </div>
         )}
       </main>

@@ -199,19 +199,46 @@ export function formatCompactINR(val: number): string {
 }
 
 /**
- * Date Formatter
+ * Standardized Date Formatter (DD-MM-YYYY)
  */
-export function formatDate(dateString: string): string {
+export function formatDate(dateString?: string | Date | null): string {
   if (!dateString) return '-';
   try {
-    const d = new Date(dateString);
-    if (isNaN(d.getTime())) return dateString;
-    return d.toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    });
+    const str = String(dateString).trim();
+    if (!str || str === 'undefined' || str === 'null' || str === '-') return '-';
+    // If already in DD-MM-YYYY
+    if (/^\d{2}-\d{2}-\d{4}$/.test(str)) {
+      return str;
+    }
+    // If DD/MM/YYYY
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(str)) {
+      return str.replace(/\//g, '-');
+    }
+    // If YYYY-MM-DD or ISO timestamp
+    if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+      const datePart = str.split('T')[0];
+      const [y, m, d] = datePart.split('-');
+      if (y && m && d) return `${d}-${m}-${y}`;
+    }
+    const d = new Date(str);
+    if (isNaN(d.getTime())) return str;
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}-${month}-${year}`;
   } catch {
-    return dateString;
+    return String(dateString);
   }
 }
+
+/**
+ * Returns today's date formatted as DD-MM-YYYY
+ */
+export function getTodayFormatted(): string {
+  const d = new Date();
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}-${month}-${year}`;
+}
+

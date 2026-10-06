@@ -133,6 +133,7 @@ interface ERPContextType {
   issueStockForRequirement: (reqId: string) => void;
   scrapRequirementMaterial: (reqId: string, scrapQty: number, reason: string) => void;
   toggleMaterialReceived: (reqId: string, customNotes?: string) => void;
+  updateMaterialArrivalQty: (reqId: string, receivedQty: number) => void;
 
   // Handlers for Materials & Stock
   addMaterial: (material: Omit<MaterialItem, 'id'>) => void;
@@ -1456,10 +1457,14 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const formattedDate = req.date || req.poDate || new Date().toISOString().split('T')[0];
     const targetPrj = req.projectName || mchName;
 
+    const itemSrNo = (req as any).srNo !== undefined && (req as any).srNo !== null && !isNaN(Number((req as any).srNo)) && Number((req as any).srNo) > 0
+      ? Number((req as any).srNo)
+      : projectRequirements.length + 1;
+
     const newReq: ProjectMaterialRequirementItem = {
       ...req,
       id: 'pmr-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
-      srNo: projectRequirements.length + 1,
+      srNo: itemSrNo,
       machineName: mchName,
       date: formattedDate,
       poNo: poNum,
@@ -1641,9 +1646,12 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ? 'Stores Incharge'
         : currentUser?.department || 'Inspector';
 
+    const totalQty = Number(target.quantity) || 1;
     const updates: Partial<ProjectMaterialRequirementItem> = willBeReceived
       ? {
           isReceived: true,
+          receivedQuantity: totalQty,
+          pendingQuantity: 0,
           receivedAt: formattedDate,
           receivedBy: currentUser?.name || 'Chandramani',
           receivedByInitials: initials,
@@ -1653,6 +1661,8 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       : {
           isReceived: false,
+          receivedQuantity: 0,
+          pendingQuantity: totalQty,
           receivedAt: undefined,
           receivedBy: undefined,
           receivedByInitials: undefined,
@@ -1671,6 +1681,91 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       `${target.description} for ${target.projectName} marked ${willBeReceived ? 'Arrived (Checked by ' + initials + ')' : 'Pending'}`,
       willBeReceived ? 'success' : 'warning',
       'requirements'
+    );
+  };
+
+  // Dedicated Handler for Updating Inward / Arrived Quantity with Auto-Calculated Pending Quantity
+  const updateMaterialArrivalQty = (reqId: string, receivedQty: number) => {
+    let target = projectRequirements.find((r) => r.id === reqId);
+    if (!target) {
+      const orderMatch = orders.find((o) => `ord-mat-${o.id}` === reqId || o.id === reqId);
+      if (orderMatch) {
+        target = {
+          id: reqId,
+          srNo: 1,
+          description: orderMatch.drawingRef ? `${orderMatch.materialType} Part (${orderMatch.drawingRef})` : `${orderMatch.materialType} Component`,
+          materialType: orderMatch.materialType,
+          materialGrade: 'SS 304',
+          sizeSpecs: orderMatch.sizeSpecs,
+          quantity: orderMatch.quantity,
+          unit: orderMatch.unit || 'Nos',
+          weightKg: 2.5,
+          projectName: orderMatch.project,
+          customerName: orderMatch.customer,
+          poNumber: orderMatch.poNumber,
+          poDate: orderMatch.date,
+          machineType: orderMatch.machineType as any,
+          orderSource: orderMatch.orderSource,
+          deliveryDate: orderMatch.deliveryDate,
+          vendor: orderMatch.vendor || '',
+          bomRef: `BOM-${orderMatch.orderNumber}`,
+          stockStatus: 'Available',
+          availableStock: orderMatch.currentStock || 15,
+          shortageQty: 0,
+          productionStatus: orderMatch.status,
+          qcStatus: 'Passed',
+          dispatchStatus: 'Not Ready',
+          materialCost: 450 * orderMatch.quantity,
+          laborCost: 180 * orderMatch.quantity,
+          machineCost: 120 * orderMatch.quantity,
+          outsourcingCost: 0,
+          totalCost: orderMatch.totalAmount || 750 * orderMatch.quantity,
+        };
+        setProjectRequirements((prev) => [target!, ...prev.filter((r) => r.id !== reqId)]);
+      }
+    }
+
+    if (!target) return;
+
+    const totalQty = Number(target.quantity) || 0;
+    const validArrived = Math.max(0, receivedQty);
+    const pending = Math.max(0, totalQty - validArrived);
+    const isFullyArrived = validArrived >= totalQty && totalQty > 0;
+    const isPartiallyArrived = validArrived > 0 && validArrived < totalQty;
+
+    const now = new Date();
+    const formattedDate = `${String(now.getDate()).padStart(2, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-${now.getFullYear()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    const initials = (currentUser?.name || 'Chandramani')
+      .split(' ')
+      .map((part) => part[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+
+    const userRoleDisplay =
+      currentUser?.role === 'super_admin'
+        ? 'Super Admin'
+        : currentUser?.role === 'kaustubh'
+        ? 'Admin'
+        : currentUser?.role === 'store_incharge'
+        ? 'Stores Incharge'
+        : currentUser?.department || 'Inspector';
+
+    updateProjectRequirement(target.id, {
+      receivedQuantity: validArrived,
+      pendingQuantity: pending,
+      isReceived: isFullyArrived,
+      receivedAt: validArrived > 0 ? (target.receivedAt || formattedDate) : undefined,
+      receivedBy: validArrived > 0 ? (target.receivedBy || currentUser?.name || 'Chandramani') : undefined,
+      receivedByInitials: validArrived > 0 ? (target.receivedByInitials || initials) : undefined,
+      receivedByRole: validArrived > 0 ? (target.receivedByRole || userRoleDisplay) : undefined,
+      stockStatus: isFullyArrived ? 'Available' : isPartiallyArrived ? 'Partial Available' : 'Shortage',
+    });
+
+    logAudit(
+      'Material Inward Quantity Updated',
+      'Project Material Requirement',
+      `${target.description}: Arrived = ${validArrived} ${target.unit || 'Nos'}, Pending = ${pending} ${target.unit || 'Nos'}`
     );
   };
 
@@ -1732,10 +1827,15 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const machineCost = Math.round(matCost * 0.25);
 
       const resolvedId = it.id || existing?.id || ('pmr-' + (idx + 1) + '-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4));
+      const resolvedSrNo = (it.srNo !== undefined && it.srNo !== null && !isNaN(Number(it.srNo)) && Number(it.srNo) > 0)
+        ? Number(it.srNo)
+        : (existing?.srNo !== undefined && existing?.srNo !== null && !isNaN(Number(existing.srNo)) && Number(existing.srNo) > 0)
+        ? Number(existing.srNo)
+        : (idx + 1);
 
       return {
         id: resolvedId,
-        srNo: idx + 1,
+        srNo: resolvedSrNo,
         description: desc,
         materialType: matType as any,
         materialGrade: matchedMat?.grade || existing?.materialGrade || 'SS 304',
@@ -1887,9 +1987,13 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const laborCost = Math.round(matCost * 0.4);
       const machineCost = Math.round(matCost * 0.25);
 
+      const resolvedSrNo = (it.srNo !== undefined && it.srNo !== null && !isNaN(Number(it.srNo)) && Number(it.srNo) > 0)
+        ? Number(it.srNo)
+        : projectRequirements.length + idx + 1;
+
       return {
         id: 'pmr-' + (projectRequirements.length + idx + 1) + '-' + Date.now(),
-        srNo: projectRequirements.length + idx + 1,
+        srNo: resolvedSrNo,
         description: desc,
         materialType: matType as any,
         materialGrade: matchedMat?.grade || 'SS 304',
@@ -3910,6 +4014,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         alterUserAuthorization,
         replaceProjectRequirements,
         toggleMaterialReceived,
+        updateMaterialArrivalQty,
         trashItems,
         restoreFromTrash,
         permanentlyDeleteFromTrash,

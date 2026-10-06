@@ -1,8 +1,10 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { formatDate } from './calculations';
 
 export interface WhatsAppPOItem {
   id?: string;
+  srNo?: number;
   projectName?: string;
   machineName?: string;
   machineType?: string;
@@ -70,7 +72,7 @@ export const formatShortWhatsAppPOMessage = (options: WhatsAppPOMessageOptions):
     msg += `📁 *Project:* ${projectName}\n`;
   }
   msg += `📦 *Scope:* ${itemCount} ${itemCount === 1 ? 'Part' : 'Parts'} (${totalQty} Nos Total)\n`;
-  msg += `🎯 *Target Delivery:* ${expectedDeliveryDate}\n`;
+  msg += `🎯 *Target Delivery:* ${formatDate(expectedDeliveryDate)}\n`;
   msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
   msg += `📎 *Please find attached our official Purchase Order PDF.*\n`;
   msg += `_RSB Manufacturing ERP_`;
@@ -272,14 +274,14 @@ export const buildPurchaseOrderPDFDoc = (options: WhatsAppPOMessageOptions): { d
   doc.text('Date of Issue:', 115, 61);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(dateOfIssue, 150, 61);
+  doc.text(formatDate(dateOfIssue), 150, 61);
 
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(51, 65, 85);
   doc.text('Target Delivery:', 115, 67);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(16, 185, 129); // emerald
-  doc.text(expectedDeliveryDate, 150, 67);
+  doc.text(formatDate(expectedDeliveryDate), 150, 67);
 
   // Check if items have multiple vendors
   const hasVendors = sequentialItems.some((i) => i.vendor || i.vendorName);
@@ -308,8 +310,11 @@ export const buildPurchaseOrderPDFDoc = (options: WhatsAppPOMessageOptions): { d
       ];
 
   const rows = sequentialItems.map((item, idx) => {
+    const itemSr = (item.srNo !== undefined && item.srNo !== null && !isNaN(Number(item.srNo)) && Number(item.srNo) > 0)
+      ? item.srNo
+      : idx + 1;
     const base = [
-      idx + 1,
+      itemSr,
       item.projectName || projectName || 'jkjdsasds',
       item.machineName || machineName || 'Standard Machine',
       item.description,

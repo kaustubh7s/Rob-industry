@@ -88,16 +88,25 @@ export const Header: React.FC<HeaderProps> = ({
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const roleOptions = useMemo(() => {
-    return users.map((u) => {
-      const tierTitle = u.authLevel ? u.authLevel.replace(/^Tier \d+:\s*/i, '') : u.role.replace('_', ' ');
-      return {
-        id: u.id,
-        user: u,
-        role: u.role,
-        title: `${u.name} (${tierTitle})`,
-        subtitle: u.department || 'Plant Engineering & Operations',
-      };
-    });
+    return users
+      .filter((u) => {
+        const isKaustubh =
+          u.role === 'kaustubh' ||
+          u.id === 'usr-kaustubh' ||
+          (u.name || '').toLowerCase() === 'kaustubh' ||
+          (u.email || '').toLowerCase().includes('kaustubh');
+        return !isKaustubh;
+      })
+      .map((u) => {
+        const tierTitle = u.authLevel ? u.authLevel.replace(/^Tier \d+:\s*/i, '') : u.role.replace('_', ' ');
+        return {
+          id: u.id,
+          user: u,
+          role: u.role,
+          title: `${u.name} (${tierTitle})`,
+          subtitle: u.department || 'Plant Engineering & Operations',
+        };
+      });
   }, [users]);
 
   // Actions dispatched to main workstation

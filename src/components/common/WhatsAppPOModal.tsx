@@ -23,6 +23,7 @@ import {
   WhatsAppPOMessageOptions,
   WhatsAppPOItem,
 } from '../../utils/whatsappHelper';
+import { formatDate } from '../../utils/calculations';
 
 interface WhatsAppPOModalProps {
   isOpen: boolean;
@@ -299,7 +300,7 @@ export const WhatsAppPOModal: React.FC<WhatsAppPOModalProps> = ({
                 type="text"
                 value={dateOfIssue}
                 onChange={(e) => setDateOfIssue(e.target.value)}
-                placeholder="YYYY-MM-DD"
+                placeholder="DD-MM-YYYY"
                 className="w-full px-3 py-1.5 rounded-xl bg-white border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:border-slate-500"
               />
             </div>
@@ -313,7 +314,7 @@ export const WhatsAppPOModal: React.FC<WhatsAppPOModalProps> = ({
                 type="text"
                 value={deliveryDate}
                 onChange={(e) => setDeliveryDate(e.target.value)}
-                placeholder="YYYY-MM-DD"
+                placeholder="DD-MM-YYYY"
                 className="w-full px-3 py-1.5 rounded-xl bg-white border border-slate-300 text-xs font-bold text-emerald-800 focus:outline-none focus:border-emerald-500"
               />
             </div>
@@ -384,7 +385,7 @@ export const WhatsAppPOModal: React.FC<WhatsAppPOModalProps> = ({
                   syncedVendorItems.map((item, idx) => (
                     <tr key={idx} className="hover:bg-slate-50 transition-colors">
                       <td className="py-2 px-2 text-center font-mono font-bold text-slate-400">
-                        {idx + 1}
+                        {(item.srNo !== undefined && item.srNo !== null && !isNaN(Number(item.srNo)) && Number(item.srNo) > 0) ? item.srNo : idx + 1}
                       </td>
                       <td className="py-2 px-2.5 font-bold text-slate-900">
                         {item.projectName || currentOptions.projectName || 'Mahalaxmi 3'}

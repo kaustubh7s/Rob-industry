@@ -42,6 +42,7 @@ import confetti from 'canvas-confetti';
 import { useERP } from '../../context/ERPContext';
 import { MaterialType, MachineCategory, ProjectItem, ProjectMaterialRequirementItem } from '../../types/erp';
 import { exportToExcel, parseExcelFile } from '../../utils/excelIntegration';
+import { formatDate, getTodayFormatted } from '../../utils/calculations';
 import { Modal } from '../common/Modal';
 import { ProjectsDirectory } from '../projects/ProjectsDirectory';
 import { ProjectDetailsView } from '../projects/ProjectDetailsView';
@@ -163,8 +164,9 @@ export const ProjectMaterialEntry: React.FC = () => {
   const [machineName, setMachineName] = useState(() => projects[0]?.machineName || projects[0]?.machineType || '');
   const [vendorName, setVendorName] = useState(() => vendors[0]?.name || '');
   const [poNo, setPoNo] = useState('');
-  const [entryDate, setEntryDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [entryDate, setEntryDate] = useState(() => getTodayFormatted());
   const [selectedProjectName, setSelectedProjectName] = useState<string>(() => projects[0]?.name || '');
+  const [manualSrNo, setManualSrNo] = useState<string>('1');
 
   // Custom Options Dynamic Memory with Local Storage Persistence
   const [customMachines, setCustomMachines] = useState<string[]>([]);
@@ -222,6 +224,8 @@ export const ProjectMaterialEntry: React.FC = () => {
   const vendorInputRef = useRef<HTMLInputElement>(null);
   const poNoInputRef = useRef<HTMLInputElement>(null);
   const entryDateInputRef = useRef<HTMLInputElement>(null);
+  const manualSrNoInputRef = useRef<HTMLInputElement>(null);
+  const quickSrNoInputRef = useRef<HTMLInputElement>(null);
   const quickDescInputRef = useRef<HTMLInputElement>(null);
   const quickMatTypeRef = useRef<HTMLSelectElement>(null);
   const quickSizeInputRef = useRef<HTMLInputElement>(null);
@@ -299,6 +303,7 @@ export const ProjectMaterialEntry: React.FC = () => {
   });
 
   // Quick Material Addition Row (Step 4)
+  const [quickSrNo, setQuickSrNo] = useState('');
   const [quickDesc, setQuickDesc] = useState('');
   const [quickMatType, setQuickMatType] = useState<string>('SS Flat');
   const [quickSize, setQuickSize] = useState('');
@@ -392,21 +397,28 @@ export const ProjectMaterialEntry: React.FC = () => {
   const isUserManuallyEditingRef = useRef<boolean>(false);
   const lastSelectedProjectRef = useRef<string>('');
 
-  // Auto-save draft to localStorage (only save if there are real items)
+  // Auto-save draft to localStorage permanently (never auto-deleted)
   useEffect(() => {
     if (rows.length > 0) {
       localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(rows));
+      if (selectedProjectName) {
+        localStorage.setItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`, JSON.stringify(rows));
+      }
     }
     const now = new Date();
     setLastAutoSavedTime(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-  }, [rows]);
+  }, [rows, selectedProjectName]);
 
-  // Normalize Sr Numbers
+  // Normalize Sr Numbers (Preserves user-defined manual Sr. No and sorts ascending)
   const normalizeSrNumbers = (rowList: EntryRow[]) => {
-    return rowList.map((r, index) => ({
-      ...r,
-      srNo: index + 1,
-    }));
+    return rowList
+      .map((r, index) => ({
+        ...r,
+        srNo: (r.srNo !== undefined && r.srNo !== null && !isNaN(Number(r.srNo)) && Number(r.srNo) > 0)
+          ? Number(r.srNo)
+          : index + 1,
+      }))
+      .sort((a, b) => (Number(a.srNo) || 0) - (Number(b.srNo) || 0));
   };
 
   // Sync selectedProjectName when projects list updates if currently unselected
@@ -426,29 +438,48 @@ export const ProjectMaterialEntry: React.FC = () => {
     const projectMats = getMaterialsForProject(currentProject, projectRequirements);
     const isProjectSwitch = lastSelectedProjectRef.current.trim().toLowerCase() !== selectedProjectName.trim().toLowerCase();
 
-    const mappedRows: EntryRow[] = projectMats.map((m, idx) => ({
-      id: m.id,
-      machineName: m.machineName || m.machineType || currentProject.machineName || currentProject.machineType || machineName,
-      date: m.poDate || m.date || currentProject.startDate || entryDate,
-      poNo: m.poNumber || m.poNo || currentProject.poNo || currentProject.poNumber || poNo,
-      srNo: idx + 1,
-      materialType: (m.materialType || 'SS Flat') as MaterialType,
-      sizeSpecs: m.sizeSpecs || 'Custom Specs',
-      quantity: Number(m.quantity) || 1,
-      unit: m.unit || 'Nos',
-      vendorName: m.vendor || m.vendorName || currentProject.vendorName || currentProject.vendor || vendorName,
-      description: m.description || 'Component',
-      orderedBy: m.orderedBy || activeOrderedBy,
-      projectName: currentProject.name,
-    }));
+    const mappedRows: EntryRow[] = projectMats
+      .map((m, idx) => ({
+        id: m.id,
+        machineName: m.machineName || m.machineType || currentProject.machineName || currentProject.machineType || machineName,
+        date: formatDate(m.poDate || m.date || currentProject.startDate || entryDate),
+        poNo: m.poNumber || m.poNo || currentProject.poNo || currentProject.poNumber || poNo,
+        srNo: (m.srNo !== undefined && m.srNo !== null && !isNaN(Number(m.srNo)) && Number(m.srNo) > 0)
+          ? Number(m.srNo)
+          : idx + 1,
+        materialType: (m.materialType || 'SS Flat') as MaterialType,
+        sizeSpecs: m.sizeSpecs || 'Custom Specs',
+        quantity: Number(m.quantity) || 1,
+        unit: m.unit || 'Nos',
+        vendorName: m.vendor || m.vendorName || currentProject.vendorName || currentProject.vendor || vendorName,
+        description: m.description || 'Component',
+        orderedBy: m.orderedBy || activeOrderedBy,
+        projectName: currentProject.name,
+      }))
+      .sort((a, b) => (Number(a.srNo) || 0) - (Number(b.srNo) || 0));
 
     if (isProjectSwitch) {
-      // Switched to a new project: update reference and load DB rows or empty array
+      // Switched to a new project: update reference and load DB rows or cached draft
       lastSelectedProjectRef.current = selectedProjectName;
       isUserManuallyEditingRef.current = false;
-      setRows(mappedRows);
-      if (mappedRows.length === 0) {
-        localStorage.removeItem(DRAFT_STORAGE_KEY);
+      if (mappedRows.length > 0) {
+        setRows(mappedRows);
+      } else {
+        const cached = localStorage.getItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`);
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setRows(parsed);
+            } else {
+              setRows([]);
+            }
+          } catch {
+            setRows([]);
+          }
+        } else {
+          setRows([]);
+        }
       }
 
       // Update header fields to match project
@@ -462,7 +493,7 @@ export const ProjectMaterialEntry: React.FC = () => {
         setPoNo(currentProject.poNo || currentProject.poNumber || '');
       }
       if (currentProject.date || currentProject.startDate) {
-        setEntryDate(currentProject.date || currentProject.startDate || new Date().toISOString().split('T')[0]);
+        setEntryDate(formatDate(currentProject.date || currentProject.startDate));
       }
     } else {
       // Still on the same project: only sync if external updates happened and user is not actively editing
@@ -707,25 +738,29 @@ export const ProjectMaterialEntry: React.FC = () => {
       if (found.machineName || found.machineType) setMachineName(found.machineName || found.machineType || found.name);
       if (found.vendorName || found.vendor) setVendorName(found.vendorName || found.vendor || '');
       if (found.poNo || found.poNumber) setPoNo(found.poNo || found.poNumber || '');
-      if (found.date || found.createdDate) setEntryDate(found.date || found.createdDate || new Date().toISOString().split('T')[0]);
+      if (found.date || found.createdDate || found.startDate) setEntryDate(formatDate(found.date || found.createdDate || found.startDate));
 
       // Sync workstation rows with the project's actual material requirements
       const existingMats = getMaterialsForProject(found, projectRequirements);
-      const mappedRows: EntryRow[] = existingMats.map((m, idx) => ({
-        id: m.id,
-        machineName: m.machineName || m.machineType || found.machineType || found.name,
-        date: m.poDate || m.date || found.startDate || new Date().toISOString().split('T')[0],
-        poNo: m.poNumber || m.poNo || found.poNumber || found.poNo || '',
-        srNo: idx + 1,
-        materialType: m.materialType as MaterialType,
-        sizeSpecs: m.sizeSpecs,
-        quantity: m.quantity,
-        unit: m.unit || 'Nos',
-        vendorName: m.vendor || m.vendorName || found.vendor || found.vendorName || '',
-        description: m.description,
-        orderedBy: m.orderedBy || activeOrderedBy,
-        projectName: found.name,
-      }));
+      const mappedRows: EntryRow[] = existingMats
+        .map((m, idx) => ({
+          id: m.id,
+          machineName: m.machineName || m.machineType || found.machineType || found.name,
+          date: formatDate(m.poDate || m.date || found.startDate || entryDate),
+          poNo: m.poNumber || m.poNo || found.poNumber || found.poNo || '',
+          srNo: (m.srNo !== undefined && m.srNo !== null && !isNaN(Number(m.srNo)) && Number(m.srNo) > 0)
+            ? Number(m.srNo)
+            : idx + 1,
+          materialType: m.materialType as MaterialType,
+          sizeSpecs: m.sizeSpecs,
+          quantity: m.quantity,
+          unit: m.unit || 'Nos',
+          vendorName: m.vendor || m.vendorName || found.vendor || found.vendorName || '',
+          description: m.description,
+          orderedBy: m.orderedBy || activeOrderedBy,
+          projectName: found.name,
+        }))
+        .sort((a, b) => (Number(a.srNo) || 0) - (Number(b.srNo) || 0));
       setRows(mappedRows);
     }
   };
@@ -950,12 +985,18 @@ export const ProjectMaterialEntry: React.FC = () => {
 
     const targetProject = selectedProjectName || (projects.length > 0 ? projects[0].name : 'Project-1');
 
+    const targetSrNo = (quickSrNo && !isNaN(Number(quickSrNo)) && Number(quickSrNo) > 0)
+      ? Number(quickSrNo)
+      : (manualSrNo && !isNaN(Number(manualSrNo)) && Number(manualSrNo) > 0)
+      ? Number(manualSrNo)
+      : rows.length + 1;
+
     const newRow: EntryRow = {
       id: `row-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       machineName: machineName || targetProject,
-      date: entryDate || new Date().toISOString().split('T')[0],
+      date: formatDate(entryDate) || getTodayFormatted(),
       poNo: poNo || '36',
-      srNo: rows.length + 1,
+      srNo: targetSrNo,
       materialType: quickMatType as MaterialType,
       sizeSpecs: quickSize.trim() || 'Custom Spec',
       quantity: Number(quickQty) || 1,
@@ -982,7 +1023,12 @@ export const ProjectMaterialEntry: React.FC = () => {
       learnUnit(quickUnit);
     }
 
-    setRows((prev) => normalizeSrNumbers([...prev, newRow]));
+    setRows((prev) => {
+      const nextList = [...prev, newRow];
+      return nextList.sort((a, b) => (Number(a.srNo) || 0) - (Number(b.srNo) || 0));
+    });
+    setManualSrNo(String(targetSrNo + 1));
+    setQuickSrNo(String(targetSrNo + 1));
     window.dispatchEvent(new CustomEvent('rsb:tour:material-added', { detail: { newRow } }));
     setQuickDesc('');
     setQuickSize('');
@@ -994,7 +1040,7 @@ export const ProjectMaterialEntry: React.FC = () => {
       quickDescInputRef.current?.focus();
     }, 40);
 
-    setSaveToast(`Added row #${rows.length + 1}: ${newRow.description}`);
+    setSaveToast(`Added row #${targetSrNo}: ${newRow.description}`);
     setTimeout(() => setSaveToast(null), 2000);
   };
 
@@ -1062,14 +1108,18 @@ export const ProjectMaterialEntry: React.FC = () => {
   const handleCellChange = (id: string, field: keyof EntryRow, value: any) => {
     if (field === 'orderedBy') return; // Read-only
     isUserManuallyEditingRef.current = true;
-    setRows((prev) =>
-      prev.map((r) => {
+    setRows((prev) => {
+      const updated = prev.map((r) => {
         if (r.id === id) {
           return { ...r, [field]: value };
         }
         return r;
-      })
-    );
+      });
+      if (field === 'srNo') {
+        return [...updated].sort((a, b) => (Number(a.srNo) || 0) - (Number(b.srNo) || 0));
+      }
+      return updated;
+    });
   };
 
   // Save Project (Synchronizes all materials and project headers directly to Database & Cloud)
@@ -1084,13 +1134,14 @@ export const ProjectMaterialEntry: React.FC = () => {
       );
       const custName = existingProject?.customer || existingProject?.clientName || 'General Client';
 
-      const itemsToSave: Partial<ProjectMaterialRequirementItem>[] = rows.map((r) => ({
+      const itemsToSave: Partial<ProjectMaterialRequirementItem>[] = rows.map((r, idx) => ({
         id: r.id,
+        srNo: (r.srNo !== undefined && r.srNo !== null && !isNaN(Number(r.srNo)) && Number(r.srNo) > 0) ? Number(r.srNo) : idx + 1,
         projectName: r.projectName || targetProject,
         customerName: custName,
         poNumber: r.poNo || poNo,
-        poDate: r.date || entryDate,
-        date: r.date || entryDate,
+        poDate: formatDate(r.date || entryDate),
+        date: formatDate(r.date || entryDate),
         machineType: (r.machineName || machineName || targetProject) as any,
         machineName: r.machineName || machineName || targetProject,
         poNo: r.poNo || poNo,
@@ -1174,7 +1225,11 @@ export const ProjectMaterialEntry: React.FC = () => {
         addProject(autoProject);
       }
 
-      localStorage.removeItem(DRAFT_STORAGE_KEY);
+      // Keep rows permanently stored under this project (never auto-deleted)
+      if (rows.length > 0) {
+        localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(rows));
+        localStorage.setItem(`RSB_PROJECT_DRAFT_${targetProject}`, JSON.stringify(rows));
+      }
 
       confetti({
         particleCount: 100,
@@ -1505,18 +1560,16 @@ export const ProjectMaterialEntry: React.FC = () => {
             <span>⚡ Load Machine BOM</span>
           </button>
 
-          {/* Full Factory Reset Button - STRICTLY VISIBLE ONLY TO HIDDEN ADMIN KAUSTUBH */}
-          {isKaustubhAdmin && (
-            <button
-              type="button"
-              onClick={() => setIsFactoryResetModalOpen(true)}
-              className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 border border-rose-400/40 hover:border-rose-500 text-xs font-black transition-all flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
-              title="Reset all data, materials, suggestions, BOMs, and workstation memory to clean factory baseline (Hidden Admin Only)"
-            >
-              <RotateCcw className="w-4 h-4 text-rose-500" />
-              <span>Factory Reset</span>
-            </button>
-          )}
+          {/* Full Factory Reset Button */}
+          <button
+            type="button"
+            onClick={() => setIsFactoryResetModalOpen(true)}
+            className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 border border-rose-400/40 hover:border-rose-500 text-xs font-black transition-all flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
+            title="Reset all data, materials, suggestions, BOMs, and workstation memory to clean factory baseline"
+          >
+            <RotateCcw className="w-4 h-4 text-rose-500" />
+            <span>Factory Reset</span>
+          </button>
 
           <button
             type="button"
@@ -1677,35 +1730,41 @@ export const ProjectMaterialEntry: React.FC = () => {
                 </label>
                 <span className="text-[10px] text-slate-400 font-mono">PO / Date</span>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  ref={poNoInputRef}
-                  type="text"
-                  value={poNo}
-                  onChange={(e) => setPoNo(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      entryDateInputRef.current?.focus();
-                    }
-                  }}
-                  placeholder="PO-2026-1"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-2 text-xs font-black text-indigo-300 placeholder-slate-500 focus:outline-none focus:border-emerald-400 font-mono"
-                />
-                <input
-                  ref={entryDateInputRef}
-                  type="text"
-                  value={entryDate}
-                  onChange={(e) => setEntryDate(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      quickDescInputRef.current?.focus();
-                    }
-                  }}
-                  placeholder="2026-09-13"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-[11px] font-medium text-slate-300 focus:outline-none focus:border-emerald-400 font-mono"
-                />
+              <div className="grid grid-cols-12 gap-2">
+                <div className="col-span-6">
+                  <span className="text-[9px] text-slate-400 font-mono block mb-0.5">PO Number</span>
+                  <input
+                    ref={poNoInputRef}
+                    type="text"
+                    value={poNo}
+                    onChange={(e) => setPoNo(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        entryDateInputRef.current?.focus();
+                      }
+                    }}
+                    placeholder="PO-2026-1"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-black text-indigo-300 placeholder-slate-500 focus:outline-none focus:border-emerald-400 font-mono"
+                  />
+                </div>
+                <div className="col-span-6">
+                  <span className="text-[9px] text-slate-400 font-mono block mb-0.5">Date (dd-mm-yyyy)</span>
+                  <input
+                    ref={entryDateInputRef}
+                    type="text"
+                    value={entryDate}
+                    onChange={(e) => setEntryDate(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        quickSrNoInputRef.current?.focus();
+                      }
+                    }}
+                    placeholder={getTodayFormatted()}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-slate-300 focus:outline-none focus:border-emerald-400 font-mono"
+                  />
+                </div>
               </div>
             </div>
 
@@ -1762,7 +1821,27 @@ export const ProjectMaterialEntry: React.FC = () => {
             </span>
           </div>
 
-          <form onSubmit={handleAddMaterialRow} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 items-end">
+          <form onSubmit={handleAddMaterialRow} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2 items-end">
+            {/* 0. Sr. No Manual Option */}
+            <div className="lg:col-span-1 space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-emerald-300 block truncate">
+                Sr. No
+              </label>
+              <input
+                ref={quickSrNoInputRef}
+                type="number"
+                min="1"
+                value={quickSrNo || manualSrNo}
+                onChange={(e) => {
+                  setQuickSrNo(e.target.value);
+                  setManualSrNo(e.target.value);
+                }}
+                placeholder={String(rows.length + 1)}
+                className="w-full bg-slate-800 border border-emerald-500/50 rounded-lg px-2 py-1.5 text-xs font-mono font-bold text-emerald-300 text-center focus:bg-slate-900 focus:outline-none focus:border-emerald-400 shadow-2xs"
+                title="Manual Serial Number for material item"
+              />
+            </div>
+
             {/* 1. Description (Type-Ahead & Custom) */}
             <div className="lg:col-span-4 space-y-1">
               <div className="flex items-center justify-between">
@@ -1840,7 +1919,7 @@ export const ProjectMaterialEntry: React.FC = () => {
             </div>
 
             {/* 3. Size Specification (Auto-Suggest & Custom) */}
-            <div className="lg:col-span-3 space-y-1">
+            <div className="lg:col-span-2 space-y-1">
               <div className="flex items-center justify-between">
                 <label className="text-[10px] font-bold uppercase tracking-wider text-slate-300 block">
                   Size Specification (Auto-Suggest)
@@ -2296,8 +2375,14 @@ export const ProjectMaterialEntry: React.FC = () => {
                       </td>
 
                       {/* 4. Sr No */}
-                      <td className="p-2 text-center font-mono font-bold text-slate-400">
-                        {row.srNo}
+                      <td className="p-2 text-center">
+                        <input
+                          type="number"
+                          min="1"
+                          value={row.srNo || ''}
+                          onChange={(e) => handleCellChange(row.id, 'srNo', parseInt(e.target.value, 10) || 1)}
+                          className="w-12 text-center bg-transparent hover:bg-white focus:bg-white px-1 py-1 rounded border border-transparent hover:border-slate-300 focus:border-slate-900 text-xs font-mono font-bold text-slate-700 transition-colors"
+                        />
                       </td>
 
                       {/* 5. Material Type */}
@@ -2465,26 +2550,6 @@ export const ProjectMaterialEntry: React.FC = () => {
               className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 font-bold placeholder:text-slate-400 focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-sm shadow-xs"
               autoFocus
             />
-          </div>
-
-          {/* Machine / Assembly Name */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-              Machine / Assembly Name (Optional)
-            </label>
-            <input
-              type="text"
-              list="entry-learned-machines"
-              value={newProjectForm.machineName}
-              onChange={(e) => setNewProjectForm({ ...newProjectForm, machineName: e.target.value })}
-              placeholder="e.g. Liquid Filling Line, Conveyor Cell, Washing System"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 font-semibold placeholder:text-slate-400 focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-sm shadow-xs"
-            />
-            <datalist id="entry-learned-machines">
-              {allMachineOptions.map((m) => (
-                <option key={m} value={m} />
-              ))}
-            </datalist>
           </div>
 
           {/* 2. Client Name & 3. Client Number (Self-Learning Combobox) */}
@@ -3174,9 +3239,9 @@ export const ProjectMaterialEntry: React.FC = () => {
       </Modal>
 
       {/* ========================================================================= */}
-      {/* MODAL: FACTORY RESET CONFIRMATION - STRICTLY HIDDEN ADMIN KAUSTUBH ONLY */}
+      {/* MODAL: FACTORY RESET CONFIRMATION */}
       {/* ========================================================================= */}
-      {isKaustubhAdmin && isFactoryResetModalOpen && (
+      {isFactoryResetModalOpen && (
         <Modal
           isOpen={isFactoryResetModalOpen}
           onClose={() => setIsFactoryResetModalOpen(false)}

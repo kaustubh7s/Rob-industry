@@ -33,10 +33,13 @@ import {
   Filter,
   ShoppingCart,
   Send,
+  MoreVertical,
+  ChevronDown,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 import { ProjectItem, ProjectMaterialRequirementItem, MaterialType, MachineCategory } from '../../types/erp';
 import { exportToExcel, exportToPdfReport } from '../../utils/excelIntegration';
+import { formatDate } from '../../utils/calculations';
 import { StatusBadge } from '../common/StatusBadge';
 import { Modal } from '../common/Modal';
 import { dbBulkUpsertRequirements } from '../../services/supabaseService';
@@ -103,6 +106,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     vendors,
     currentUser,
     toggleMaterialReceived,
+    updateMaterialArrivalQty,
     addPurchaseOrder,
     logAudit,
   } = useERP();
@@ -126,9 +130,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   // Dedicated Machine Folder Navigation State: 'ALL' or specific machine type like '16 HD', '20 HD'
   const [selectedMachineFolder, setSelectedMachineFolder] = useState<string>('ALL');
 
-  // Modal State for Adding / Editing Material & Deleting Project
+  // Modal & Dropdown State
   const [isAddMaterialModalOpen, setIsAddMaterialModalOpen] = useState(false);
   const [isDeleteProjectModalOpen, setIsDeleteProjectModalOpen] = useState(false);
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const [cascadeDeleteReqs, setCascadeDeleteReqs] = useState(true);
   const [editingItem, setEditingItem] = useState<ProjectMaterialRequirementItem | null>(null);
 
@@ -248,7 +254,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           : !m.isReceived;
 
       return matchSearch && matchMat && matchMch && matchVnd && matchRecv;
-    });
+    }).sort((a, b) => (Number(a.srNo) || 0) - (Number(b.srNo) || 0));
   }, [materialsInFolder, searchTerm, filterMaterialType, filterMachine, filterVendor, filterReceived]);
 
   // Aggregated Summary Statistics for this project
@@ -428,22 +434,32 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     }
   };
 
-  // Export Project Excel (Exact 10 Columns)
+  // Export Project Excel (Exact 12 Columns with Arrived & Pending)
   const handleExportExcel = () => {
-    const data = filteredMaterials.map((m, idx) => ({
-      'Machine Name': m.machineName || m.machineType || project.machineName || project.machineType || 'Machine',
-      'Date': m.date || project.date || project.startDate || '01-09-2026',
-      'PO No': m.poNo || m.poNumber || project.poNo || project.poNumber || '36',
-      'Sr No': idx + 1,
-      'Material Type': m.materialType,
-      'Size Specification': m.sizeSpecs,
-      'Qty': m.quantity,
-      'Vendor Name': m.vendorName || m.vendor || project.vendorName || project.vendor || 'Manav Metal',
-      'Description': m.description,
-      'Ordered By': m.orderedBy || project.orderedBy || currentUser.name || 'Amit',
-    }));
+    const data = filteredMaterials.map((m, idx) => {
+      const totalQty = Number(m.quantity) || 0;
+      const arrivedQty = (m.receivedQuantity !== undefined && m.receivedQuantity !== null)
+        ? Number(m.receivedQuantity)
+        : (m.isReceived ? totalQty : 0);
+      const pendingQty = Math.max(0, totalQty - arrivedQty);
+
+      return {
+        'Machine Name': m.machineName || m.machineType || project.machineName || project.machineType || 'Machine',
+        'Date': formatDate(m.date || project.date || project.startDate),
+        'PO No': m.poNo || m.poNumber || project.poNo || project.poNumber || '36',
+        'Sr No': (m.srNo !== undefined && m.srNo !== null && !isNaN(Number(m.srNo)) && Number(m.srNo) > 0) ? Number(m.srNo) : idx + 1,
+        'Material Type': m.materialType,
+        'Size Specification': m.sizeSpecs,
+        'Qty': totalQty,
+        'Arrived Qty': arrivedQty,
+        'Pending Qty': pendingQty,
+        'Vendor Name': m.vendorName || m.vendor || project.vendorName || project.vendor || 'Manav Metal',
+        'Description': m.description,
+        'Ordered By': m.orderedBy || project.orderedBy || currentUser.name || 'Amit',
+      };
+    });
     const suffix = selectedMachineFolder !== 'ALL' ? `_${selectedMachineFolder.replace(/[^a-zA-Z0-9_-]/g, '_')}` : '';
-    exportToExcel(data, `RSB_Project_${(project.machineName || project.name).replace(/[^a-zA-Z0-9_-]/g, '_')}${suffix}_10Col`);
+    exportToExcel(data, `RSB_Project_${(project.machineName || project.name).replace(/[^a-zA-Z0-9_-]/g, '_')}${suffix}_Materials`);
   };
 
   // Export PDF Report
@@ -456,22 +472,34 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       'Material Type',
       'Size Specification',
       'Qty',
+      'Arrived',
+      'Pending',
       'Vendor Name',
       'Description',
       'Ordered By',
     ];
-    const rows = filteredMaterials.map((m, idx) => [
-      m.machineName || m.machineType || project.machineName || project.machineType || 'Machine',
-      m.date || project.date || project.startDate || '01-09-2026',
-      m.poNo || m.poNumber || project.poNo || project.poNumber || '36',
-      String(idx + 1),
-      m.materialType,
-      m.sizeSpecs,
-      `${m.quantity} ${m.unit || 'Nos'}`,
-      m.vendorName || m.vendor || project.vendor || 'Manav Metal',
-      m.description,
-      m.orderedBy || project.orderedBy || currentUser.name || 'Amit',
-    ]);
+    const rows = filteredMaterials.map((m, idx) => {
+      const totalQty = Number(m.quantity) || 0;
+      const arrivedQty = (m.receivedQuantity !== undefined && m.receivedQuantity !== null)
+        ? Number(m.receivedQuantity)
+        : (m.isReceived ? totalQty : 0);
+      const pendingQty = Math.max(0, totalQty - arrivedQty);
+
+      return [
+        m.machineName || m.machineType || project.machineName || project.machineType || 'Machine',
+        formatDate(m.date || project.date || project.startDate),
+        m.poNo || m.poNumber || project.poNo || project.poNumber || '36',
+        String((m.srNo !== undefined && m.srNo !== null && !isNaN(Number(m.srNo)) && Number(m.srNo) > 0) ? m.srNo : idx + 1),
+        m.materialType,
+        m.sizeSpecs,
+        `${totalQty} ${m.unit || 'Nos'}`,
+        `${arrivedQty} ${m.unit || 'Nos'}`,
+        `${pendingQty} ${m.unit || 'Nos'}`,
+        m.vendorName || m.vendor || project.vendor || 'Manav Metal',
+        m.description,
+        m.orderedBy || project.orderedBy || currentUser.name || 'Amit',
+      ];
+    });
 
     const titleSuffix = selectedMachineFolder !== 'ALL' ? ` [${selectedMachineFolder} Machine Folder]` : ' [All Machines]';
     const fileSuffix = selectedMachineFolder !== 'ALL' ? `_${selectedMachineFolder.replace(/[^a-zA-Z0-9_-]/g, '_')}` : '';
@@ -558,235 +586,279 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             </p>
           </div>
 
-          {/* Action Hub */}
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                const targetItems = filteredMaterials.length > 0 ? filteredMaterials : displayMaterials;
-                if (targetItems.length === 0) {
-                  alert('No materials available to share on WhatsApp.');
-                  return;
-                }
-
-                const targetV = project.vendor || targetItems[0]?.vendor || 'Manav Metal';
-
-                // Strict Vendor Isolation: Filter items assigned to this vendor only
-                const vendorAssignedItems = targetItems.filter((i) => {
-                  const v = (i.vendor || (i as any).vendorName || '').trim().toLowerCase();
-                  return !v || v === targetV.trim().toLowerCase();
-                });
-
-                const finalItems = vendorAssignedItems.length > 0 ? vendorAssignedItems : targetItems;
-
-                const matchedVendor = vendors.find(
-                  (v) => (v.name || '').trim().toLowerCase() === targetV.trim().toLowerCase()
-                );
-
-                const phone = matchedVendor?.mobile || '+91 98250 12345';
-                const finalPONum = project.poNumber || `PO-RSB-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
-                const dateStr = new Date().toISOString().split('T')[0];
-                const targetDelDate = project.targetCompletionDate || new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
-
-                const poOrderedBy = project.orderedBy || currentUser?.name || 'Amit';
-
-                const poPayload: WhatsAppPOMessageOptions = {
-                  poNumber: finalPONum,
-                  vendorName: targetV,
-                  vendorMobile: phone,
-                  vendorContactPerson: matchedVendor?.contactPerson,
-                  vendorAddress: matchedVendor?.address,
-                  vendorGstin: matchedVendor?.gstin,
-                  paymentTerms: matchedVendor?.paymentTerms || '30 Days Net',
-                  status: 'Sent',
-                  projectName: project.name,
-                  machineName: selectedMachineFolder !== 'ALL' ? selectedMachineFolder : (project.machineName || project.name),
-                  dateOfIssue: dateStr,
-                  expectedDeliveryDate: targetDelDate,
-                  orderedBy: poOrderedBy,
-                  notes: project.notes || 'Supply with Material Test Certificate (MTC SS 304). High precision cutting required.',
-                  items: finalItems.map((m) => ({
-                    id: m.id,
-                    projectName: project.name,
-                    machineName: selectedMachineFolder !== 'ALL' ? selectedMachineFolder : (project.machineName || 'Standard Machine'),
-                    description: m.description,
-                    materialType: m.materialType,
-                    materialGrade: m.materialGrade || 'SS 304',
-                    sizeSpecs: m.sizeSpecs,
-                    quantity: Number(m.quantity) || 1,
-                    unit: m.unit || 'Nos',
-                    vendor: m.vendor || (m as any).vendorName || targetV,
-                    vendorName: m.vendor || (m as any).vendorName || targetV,
-                    orderedBy: poOrderedBy,
-                    notes: m.notes,
-                  })),
-                };
-
-                // Auto-save PO to Purchase Order Basket
-                addPurchaseOrder({
-                  poNumber: finalPONum,
-                  date: dateStr,
-                  vendor: targetV,
-                  expectedDate: targetDelDate,
-                  paymentTerms: matchedVendor?.paymentTerms || '30 Days Net',
-                  status: 'Sent',
-                  orderedBy: poOrderedBy,
-                  issuedBy: poOrderedBy,
-                  totalAmount: finalItems.reduce((acc, m) => acc + ((Number(m.quantity) || 1) * 500), 0),
-                  projectNames: [project.name],
-                  machineNames: [selectedMachineFolder !== 'ALL' ? selectedMachineFolder : (project.machineName || project.name)],
-                  notes: project.notes || 'Supply with Material Test Certificate (MTC SS 304). High precision cutting required.',
-                  items: finalItems.map((m) => ({
-                    material: m.description,
-                    sizeSpecs: m.sizeSpecs,
-                    qty: Number(m.quantity) || 1,
-                    unit: m.unit || 'Nos',
-                    rate: 500,
-                    amount: (Number(m.quantity) || 1) * 500,
-                  })),
-                });
-
-                // 1. Generate & download official PDF directly
-                const pdfName = generatePurchaseOrderPDF(poPayload);
-
-                // 2. Format concise message
-                const msg = formatWhatsAppPOMessage(poPayload);
-
-                // 3. Copy message to clipboard
-                try {
-                  navigator.clipboard.writeText(msg);
-                } catch (e) {
-                  const textArea = document.createElement('textarea');
-                  textArea.value = msg;
-                  document.body.appendChild(textArea);
-                  textArea.select();
-                  document.execCommand('copy');
-                  document.body.removeChild(textArea);
-                }
-
-                // 4. Directly open WhatsApp Web / App
-                const url = createWhatsAppUrl(phone, msg);
-                window.open(url, '_blank', 'noopener,noreferrer');
-
-                if (logAudit) {
-                  logAudit('WhatsApp PO PDF Dispatched', 'Projects', `Dispatched PO PDF "${pdfName}" for vendor ${targetV} (Ordered by ${poOrderedBy})`);
-                }
-              }}
-              className="px-3.5 py-2 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-slate-950 text-xs font-black shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
-              title="1-Click WhatsApp Purchase Order / Specification List to Vendor"
-            >
-              <Send className="w-3.5 h-3.5 fill-slate-950" />
-              <span>WhatsApp PO</span>
-            </button>
-
-            {onOpenOrderBasket && (
-              <button
-                type="button"
-                onClick={() => onOpenOrderBasket(project.name)}
-                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
-                title="Open Order Basket for this project"
-              >
-                <ShoppingCart className="w-3.5 h-3.5 text-blue-200" />
-                <span>Order Basket</span>
-              </button>
-            )}
-
-            {onOpenInEntrySheet && !isStoreIncharge && (
-              <button
-                type="button"
-                onClick={() => onOpenInEntrySheet(project.name)}
-                className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
-                title="Open in Rapid 4-Step Material Entry Workstation"
-              >
-                <Zap className="w-3.5 h-3.5 text-amber-400" />
-                <span>Open in Entry Workstation</span>
-              </button>
-            )}
-
-            {!isStoreIncharge && (
+          {/* Action Hub - Cleanly Organized into Functional Groups */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* GROUP 1: WORKFLOW & PROCUREMENT (WhatsApp, Basket, Workstation) */}
+            <div className="flex items-center gap-1.5 bg-slate-100/90 p-1 rounded-xl border border-slate-200 shadow-2xs">
               <button
                 type="button"
                 onClick={() => {
-                  setEditingItem(null);
-                  setMatForm({
-                    description: '',
-                    materialType: 'SS Flat',
-                    materialGrade: 'SS 304',
-                    sizeSpecs: '',
-                    quantity: 1,
-                    unit: 'Nos',
-                    vendor: project.vendor || 'Manav Metal',
-                    machineType: selectedMachineFolder !== 'ALL' ? (selectedMachineFolder as any) : (project.machineName || project.machineType || project.name),
-                    orderSource: project.orderSource || 'Customer PO',
-                    poNumber: project.poNumber || '36',
-                    notes: '',
+                  const targetItems = filteredMaterials.length > 0 ? filteredMaterials : displayMaterials;
+                  if (targetItems.length === 0) {
+                    alert('No materials available to share on WhatsApp.');
+                    return;
+                  }
+
+                  const targetV = project.vendor || targetItems[0]?.vendor || 'Manav Metal';
+                  const vendorAssignedItems = targetItems.filter((i) => {
+                    const v = (i.vendor || (i as any).vendorName || '').trim().toLowerCase();
+                    return !v || v === targetV.trim().toLowerCase();
                   });
-                  setIsAddMaterialModalOpen(true);
+                  const finalItems = vendorAssignedItems.length > 0 ? vendorAssignedItems : targetItems;
+                  const matchedVendor = vendors.find(
+                    (v) => (v.name || '').trim().toLowerCase() === targetV.trim().toLowerCase()
+                  );
+
+                  const phone = matchedVendor?.mobile || '+91 98250 12345';
+                  const finalPONum = project.poNumber || `PO-RSB-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+                  const dateStr = new Date().toISOString().split('T')[0];
+                  const targetDelDate = project.targetCompletionDate || new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+                  const poOrderedBy = project.orderedBy || currentUser?.name || 'Amit';
+
+                  const poPayload: WhatsAppPOMessageOptions = {
+                    poNumber: finalPONum,
+                    vendorName: targetV,
+                    vendorMobile: phone,
+                    vendorContactPerson: matchedVendor?.contactPerson,
+                    vendorAddress: matchedVendor?.address,
+                    vendorGstin: matchedVendor?.gstin,
+                    paymentTerms: matchedVendor?.paymentTerms || '30 Days Net',
+                    status: 'Sent',
+                    projectName: project.name,
+                    machineName: selectedMachineFolder !== 'ALL' ? selectedMachineFolder : (project.machineName || project.name),
+                    dateOfIssue: dateStr,
+                    expectedDeliveryDate: targetDelDate,
+                    orderedBy: poOrderedBy,
+                    notes: project.notes || 'Supply with Material Test Certificate (MTC SS 304). High precision cutting required.',
+                    items: finalItems.map((m) => ({
+                      id: m.id,
+                      projectName: project.name,
+                      machineName: selectedMachineFolder !== 'ALL' ? selectedMachineFolder : (project.machineName || 'Standard Machine'),
+                      description: m.description,
+                      materialType: m.materialType,
+                      materialGrade: m.materialGrade || 'SS 304',
+                      sizeSpecs: m.sizeSpecs,
+                      quantity: Number(m.quantity) || 1,
+                      unit: m.unit || 'Nos',
+                      vendor: m.vendor || (m as any).vendorName || targetV,
+                      vendorName: m.vendor || (m as any).vendorName || targetV,
+                      orderedBy: poOrderedBy,
+                      notes: m.notes,
+                    })),
+                  };
+
+                  addPurchaseOrder({
+                    poNumber: finalPONum,
+                    date: dateStr,
+                    vendor: targetV,
+                    expectedDate: targetDelDate,
+                    paymentTerms: matchedVendor?.paymentTerms || '30 Days Net',
+                    status: 'Sent',
+                    orderedBy: poOrderedBy,
+                    issuedBy: poOrderedBy,
+                    totalAmount: finalItems.reduce((acc, m) => acc + ((Number(m.quantity) || 1) * 500), 0),
+                    projectNames: [project.name],
+                    machineNames: [selectedMachineFolder !== 'ALL' ? selectedMachineFolder : (project.machineName || project.name)],
+                    notes: project.notes || 'Supply with Material Test Certificate (MTC SS 304). High precision cutting required.',
+                    items: finalItems.map((m) => ({
+                      material: m.description,
+                      sizeSpecs: m.sizeSpecs,
+                      qty: Number(m.quantity) || 1,
+                      unit: m.unit || 'Nos',
+                      rate: 500,
+                      amount: (Number(m.quantity) || 1) * 500,
+                    })),
+                  });
+
+                  const pdfName = generatePurchaseOrderPDF(poPayload);
+                  const msg = formatWhatsAppPOMessage(poPayload);
+
+                  try {
+                    navigator.clipboard.writeText(msg);
+                  } catch (e) {
+                    const textArea = document.createElement('textarea');
+                    textArea.value = msg;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                  }
+
+                  const url = createWhatsAppUrl(phone, msg);
+                  window.open(url, '_blank', 'noopener,noreferrer');
+                  if (logAudit) {
+                    logAudit('WhatsApp PO PDF Dispatched', 'Projects', `Dispatched PO PDF "${pdfName}" for vendor ${targetV} (Ordered by ${poOrderedBy})`);
+                  }
                 }}
-                className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                className="px-3 py-1.5 rounded-lg bg-[#25D366] hover:bg-[#20bd5a] text-slate-950 text-xs font-black shadow-2xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                title="1-Click WhatsApp Purchase Order"
               >
-                <Plus className="w-3.5 h-3.5" />
-                <span>{selectedMachineFolder !== 'ALL' ? `Add ${selectedMachineFolder} Row` : 'Add Row'}</span>
+                <Send className="w-3.5 h-3.5 fill-slate-950" />
+                <span>WhatsApp PO</span>
               </button>
-            )}
 
-            {/* Save / Sync Inward Verification to Database */}
-            <button
-              type="button"
-              onClick={handleSaveInwardToDb}
-              disabled={isSavingToDb}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black shadow-md shadow-emerald-900/30 flex items-center gap-2 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
-              title="Save & verify all marked inward receipts directly into ERP database"
-            >
-              {isSavingToDb ? (
-                <>
-                  <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Saving to DB...</span>
-                </>
-              ) : (
-                <>
-                  <Database className="w-3.5 h-3.5 text-emerald-200" />
-                  <span>Save</span>
-                </>
+              {onOpenOrderBasket && (
+                <button
+                  type="button"
+                  onClick={() => onOpenOrderBasket(project.name)}
+                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-2xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                  title="Open Order Basket for this project"
+                >
+                  <ShoppingCart className="w-3.5 h-3.5 text-indigo-200" />
+                  <span>Order Basket</span>
+                </button>
               )}
-            </button>
 
-            {lastSavedTime && (
-              <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-800 text-[11px] font-mono font-bold animate-fadeIn">
-                <Check className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Synced: {lastSavedTime}</span>
-              </span>
-            )}
+              {onOpenInEntrySheet && !isStoreIncharge && (
+                <button
+                  type="button"
+                  onClick={() => onOpenInEntrySheet(project.name)}
+                  className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-black text-white text-xs font-bold shadow-2xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                  title="Open in Material Entry Workstation"
+                >
+                  <Zap className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Entry Workstation</span>
+                </button>
+              )}
+            </div>
 
-            <button
-              type="button"
-              onClick={handleExportExcel}
-              className="px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
-              title="Export 10-Column Material Table to Excel"
-            >
-              <Download className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Export Excel</span>
-            </button>
+            {/* GROUP 2: PRIMARY DATA ACTIONS (Add Row & Save) */}
+            <div className="flex items-center gap-1.5">
+              {!isStoreIncharge && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingItem(null);
+                    setMatForm({
+                      description: '',
+                      materialType: 'SS Flat',
+                      materialGrade: 'SS 304',
+                      sizeSpecs: '',
+                      quantity: 1,
+                      unit: 'Nos',
+                      vendor: project.vendor || 'Manav Metal',
+                      machineType: selectedMachineFolder !== 'ALL' ? (selectedMachineFolder as any) : (project.machineName || project.machineType || project.name),
+                      orderSource: project.orderSource || 'Customer PO',
+                      poNumber: project.poNumber || '36',
+                      notes: '',
+                    });
+                    setIsAddMaterialModalOpen(true);
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Row</span>
+                </button>
+              )}
 
-            <button
-              type="button"
-              onClick={handleExportPdf}
-              className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <FileText className="w-3.5 h-3.5 text-slate-600" />
-              <span>PDF Spec</span>
-            </button>
-
-            {isSuperAdmin && !isStoreIncharge && (
               <button
                 type="button"
-                onClick={() => setIsDeleteProjectModalOpen(true)}
-                className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
-                title="Delete Project (Super Admin Access)"
+                onClick={handleSaveInwardToDb}
+                disabled={isSavingToDb}
+                className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+                title="Save & sync verification to Database"
               >
-                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                <span>Delete Project</span>
+                {isSavingToDb ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-3.5 h-3.5 text-emerald-200" />
+                    <span>Save</span>
+                  </>
+                )}
               </button>
+
+              {lastSavedTime && (
+                <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-2 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-800 text-[11px] font-mono font-bold" title="Last synced time">
+                  <Check className="w-3 h-3 text-emerald-600" />
+                  <span>{lastSavedTime}</span>
+                </span>
+              )}
+            </div>
+
+            {/* GROUP 3: EXPORT DROPDOWN */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsExportMenuOpen((prev) => !prev);
+                  setIsMoreMenuOpen(false);
+                }}
+                className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5 text-slate-600" />
+                <span>Export</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isExportMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {isExportMenuOpen && (
+                <div
+                  className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-fadeIn"
+                  onMouseLeave={() => setIsExportMenuOpen(false)}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleExportExcel();
+                      setIsExportMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 flex items-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <Download className="w-4 h-4 text-emerald-600" />
+                    <span>Excel (.xlsx)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleExportPdf();
+                      setIsExportMenuOpen(false);
+                    }}
+                    className="w-full text-left px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-800 flex items-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <FileText className="w-4 h-4 text-blue-600" />
+                    <span>PDF Spec (.pdf)</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* GROUP 4: MORE OPTIONS DROPDOWN (Delete Project) */}
+            {isSuperAdmin && !isStoreIncharge && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMoreMenuOpen((prev) => !prev);
+                    setIsExportMenuOpen(false);
+                  }}
+                  className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-600 transition-all cursor-pointer"
+                  title="More Options"
+                >
+                  <MoreVertical className="w-4 h-4" />
+                </button>
+
+                {isMoreMenuOpen && (
+                  <div
+                    className="absolute right-0 mt-2 w-44 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-fadeIn"
+                    onMouseLeave={() => setIsMoreMenuOpen(false)}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMoreMenuOpen(false);
+                        setIsDeleteProjectModalOpen(true);
+                      }}
+                      className="w-full text-left px-3.5 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4 text-rose-600" />
+                      <span>Delete Project</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -857,7 +929,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               Start Date
             </span>
             <p className="text-base font-black text-emerald-300 truncate">
-              {project.startDate || project.date || '01-09-2026'}
+              {formatDate(project.startDate || project.date || project.createdDate)}
             </p>
           </div>
 
@@ -868,7 +940,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               Delivery Date
             </span>
             <p className="text-base font-black text-amber-300 truncate">
-              {project.targetCompletionDate || project.targetDate || '30-10-2026'}
+              {formatDate(project.targetCompletionDate || project.targetDate)}
             </p>
           </div>
 
@@ -1356,39 +1428,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Save / Verify to DB Button */}
-            <button
-              type="button"
-              onClick={handleSaveInwardToDb}
-              disabled={isSavingToDb}
-              className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold shadow-sm shadow-emerald-900/20 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
-              title="Save & verify all marked inward receipts directly into ERP database"
-            >
-              {isSavingToDb ? (
-                <>
-                  <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Saving...</span>
-                </>
-              ) : (
-                <>
-                  <Database className="w-3.5 h-3.5 text-emerald-200" />
-                  <span>Save</span>
-                </>
-              )}
-            </button>
-
-            {lastSavedTime && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-100 border border-emerald-300 text-emerald-800 text-[11px] font-mono font-bold">
-                <Check className="w-3 h-3 text-emerald-600" />
-                <span>Synced: {lastSavedTime}</span>
-              </span>
-            )}
-
-            <div className="text-xs font-mono font-bold text-slate-600 bg-white px-3 py-1.5 rounded-lg border border-slate-200">
-              Total Qty: <span className="text-emerald-600 font-black">{filteredMaterials.reduce((acc, m) => acc + Number(m.quantity || 0), 0)} Units</span>
+            <div className="text-xs font-mono font-bold text-slate-700 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-2xs">
+              Total Qty: <span className="text-indigo-600 font-black">{filteredMaterials.reduce((acc, m) => acc + Number(m.quantity || 0), 0)} Units</span>
             </div>
-            <div className="text-xs font-mono font-bold text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
-              Inward: <span className="font-black">
+            <div className="text-xs font-mono font-bold text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 shadow-2xs">
+              Inward Received: <span className="font-black">
                 {selectedMachineFolder !== 'ALL'
                   ? `${activeFolderMetrics.arrivedCount}/${activeFolderMetrics.totalItems}`
                   : `${receivedMaterialsCount}/${displayMaterials.length}`
@@ -1427,7 +1471,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   <th className="p-3 w-12 text-center whitespace-nowrap">Sr No</th>
                   <th className="p-3 min-w-[130px] whitespace-nowrap">Material Type</th>
                   <th className="p-3 min-w-[160px] whitespace-nowrap">Size Specification</th>
-                  <th className="p-3 min-w-[90px] text-center whitespace-nowrap">Qty</th>
+                  <th className="p-3 min-w-[85px] text-center whitespace-nowrap">Qty</th>
+                  <th className="p-3 min-w-[110px] text-center whitespace-nowrap bg-emerald-50/60 text-emerald-900 border-x border-emerald-200/60">Arrived Qty</th>
+                  <th className="p-3 min-w-[100px] text-center whitespace-nowrap bg-amber-50/60 text-amber-900 border-r border-amber-200/60">Pending Qty</th>
                   <th className="p-3 min-w-[140px] whitespace-nowrap">Vendor Name</th>
                   <th className="p-3 min-w-[180px] whitespace-nowrap">Description</th>
                   <th className="p-3 min-w-[120px] whitespace-nowrap">Ordered By</th>
@@ -1435,7 +1481,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 font-medium">
-                {filteredMaterials.map((m, idx) => (
+                {filteredMaterials.map((m, idx) => {
+                  const totalQty = Number(m.quantity) || 0;
+                  const arrivedQty = (m.receivedQuantity !== undefined && m.receivedQuantity !== null)
+                    ? Number(m.receivedQuantity)
+                    : (m.isReceived ? totalQty : 0);
+                  const pendingQty = Math.max(0, totalQty - arrivedQty);
+
+                  return (
                   <tr key={m.id || idx} className={`transition-colors ${m.isReceived ? 'bg-emerald-50/30 hover:bg-emerald-50/60' : 'hover:bg-blue-50/40'}`}>
                     {/* Material Arrived / Inward Verification Cell */}
                     <td className="p-3 text-center whitespace-nowrap border-r border-emerald-100 bg-emerald-50/20">
@@ -1473,7 +1526,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                     {/* 2. Date */}
                     <td className="p-3 font-mono text-slate-700 whitespace-nowrap">
-                      {m.date || project.date || project.startDate || '01-09-2026'}
+                      {formatDate(m.date || project.date || project.startDate)}
                     </td>
 
                     {/* 3. PO No */}
@@ -1483,7 +1536,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                     {/* 4. Sr No */}
                     <td className="p-3 text-center font-mono font-bold text-slate-400 whitespace-nowrap">
-                      {idx + 1}
+                      {(m.srNo !== undefined && m.srNo !== null && !isNaN(Number(m.srNo)) && Number(m.srNo) > 0) ? m.srNo : idx + 1}
                     </td>
 
                     {/* 5. Material Type */}
@@ -1500,8 +1553,41 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                     {/* 7. Quantity */}
                     <td className="p-3 text-center whitespace-nowrap">
-                      <span className="inline-flex items-center justify-center min-w-[80px] px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-300 font-mono font-black text-xs rounded-lg shadow-2xs">
-                        {m.quantity}&nbsp;<span className="text-slate-600 font-bold text-[10px]">{m.unit || 'Nos'}</span>
+                      <span className="inline-flex items-center justify-center min-w-[70px] px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-300 font-mono font-black text-xs rounded-lg shadow-2xs">
+                        {totalQty}&nbsp;<span className="text-slate-600 font-bold text-[10px]">{m.unit || 'Nos'}</span>
+                      </span>
+                    </td>
+
+                    {/* 8. Arrived Qty (Editable / Synced) */}
+                    <td className="p-3 text-center whitespace-nowrap bg-emerald-50/20 border-x border-emerald-100">
+                      <div className="inline-flex items-center justify-center gap-1">
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={arrivedQty}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            updateMaterialArrivalQty(m.id, isNaN(val) ? 0 : val);
+                          }}
+                          className="w-16 text-center px-1.5 py-1 rounded-lg border border-emerald-300 bg-white font-mono font-black text-xs text-emerald-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-2xs"
+                          title="Enter arrived quantity"
+                        />
+                        <span className="text-[10px] font-bold text-slate-500">{m.unit || 'Nos'}</span>
+                      </div>
+                    </td>
+
+                    {/* 9. Pending Qty (Auto Calculated) */}
+                    <td className="p-3 text-center whitespace-nowrap bg-amber-50/20 border-r border-amber-100">
+                      <span
+                        className={`inline-flex items-center justify-center min-w-[70px] px-2.5 py-1 rounded-lg font-mono font-black text-xs border shadow-2xs ${
+                          pendingQty === 0
+                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                            : 'bg-amber-100 text-amber-900 border-amber-300'
+                        }`}
+                        title={`Pending: ${pendingQty} ${m.unit || 'Nos'}`}
+                      >
+                        {pendingQty}&nbsp;<span className="font-bold text-[10px]">{m.unit || 'Nos'}</span>
                       </span>
                     </td>
 
@@ -1560,7 +1646,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

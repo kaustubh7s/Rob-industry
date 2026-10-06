@@ -168,11 +168,11 @@ export function getMaterialsForProject(
     // If order items have unique specs not in matchedReqs, merge them
     const reqSignatures = new Set(matchedReqs.map((r) => (r.description + '::' + r.sizeSpecs).toLowerCase()));
     const extraOrders = orderReqs.filter((o) => !reqSignatures.has((o.description + '::' + o.sizeSpecs).toLowerCase()));
-    return [...matchedReqs, ...extraOrders];
+    return [...matchedReqs, ...extraOrders].sort((a, b) => (Number(a.srNo) || 0) - (Number(b.srNo) || 0));
   }
 
   if (orderReqs.length > 0) {
-    return orderReqs;
+    return orderReqs.sort((a, b) => (Number(a.srNo) || 0) - (Number(b.srNo) || 0));
   }
 
   return [];
