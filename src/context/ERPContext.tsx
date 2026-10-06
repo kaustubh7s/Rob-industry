@@ -291,7 +291,7 @@ interface ERPContextType {
 
 const ERPContext = createContext<ERPContextType | undefined>(undefined);
 
-const LOCAL_STORAGE_KEY = 'RSB_ERP_STATE_V5';
+const LOCAL_STORAGE_KEY = 'RSB_ERP_STATE_V6';
 const AUTH_SESSION_KEY = 'RSB_ERP_AUTH_USER_ID';
 const LAST_ACTIVITY_KEY = 'RSB_ERP_LAST_ACTIVITY';
 const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes session inactivity timeout
@@ -304,13 +304,15 @@ const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes session inactivity t
       const key = localStorage.key(i);
       if (
         key &&
-        !key.startsWith('RSB_ERP_STATE_V5') &&
+        !key.startsWith('RSB_ERP_STATE_V6') &&
         (key.startsWith('RSB_ERP_STATE_') ||
           key.startsWith('rsb_wb_') ||
           key.startsWith('rsb_custom_') ||
           key.startsWith('rsb_base_') ||
           key.startsWith('rsb_deleted_') ||
           key.startsWith('rsb_erp_production_') ||
+          key.startsWith('rsb_selected_') ||
+          key.startsWith('rsb_active_') ||
           key.startsWith('RSB_PROJECT_MATERIAL_ENTRY_'))
       ) {
         if (key === 'rsb_supabase_config') continue;
@@ -835,7 +837,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               const updatedFromRemote = remoteReqs.map((remoteReq: ProjectMaterialRequirementItem) => {
                 const local = localMap.get(remoteReq.id);
                 const isArrived = Boolean(remoteReq.isReceived || local?.isReceived);
-                const finalVendor = local?.vendor || local?.vendorName || remoteReq.vendor || remoteReq.vendorName || 'Manav Metal';
+                const finalVendor = local?.vendor || local?.vendorName || remoteReq.vendor || remoteReq.vendorName || '';
                 const finalVendorName = local?.vendorName || local?.vendor || remoteReq.vendorName || remoteReq.vendor || finalVendor;
                 const finalVendorStatus = local?.vendorStatus || remoteReq.vendorStatus || (finalVendor && finalVendor !== 'Unassigned' ? 'Assigned' : 'Unassigned');
                 return {
@@ -985,8 +987,8 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   customer: updatedPrj.customer,
                   orderSource: updatedPrj.order_source,
                   machineType: updatedPrj.machine_type,
-                  poNumber: updatedPrj.po_number || updatedPrj.poNumber || '36',
-                  vendor: updatedPrj.vendor || 'Manav Metal',
+                  poNumber: updatedPrj.po_number || updatedPrj.poNumber || '',
+                  vendor: updatedPrj.vendor || '',
                   startDate: updatedPrj.start_date,
                   targetCompletionDate: updatedPrj.target_completion_date,
                   priority: updatedPrj.priority,
@@ -1053,7 +1055,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 const updatedFromRemote = remoteReqs.map((remoteReq: ProjectMaterialRequirementItem) => {
                   const local = localMap.get(remoteReq.id);
                   const isArrived = Boolean(remoteReq.isReceived || local?.isReceived);
-                  const finalVendor = local?.vendor || local?.vendorName || remoteReq.vendor || remoteReq.vendorName || 'Manav Metal';
+                  const finalVendor = local?.vendor || local?.vendorName || remoteReq.vendor || remoteReq.vendorName || '';
                   const finalVendorName = local?.vendorName || local?.vendor || remoteReq.vendorName || remoteReq.vendor || finalVendor;
                   const finalVendorStatus = local?.vendorStatus || remoteReq.vendorStatus || (finalVendor && finalVendor !== 'Unassigned' ? 'Assigned' : 'Unassigned');
                   return {
@@ -1111,7 +1113,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               const updatedFromRemote = remoteReqs.map((remoteReq: ProjectMaterialRequirementItem) => {
                 const local = localMap.get(remoteReq.id);
                 const isArrived = Boolean(remoteReq.isReceived || local?.isReceived);
-                const finalVendor = local?.vendor || local?.vendorName || remoteReq.vendor || remoteReq.vendorName || 'Manav Metal';
+                const finalVendor = local?.vendor || local?.vendorName || remoteReq.vendor || remoteReq.vendorName || '';
                 const finalVendorName = local?.vendorName || local?.vendor || remoteReq.vendorName || remoteReq.vendor || finalVendor;
                 const finalVendorStatus = local?.vendorStatus || remoteReq.vendorStatus || (finalVendor && finalVendor !== 'Unassigned' ? 'Assigned' : 'Unassigned');
                 return {
@@ -1439,8 +1441,8 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const stockStatus = shortageQty === 0 ? 'Available' : availableStock > 0 ? 'Partial Available' : 'Shortage';
 
     const mchName = req.machineName || req.machineType || req.projectName || 'Custom Assembly';
-    const poNum = req.poNo || req.poNumber || '36';
-    const vendorNm = req.vendorName || req.vendor || 'Manav Metal';
+    const poNum = req.poNo || req.poNumber || '';
+    const vendorNm = req.vendorName || req.vendor || '';
     const formattedDate = req.date || req.poDate || new Date().toISOString().split('T')[0];
     const targetPrj = req.projectName || mchName;
 
@@ -1539,7 +1541,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deletedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toISOString().split('T')[0],
         deletedBy: currentUser?.name || 'Amit',
         title: `${reqToDelete.description} (${reqToDelete.sizeSpecs})`,
-        subtitle: `Project: ${reqToDelete.projectName} • ${reqToDelete.quantity} ${reqToDelete.unit} • Vendor: ${reqToDelete.vendor || 'Manav Metal'}`,
+        subtitle: `Project: ${reqToDelete.projectName} • ${reqToDelete.quantity} ${reqToDelete.unit} • Vendor: ${reqToDelete.vendor || 'Unassigned'}`,
         requirementData: reqToDelete,
       };
       setTrashItems((prev) => [trashEntry, ...prev]);
@@ -1589,7 +1591,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           machineType: orderMatch.machineType as any,
           orderSource: orderMatch.orderSource,
           deliveryDate: orderMatch.deliveryDate,
-          vendor: orderMatch.vendor || 'Manav Metal',
+          vendor: orderMatch.vendor || '',
           bomRef: `BOM-${orderMatch.orderNumber}`,
           stockStatus: 'Available',
           availableStock: orderMatch.currentStock || 15,
@@ -1689,11 +1691,11 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const matType = it.materialType || it['Material Type'] || existing?.materialType || 'SS Flat';
       const qty = Number(it.quantity || it['Qty'] || it['Quantity'] || existing?.quantity || 1);
       const prj = projectName || it.projectName || it['Project'] || existing?.projectName || 'Project-1';
-      const poNum = it.poNo || it.poNumber || it['PO No'] || existing?.poNumber || '36';
+      const poNum = it.poNo || it.poNumber || it['PO No'] || existing?.poNumber || '';
       const cust = it.customerName || it['Customer'] || existing?.customerName || 'General Client';
       const mchType = it.machineName || it.machineType || existing?.machineName || prj;
       const unit = it.unit || it['Unit'] || existing?.unit || 'Nos';
-      const vendor = it.vendorName || it.vendor || existing?.vendor || 'Manav Metal';
+      const vendor = it.vendorName || it.vendor || existing?.vendor || '';
       const bomRef = it.bomRef || existing?.bomRef || `BOM-${prj}`;
       const orderedBy = it.orderedBy || existing?.orderedBy || currentUser?.name || 'Amit';
       const entryDate = it.date || it['Date'] || existing?.date || todayFormatted;
@@ -1815,10 +1817,10 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         orderSource: 'Workstation Entry',
         machineType: (firstItem?.machineType || projectName) as any,
         machineName: firstItem?.machineName || projectName,
-        vendor: firstItem?.vendorName || 'Manav Metal',
-        vendorName: firstItem?.vendorName || 'Manav Metal',
-        poNumber: firstItem?.poNumber || '36',
-        poNo: firstItem?.poNo || '36',
+        vendor: firstItem?.vendorName || '',
+        vendorName: firstItem?.vendorName || '',
+        poNumber: firstItem?.poNumber || '',
+        poNo: firstItem?.poNo || '',
         startDate: firstItem?.date || todayFormatted,
         targetCompletionDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
         priority: 'high',
@@ -1852,11 +1854,11 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const matType = it.materialType || it['Material Type'] || 'SS Flat';
       const qty = Number(it.quantity || it['Qty'] || it['Quantity'] || 1);
       const prj = it.projectName || it['Project'] || it['Project Name'] || it['Machine Name'] || 'Project-1';
-      const poNum = it.poNo || it.poNumber || it['PO No'] || it['PO Number'] || '36';
+      const poNum = it.poNo || it.poNumber || it['PO No'] || it['PO Number'] || '';
       const cust = it.customerName || it['Customer'] || it['Customer Name'] || 'General Client';
       const mchType = it.machineName || it.machineType || it['Machine Name'] || it['Machine Type'] || prj;
       const unit = it.unit || it['Unit'] || 'Nos';
-      const vendor = it.vendorName || it.vendor || it['Vendor Name'] || it['Vendor'] || 'Manav Metal';
+      const vendor = it.vendorName || it.vendor || it['Vendor Name'] || it['Vendor'] || '';
       const bomRef = it.bomRef || it['BOM Ref'] || `BOM-${prj}`;
       const orderedBy = it.orderedBy || it['Ordered By'] || currentUser.name;
       const entryDate = it.date || it['Date'] || todayFormatted;
@@ -1943,9 +1945,9 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           customer: firstReq.customerName || 'General Client',
           orderSource: 'Customer PO',
           machineType: (firstReq.machineType || firstReq.projectName) as any,
-          vendor: firstReq.vendor || 'Manav Metal',
-          poNumber: firstReq.poNumber || '36',
-          poNo: firstReq.poNumber || '36',
+          vendor: firstReq.vendor || '',
+          poNumber: firstReq.poNumber || '',
+          poNo: firstReq.poNumber || '',
           startDate: firstReq.poDate || todayFormatted,
           targetCompletionDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
           priority: 'high',
@@ -2001,7 +2003,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             machineType: prj.machineType,
             orderSource: prj.orderSource,
             deliveryDate: prj.targetCompletionDate,
-            vendor: matchedMat?.vendor || 'Manav Metal',
+            vendor: matchedMat?.vendor || '',
             bomRef: bom.bomNumber,
             lastPurchaseRate: item.unitCost,
             lastPurchaseDate: new Date().toISOString().split('T')[0],
@@ -2089,7 +2091,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const vendorMap: { [vendor: string]: ProjectMaterialRequirementItem[] } = {};
     targetReqs.forEach((r) => {
-      const v = r.vendor || 'Manav Metal';
+      const v = r.vendor || 'Unassigned';
       if (!vendorMap[v]) vendorMap[v] = [];
       vendorMap[v].push(r);
     });
@@ -2619,7 +2621,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deletedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toISOString().split('T')[0],
         deletedBy: currentUser?.name || 'Amit',
         title: `Project: ${projectToDelete.name} (${projectToDelete.projectNumber})`,
-        subtitle: `Machine: ${projectToDelete.machineType || projectToDelete.machineName || 'Machine'} • Vendor: ${projectToDelete.vendor || 'Manav Metal'} • ${deletedReqs.length} Material Items`,
+        subtitle: `Machine: ${projectToDelete.machineType || projectToDelete.machineName || 'Machine'} • Vendor: ${projectToDelete.vendor || 'Unassigned'} • ${deletedReqs.length} Material Items`,
         projectData: projectToDelete,
       };
       setTrashItems((prev) => [trashEntry, ...prev]);
@@ -2710,22 +2712,28 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const learnVendor = (name: string, contactPerson?: string, mobile?: string, category?: string): VendorItem => {
     const cleanName = (name || '').trim();
     if (!cleanName) {
-      return (
-        vendors[0] || {
-          id: 'vnd-default',
-          name: 'Manav Metal',
-          category: 'SS Raw Materials',
-          contactPerson: 'Vendor Rep',
-          mobile: '+91 98000 00000',
-          email: 'sales@vendor.com',
-          gstin: '24AAAAA0000A1Z5',
-          address: 'Ahmedabad',
-          paymentTerms: '30 Days',
-          leadTimeDays: 7,
-          rating: 4.8,
-          allocatedItemsCount: 1,
-        }
-      );
+      if (vendors.length > 0) return vendors[0];
+      return {
+        id: `vnd-${Date.now()}`,
+        name: 'General Vendor',
+        contactPerson: contactPerson || 'Vendor Rep',
+        mobile: mobile || '',
+        email: 'sales@vendor.com',
+        gstin: '',
+        address: 'Factory Zone',
+        materialSupplied: category || 'SS Raw Materials',
+        rating: 5.0,
+        paymentTerms: '30 Days Net',
+        totalOrders: 0,
+        totalPurchaseValue: 0,
+        onTimeDeliveries: 0,
+        delayedDeliveries: 0,
+        averageDeliveryDays: 0,
+        rejectionRate: 0,
+        qualityRating: 100,
+        costCompetitiveness: 10,
+        reliabilityScore: 100,
+      };
     }
     const existing = vendors.find(
       (v) => v.name.trim().toLowerCase() === cleanName.toLowerCase()
@@ -3030,7 +3038,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         unitCost: unitRate,
         totalCost,
         drawingRef: r.bomRef || `DWG-${prjNum}-${idx + 1}`,
-        notes: `Vendor: ${r.vendorName || r.vendor || 'Manav Metal'} | PO: ${r.poNo || r.poNumber || 'N/A'}`,
+        notes: `Vendor: ${r.vendorName || r.vendor || 'Unassigned'} | PO: ${r.poNo || r.poNumber || 'N/A'}`,
       };
     });
 
@@ -3611,7 +3619,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const vendorGroups: { [vendor: string]: MRPRecord[] } = {};
     shortages.forEach((s) => {
-      const v = s.preferredVendor || 'Manav Metal';
+      const v = s.preferredVendor || 'Unassigned';
       if (!vendorGroups[v]) vendorGroups[v] = [];
       vendorGroups[v].push(s);
     });
@@ -3696,9 +3704,20 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setBoms(INITIAL_BOMS);
     setRfqs(INITIAL_RFQS);
     setVendorDocuments(INITIAL_VENDOR_DOCUMENTS);
-    localStorage.clear();
-    logAudit('System Reset', 'Super Admin', 'Reset full ERP database to RSB demo factory state');
-    addNotification('System Reset', 'Reset to factory seed data', 'warning');
+    setTrashItems([]);
+
+    try {
+      const preserveSupabase = localStorage.getItem('rsb_supabase_config');
+      localStorage.clear();
+      if (preserveSupabase) {
+        localStorage.setItem('rsb_supabase_config', preserveSupabase);
+      }
+    } catch (e) {
+      console.warn('LocalStorage clear error:', e);
+    }
+
+    logAudit('System Factory Reset', 'Super Admin', 'Reset full ERP database to factory baseline');
+    addNotification('Factory Reset Complete', 'Reset all info, suggestions, BOMs, and entries to clean factory state', 'warning');
   };
 
   const exportDatabaseBackup = () => {

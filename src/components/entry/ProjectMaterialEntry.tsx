@@ -68,25 +68,7 @@ export interface EntryRow {
   isEditing?: boolean;
 }
 
-const MACHINE_SUGGESTIONS: string[] = [
-  '16 HD',
-  '10 HD',
-  '12 HD',
-  '20 HD',
-  '24 HD',
-  '30 HD',
-  '40 HD',
-  'Mono Conveyor',
-  'Washing Unit',
-  'Distributor',
-  'Sealing Unit',
-  'Cap Transfer',
-  'Pipeline System',
-  'CIP Skid',
-  'Conveyor Assembly',
-  'Custom Machine',
-  'Custom Fabrication',
-];
+const MACHINE_SUGGESTIONS: string[] = [];
 
 const MATERIAL_TYPES: MaterialType[] = [
   'SS Flat',
@@ -100,100 +82,14 @@ const MATERIAL_TYPES: MaterialType[] = [
   'Other',
 ];
 
-const COMMON_VENDORS = [
-  'Manav Metal',
-  'Apex Steel Corporation',
-  'Shreeji Tubes & Pipes',
-  'Gujarat Precision Forgings',
-  'R.K. Fasteners & Hardware',
-  'Siddharth Engineering',
-  'Bharat Forgings Ltd',
-];
+const COMMON_VENDORS: string[] = [];
 
-// Machine-specific frequent components for smart auto-fill suggestions
-const MACHINE_FREQUENT_COMPONENTS: Record<string, { description: string; materialType: MaterialType; sizeSpecs: string; qty: number; unit: string }[]> = {
-  '16 HD': [
-    { description: 'Mono Conveyor Inlet Patti', materialType: 'SS Flat', sizeSpecs: '80 x 6 x 485', qty: 2, unit: 'Nos' },
-    { description: 'Sealing Clamp', materialType: 'SS Flat', sizeSpecs: '60 x 16 x 110', qty: 2, unit: 'Nos' },
-    { description: 'Cap Transfer Bush', materialType: 'SS Pipe', sizeSpecs: 'OD 106 x ID 75 x 110', qty: 2, unit: 'Nos' },
-    { description: 'Clamp Ghode', materialType: 'SS Flat', sizeSpecs: '60 x 16 x 135', qty: 2, unit: 'Nos' },
-    { description: 'Bridge Support Patti', materialType: 'SS Flat', sizeSpecs: '65 x 10 x 420', qty: 2, unit: 'Nos' },
-    { description: 'Outlet Roll', materialType: 'SS Bar', sizeSpecs: 'Ø 45 x 620 mm', qty: 2, unit: 'Nos' },
-  ],
-  '10 HD': [
-    { description: 'Guide Track Patti', materialType: 'SS Flat', sizeSpecs: '50 x 8 x 380', qty: 2, unit: 'Nos' },
-    { description: 'Indexing Cam', materialType: 'SS Circle', sizeSpecs: 'OD 160 x 20 MM', qty: 1, unit: 'Nos' },
-    { description: 'Conveyor Drive Roller', materialType: 'SS Pipe', sizeSpecs: 'OD 60 x ID 45 x 350', qty: 2, unit: 'Nos' },
-    { description: 'Supporting Bracket', materialType: 'SS Angle', sizeSpecs: '50 x 50 x 6 x 300', qty: 4, unit: 'Nos' },
-  ],
-  '20 HD': [
-    { description: 'High-Torque Head Clamp', materialType: 'SS Flat', sizeSpecs: '80 x 16 x 160', qty: 4, unit: 'Nos' },
-    { description: 'Main Center Shaft', materialType: 'SS Bar', sizeSpecs: 'Ø 55 x 750 mm', qty: 1, unit: 'Nos' },
-    { description: 'Distributor Sleeve Pipe', materialType: 'SS Pipe', sizeSpecs: 'OD 120 x ID 90 x 180', qty: 2, unit: 'Nos' },
-    { description: 'Base Mounting Plate', materialType: 'SS Sheet', sizeSpecs: '400 x 400 x 10 mm', qty: 2, unit: 'Nos' },
-  ],
-  'Mono Conveyor': [
-    { description: 'Mono Conveyor Inlet Patti', materialType: 'SS Flat', sizeSpecs: '80 x 6 x 485', qty: 2, unit: 'Nos' },
-    { description: 'Conveyor Support Patti', materialType: 'SS Angle', sizeSpecs: '50 x 50 x 6 x 500', qty: 4, unit: 'Nos' },
-    { description: 'Outlet Bridge', materialType: 'SS Flat', sizeSpecs: '90 x 12 x 580', qty: 1, unit: 'Nos' },
-    { description: 'Return Idler Roller', materialType: 'SS Pipe', sizeSpecs: 'OD 60 x ID 45 x 420', qty: 2, unit: 'Nos' },
-  ],
-  'Washing Unit': [
-    { description: 'Washing Clamp Bracket', materialType: 'SS Flat', sizeSpecs: '50 x 16 x 83', qty: 3, unit: 'Nos' },
-    { description: 'Washing Cam', materialType: 'SS Circle', sizeSpecs: 'OD 180 x 25 MM', qty: 2, unit: 'Nos' },
-    { description: 'Washing Distributor Manifold', materialType: 'SS Pipe', sizeSpecs: 'OD 106 x ID 75 x 110', qty: 1, unit: 'Nos' },
-    { description: 'Spray Header Pipe', materialType: 'SS Pipe', sizeSpecs: 'OD 60 x ID 45 x 650', qty: 2, unit: 'Nos' },
-  ],
-  'Distributor': [
-    { description: 'Distributor Support Patti', materialType: 'SS Flat', sizeSpecs: '50 x 12 x 320', qty: 2, unit: 'Nos' },
-    { description: '6-Station Rotary Plate', materialType: 'SS Sheet', sizeSpecs: '450 x 450 x 12 mm', qty: 2, unit: 'Nos' },
-    { description: 'Indexing Center Spindle', materialType: 'SS Bar', sizeSpecs: 'Ø 55 x 480 mm', qty: 1, unit: 'Nos' },
-  ],
-  'CIP Skid': [
-    { description: 'Sanitary Header Main Run Pipe', materialType: 'SS Pipe', sizeSpecs: 'OD 106 x ID 75 x 1200', qty: 2, unit: 'Nos' },
-    { description: 'Mounting Saddle Patti', materialType: 'SS Flat', sizeSpecs: '65 x 10 x 240', qty: 6, unit: 'Nos' },
-    { description: 'Skid Base Support Angle', materialType: 'SS Angle', sizeSpecs: '50 x 50 x 6 x 850', qty: 4, unit: 'Nos' },
-  ],
-};
+// Machine-specific frequent components for smart auto-fill suggestions (Learns dynamically from user entries)
+const MACHINE_FREQUENT_COMPONENTS: Record<string, { description: string; materialType: MaterialType; sizeSpecs: string; qty: number; unit: string }[]> = {};
 
-const COMMON_DESCRIPTIONS = [
-  'Mono Conveyor Inlet Patti',
-  'Sealing Clamp',
-  'Clamp Ghode',
-  'Washing Clamp',
-  'Distributor Support Patti',
-  'Pipe Line Clamp',
-  'Bridge',
-  'Bridge Support Patti',
-  'Conveyor Support Patti',
-  'Outlet Bridge',
-  'Washing Cam',
-  'Outlet Roll',
-  'Cap Transfer',
-  'Washing Distributor',
-  'Main Center Shaft',
-  'Guide Track Patti',
-  'Base Mounting Plate',
-];
+const COMMON_DESCRIPTIONS: string[] = [];
 
-const COMMON_SIZES = [
-  '80 x 6 x 485',
-  '60 x 16 x 110',
-  '60 x 16 x 135',
-  '50 x 16 x 83',
-  '50 x 12 x 320',
-  'OD 60 x ID 45 x 120',
-  '100 x 12 x 650',
-  '65 x 10 x 420',
-  '50 x 50 x 6 x 500',
-  '90 x 12 x 580',
-  'OD 180 x 25 MM',
-  'Ø 45 x 620 mm',
-  '300 x 300 x 3 mm',
-  'OD 106 x ID 75 x 110',
-  'Ø 55 x 750 mm',
-  '400 x 400 x 10 mm',
-];
+const COMMON_SIZES: string[] = [];
 
 const DRAFT_STORAGE_KEY = 'RSB_PROJECT_MATERIAL_ENTRY_10COL_WORKFLOW_V4';
 
@@ -220,6 +116,7 @@ export const ProjectMaterialEntry: React.FC = () => {
     logAudit,
     activeTab,
     setActiveTab,
+    resetToDemoData,
   } = useERP();
 
   const isStoreIncharge = currentUser?.role === 'store_incharge';
@@ -259,8 +156,8 @@ export const ProjectMaterialEntry: React.FC = () => {
 
   // Machine Name & Header Workflow Fields (Machine Name is primary entity)
   const [machineName, setMachineName] = useState(() => projects[0]?.machineName || projects[0]?.machineType || '');
-  const [vendorName, setVendorName] = useState(() => vendors[0]?.name || 'Manav Metal');
-  const [poNo, setPoNo] = useState('36');
+  const [vendorName, setVendorName] = useState(() => vendors[0]?.name || '');
+  const [poNo, setPoNo] = useState('');
   const [entryDate, setEntryDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [selectedProjectName, setSelectedProjectName] = useState<string>(() => projects[0]?.name || '');
 
@@ -337,8 +234,25 @@ export const ProjectMaterialEntry: React.FC = () => {
   const [isCustomSizeModalOpen, setIsCustomSizeModalOpen] = useState(false);
   const [isRatesModalOpen, setIsRatesModalOpen] = useState(false);
   const [isBOMModalOpen, setIsBOMModalOpen] = useState(false);
+  const [isFactoryResetModalOpen, setIsFactoryResetModalOpen] = useState(false);
   const [selectedBOMTemplateKey, setSelectedBOMTemplateKey] = useState<string>(() => Object.keys(MACHINE_BOM_TEMPLATES)[0] || '');
   const [selectedBOMPartIndices, setSelectedBOMPartIndices] = useState<number[]>([]);
+
+  // Full Factory Baseline Reset Handler
+  const handleConfirmFactoryReset = () => {
+    resetToDemoData();
+    setRows([]);
+    setCustomDescs([]);
+    setCustomSizes([]);
+    setCustomUnits(['Nos', 'Kg', 'Mtr', 'Sets', 'Pcs', 'Ltr', 'Sheet']);
+    setMachineName('');
+    setVendorName('');
+    setPoNo('');
+    setSelectedProjectName('');
+    setIsFactoryResetModalOpen(false);
+    setSaveToast('⚡ Factory Reset Complete! All data, suggestions, and BOMs restored to clean blank slate.');
+    setTimeout(() => setSaveToast(null), 4000);
+  };
 
   // Temporary inputs for custom modals
   const [customMachineInput, setCustomMachineInput] = useState('');
@@ -537,10 +451,10 @@ export const ProjectMaterialEntry: React.FC = () => {
         setMachineName(currentProject.machineName || currentProject.machineType || currentProject.name);
       }
       if (currentProject.vendorName || currentProject.vendor) {
-        setVendorName(currentProject.vendorName || currentProject.vendor || 'Manav Metal');
+        setVendorName(currentProject.vendorName || currentProject.vendor || '');
       }
       if (currentProject.poNo || currentProject.poNumber) {
-        setPoNo(currentProject.poNo || currentProject.poNumber || '36');
+        setPoNo(currentProject.poNo || currentProject.poNumber || '');
       }
       if (currentProject.date || currentProject.startDate) {
         setEntryDate(currentProject.date || currentProject.startDate || new Date().toISOString().split('T')[0]);
@@ -625,7 +539,7 @@ export const ProjectMaterialEntry: React.FC = () => {
     });
 
     if (combined.length > 0) return combined;
-    return MACHINE_FREQUENT_COMPONENTS['16 HD'] || [];
+    return [];
   }, [machineName, projectRequirements]);
 
   // Handle Smart Duplicate / Use Previous Order
@@ -738,13 +652,13 @@ export const ProjectMaterialEntry: React.FC = () => {
       id: `sug-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       machineName: machineName || targetProject,
       date: entryDate || new Date().toISOString().split('T')[0],
-      poNo: poNo || '36',
+      poNo: poNo || '',
       srNo: rows.length + 1,
       materialType: part.materialType,
       sizeSpecs: part.sizeSpecs,
       quantity: part.qty,
       unit: part.unit,
-      vendorName: vendorName || 'Manav Metal',
+      vendorName: vendorName || '',
       description: part.description,
       orderedBy: activeOrderedBy,
       projectName: targetProject,
@@ -762,13 +676,13 @@ export const ProjectMaterialEntry: React.FC = () => {
       id: `sug-all-${Date.now()}-${idx}`,
       machineName: machineName || targetProject,
       date: entryDate || new Date().toISOString().split('T')[0],
-      poNo: poNo || '36',
+      poNo: poNo || '',
       srNo: rows.length + idx + 1,
       materialType: part.materialType,
       sizeSpecs: part.sizeSpecs,
       quantity: part.qty,
       unit: part.unit,
-      vendorName: vendorName || 'Manav Metal',
+      vendorName: vendorName || '',
       description: part.description,
       orderedBy: activeOrderedBy,
       projectName: targetProject,
@@ -786,8 +700,8 @@ export const ProjectMaterialEntry: React.FC = () => {
     const found = projects.find((p) => p.name === pName);
     if (found) {
       if (found.machineName || found.machineType) setMachineName(found.machineName || found.machineType || found.name);
-      if (found.vendorName || found.vendor) setVendorName(found.vendorName || found.vendor || 'Manav Metal');
-      if (found.poNo || found.poNumber) setPoNo(found.poNo || found.poNumber || '36');
+      if (found.vendorName || found.vendor) setVendorName(found.vendorName || found.vendor || '');
+      if (found.poNo || found.poNumber) setPoNo(found.poNo || found.poNumber || '');
       if (found.date || found.createdDate) setEntryDate(found.date || found.createdDate || new Date().toISOString().split('T')[0]);
 
       // Sync workstation rows with the project's actual material requirements
@@ -796,13 +710,13 @@ export const ProjectMaterialEntry: React.FC = () => {
         id: m.id,
         machineName: m.machineName || m.machineType || found.machineType || found.name,
         date: m.poDate || m.date || found.startDate || new Date().toISOString().split('T')[0],
-        poNo: m.poNumber || m.poNo || found.poNumber || '36',
+        poNo: m.poNumber || m.poNo || found.poNumber || found.poNo || '',
         srNo: idx + 1,
         materialType: m.materialType as MaterialType,
         sizeSpecs: m.sizeSpecs,
         quantity: m.quantity,
         unit: m.unit || 'Nos',
-        vendorName: m.vendor || m.vendorName || found.vendor || 'Manav Metal',
+        vendorName: m.vendor || m.vendorName || found.vendor || found.vendorName || '',
         description: m.description,
         orderedBy: m.orderedBy || activeOrderedBy,
         projectName: found.name,
@@ -841,8 +755,8 @@ export const ProjectMaterialEntry: React.FC = () => {
       targetCompletionDate: formattedTargetDate,
       priority: 'high',
       projectValue: 450000,
-      vendor: vendorName || 'Manav Metal',
-      vendorName: vendorName || 'Manav Metal',
+      vendor: vendorName || '',
+      vendorName: vendorName || '',
       orderedBy: activeOrderedBy,
       materialsCount: 0,
       totalQuantity: 0,
@@ -1584,6 +1498,17 @@ export const ProjectMaterialEntry: React.FC = () => {
           >
             <Zap className="w-4 h-4 text-amber-300" />
             <span>⚡ Load Machine BOM</span>
+          </button>
+
+          {/* Full Factory Reset Button */}
+          <button
+            type="button"
+            onClick={() => setIsFactoryResetModalOpen(true)}
+            className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 border border-rose-400/40 hover:border-rose-500 text-xs font-black transition-all flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
+            title="Reset all data, materials, suggestions, BOMs, and workstation memory to clean factory baseline"
+          >
+            <RotateCcw className="w-4 h-4 text-rose-500" />
+            <span>Factory Reset</span>
           </button>
 
           <button
@@ -2935,31 +2860,34 @@ export const ProjectMaterialEntry: React.FC = () => {
         <Modal
           isOpen={isBOMModalOpen}
           onClose={() => setIsBOMModalOpen(false)}
-          title={`⚡ Standard Factory BOM: ${selectedBOMTemplateKey}`}
+          title={selectedBOMTemplateKey ? `⚡ Standard Factory BOM: ${selectedBOMTemplateKey}` : '⚡ Standard Factory BOM Templates'}
           subtitle="1-Click load all precision engineered standard parts into the active table"
           maxWidth="4xl"
         >
           {(() => {
-            const tmpl = MACHINE_BOM_TEMPLATES[selectedBOMTemplateKey];
-            if (!tmpl) {
+            const hasTemplates = Object.keys(MACHINE_BOM_TEMPLATES).length > 0;
+            const tmpl = selectedBOMTemplateKey ? MACHINE_BOM_TEMPLATES[selectedBOMTemplateKey] : null;
+
+            if (!hasTemplates || !tmpl) {
               return (
-                <div className="p-6 text-center text-slate-400">
-                  <p>No standard BOM template found for "{selectedBOMTemplateKey}".</p>
-                  <div className="mt-4 flex flex-wrap justify-center gap-2">
-                    {Object.keys(MACHINE_BOM_TEMPLATES).map((key) => (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => {
-                          setSelectedBOMTemplateKey(key);
-                          const t = MACHINE_BOM_TEMPLATES[key];
-                          if (t) setSelectedBOMPartIndices(t.parts.map((_, i) => i));
-                        }}
-                        className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-200 text-xs font-bold hover:bg-slate-700"
-                      >
-                        {key}
-                      </button>
-                    ))}
+                <div className="p-8 text-center space-y-4">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto">
+                    <Sparkles className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white">Factory Clean BOM State</h4>
+                    <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+                      No sample BOM templates are preloaded. You can build, configure, and save customized BOM structures in the BOM Management module.
+                    </p>
+                  </div>
+                  <div className="flex justify-center gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsBOMModalOpen(false)}
+                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all"
+                    >
+                      Close
+                    </button>
                   </div>
                 </div>
               );
@@ -3237,6 +3165,55 @@ export const ProjectMaterialEntry: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* ========================================================================= */}
+      {/* MODAL: FACTORY RESET CONFIRMATION */}
+      {/* ========================================================================= */}
+      {isFactoryResetModalOpen && (
+        <Modal
+          isOpen={isFactoryResetModalOpen}
+          onClose={() => setIsFactoryResetModalOpen(false)}
+          title="⚠️ Factory Reset System Baseline"
+          subtitle="Reset all info, suggestions, BOMs, active orders, and cache to blank slate"
+          maxWidth="md"
+        >
+          <div className="space-y-4 p-1">
+            <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 space-y-2">
+              <div className="flex items-center gap-2 font-black text-rose-800 text-sm">
+                <RotateCcw className="w-5 h-5 text-rose-600 animate-spin-reverse" />
+                <span>Full Factory Data & Suggestion Wipe</span>
+              </div>
+              <p className="text-xs text-rose-700 leading-relaxed">
+                This action will reset your workstation and system database to a pure, clean blank slate:
+              </p>
+              <ul className="text-xs text-rose-800 space-y-1 list-disc list-inside font-medium">
+                <li>Clear all active material entry rows and drafts</li>
+                <li>Clear all custom suggestion memory (descriptions, sizes, units)</li>
+                <li>Reset projects, requirements, purchase orders, and BOMs</li>
+                <li>Purge temporary browser state and cache</li>
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsFactoryResetModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmFactoryReset}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-all shadow-md shadow-rose-600/20 flex items-center gap-1.5 cursor-pointer active:scale-95"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>Yes, Factory Reset Everything</span>
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

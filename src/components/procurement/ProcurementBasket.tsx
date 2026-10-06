@@ -218,15 +218,13 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
   const [isDirectPOModalOpen, setIsDirectPOModalOpen] = useState(false);
   const [directPOForm, setDirectPOForm] = useState({
     poNumber: '',
-    vendor: 'Manav Metal',
+    vendor: '',
     expectedDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
     paymentTerms: '30 Days Net',
-    notes: 'Material test certificate SS 304 required with delivery.',
+    notes: '',
     projectName: '',
     machineName: '',
-    items: [
-      { material: 'SS Flat 80 x 6 x 485', sizeSpecs: '80 x 6 x 485', qty: 2, unit: 'Nos', rate: 450, amount: 900 }
-    ]
+    items: [] as { material: string; sizeSpecs: string; qty: number; unit: string; rate: number; amount: number }[]
   });
 
   const allPoVendors = useMemo(() => {
@@ -558,8 +556,8 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
     };
   }, [activeRequirements]);
 
-  // Smart Vendor Suggestions Generator
-  const getSmartVendorSuggestions = (materialType: string, sizeSpecs?: string) => {
+  // Smart Vendor Suggestions Generator (Dynamically matches against real registered vendors and purchase history)
+  const getSmartVendorSuggestions = (materialType: string, _sizeSpecs?: string) => {
     const matUpper = (materialType || '').toUpperCase();
     const suggestions: {
       vendorName: string;
@@ -569,36 +567,23 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
       matchReason: string;
     }[] = [];
 
-    if (matUpper.includes('FLAT') || matUpper.includes('PATTI') || matUpper.includes('STRIP')) {
-      suggestions.push(
-        { vendorName: 'Manav Metal', lastRate: 320, lastPurchaseDate: '2026-09-12', orderCount: 142, matchReason: 'Top Supplier for SS Flats (99.2% Quality)' },
-        { vendorName: 'Apex Steel', lastRate: 335, lastPurchaseDate: '2026-08-28', orderCount: 68, matchReason: 'Alternate Vendor (Immediate Stock)' },
-        { vendorName: 'Shreeji Tubes', lastRate: 340, lastPurchaseDate: '2026-08-15', orderCount: 95, matchReason: 'Fast 2-Day Delivery' }
-      );
-    } else if (matUpper.includes('PIPE') || matUpper.includes('TUBE') || matUpper.includes('HOLLOW')) {
-      suggestions.push(
-        { vendorName: 'Apex Steel', lastRate: 360, lastPurchaseDate: '2026-09-10', orderCount: 68, matchReason: 'Specialist in SS 316L Seamless Pipes & Flanges' },
-        { vendorName: 'Shreeji Tubes', lastRate: 365, lastPurchaseDate: '2026-08-20', orderCount: 95, matchReason: 'OD106/OD75 standard sizes in ready stock' },
-        { vendorName: 'Manav Metal', lastRate: 375, lastPurchaseDate: '2026-08-05', orderCount: 142, matchReason: 'Full length pipe stockist' }
-      );
-    } else if (matUpper.includes('BAR') || matUpper.includes('ROUND') || matUpper.includes('ROD') || matUpper.includes('SHAFT') || matUpper.includes('HEX')) {
-      suggestions.push(
-        { vendorName: 'Shreeji Tubes', lastRate: 290, lastPurchaseDate: '2026-09-08', orderCount: 95, matchReason: 'Lowest Rate on SS Round Bar (₹290/kg)' },
-        { vendorName: 'Manav Metal', lastRate: 305, lastPurchaseDate: '2026-08-22', orderCount: 142, matchReason: 'Pre-machined centerless ground bars' },
-        { vendorName: 'Jindal Stainless Stockist Hub', lastRate: 315, lastPurchaseDate: '2026-08-10', orderCount: 54, matchReason: 'Mill Test Certified (MTC)' }
-      );
-    } else if (matUpper.includes('BOLT') || matUpper.includes('NUT') || matUpper.includes('FASTENER') || matUpper.includes('BEARING')) {
-      suggestions.push(
-        { vendorName: 'Precision Fasteners & Hardware', lastRate: 45, lastPurchaseDate: '2026-09-14', orderCount: 95, matchReason: 'Complete Allen Bolts & Hardware Inventory' },
-        { vendorName: 'Manav Metal', lastRate: 50, lastPurchaseDate: '2026-08-18', orderCount: 142, matchReason: 'Standard fast delivery' }
-      );
-    } else {
-      suggestions.push(
-        { vendorName: 'Manav Metal', lastRate: 325, lastPurchaseDate: '2026-09-12', orderCount: 142, matchReason: 'General SS Stockist & Raw Material Hub' },
-        { vendorName: 'Apex Steel', lastRate: 340, lastPurchaseDate: '2026-08-28', orderCount: 68, matchReason: 'High quality fabrication stock' },
-        { vendorName: 'Shreeji Tubes', lastRate: 335, lastPurchaseDate: '2026-08-15', orderCount: 95, matchReason: 'Industrial raw materials supplier' }
-      );
+    if (!vendors || vendors.length === 0) {
+      return suggestions;
     }
+
+    vendors.forEach((v) => {
+      const vMat = (v.materialSupplied || '').toUpperCase();
+      const isMatch = matUpper && (vMat.includes(matUpper) || matUpper.includes(vMat));
+      if (isMatch || suggestions.length < 3) {
+        suggestions.push({
+          vendorName: v.name,
+          lastRate: 0,
+          lastPurchaseDate: '-',
+          orderCount: v.totalOrders || 0,
+          matchReason: isMatch ? `Matched Category (${v.materialSupplied})` : 'Registered Supplier Directory',
+        });
+      }
+    });
 
     return suggestions;
   };
@@ -729,7 +714,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
       alert('Please select at least 1 material row to assign a vendor.');
       return;
     }
-    setSelectedVendorForAssign(allVendorsList[0] || 'Manav Metal');
+    setSelectedVendorForAssign(allVendorsList[0] || '');
     setIsAssignVendorModalOpen(true);
   };
 
@@ -807,7 +792,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
       alert('Please select at least 1 material item to generate RFQ.');
       return;
     }
-    setRfqTargetVendors(vendorName && vendorName !== 'Unassigned' ? [vendorName] : [allVendorsList[0] || 'Manav Metal']);
+    setRfqTargetVendors(vendorName && vendorName !== 'Unassigned' ? [vendorName] : (allVendorsList[0] ? [allVendorsList[0]] : []));
     setRfqNotes('Please submit competitive rate and delivery timeline for raw material fabrication.');
     setIsRFQModalOpen(true);
   };
@@ -880,7 +865,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
         ? vendorName
         : distinctItemVendors.length > 0
         ? distinctItemVendors[0]
-        : allVendorsList[0] || 'Manav Metal') || 'Manav Metal';
+        : allVendorsList[0] || '') || '';
 
     setPoTargetVendor(targetV);
     setPoCustomNumber(`PO-RSB-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`);
@@ -944,7 +929,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
         ? vendorName
         : distinctItemVendors.length > 0
         ? distinctItemVendors[0]
-        : allVendorsList[0] || 'Manav Metal') || 'Manav Metal';
+        : allVendorsList[0] || '') || '';
 
     const phone = getVendorMobile(targetV, vendors);
     const finalPONum = poNum || `PO-RSB-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
