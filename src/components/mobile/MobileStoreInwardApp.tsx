@@ -114,10 +114,22 @@ export const MobileStoreInwardApp: React.FC = () => {
     const set = new Set<string>();
     activeProjectMaterials.forEach((m) => {
       const mch = (m.machineName || m.machineType || '').trim();
-      if (mch) set.add(mch);
+      if (
+        mch &&
+        mch.toLowerCase() !== (activeProject?.name || '').toLowerCase().trim() &&
+        !['kaustubh', 'amit', 'admin', 'rahul', 'general'].includes(mch.toLowerCase())
+      ) {
+        set.add(mch);
+      }
     });
-    if (activeProject?.machineType?.trim()) set.add(activeProject.machineType.trim());
-    if (activeProject?.machineName?.trim()) set.add(activeProject.machineName.trim());
+    if (
+      set.size === 0 &&
+      activeProject?.machineName &&
+      activeProject.machineName.toLowerCase().trim() !== (activeProject?.name || '').toLowerCase().trim() &&
+      !['kaustubh', 'amit', 'admin', 'rahul', 'general'].includes(activeProject.machineName.toLowerCase())
+    ) {
+      set.add(activeProject.machineName.trim());
+    }
     return Array.from(set);
   }, [activeProjectMaterials, activeProject]);
 

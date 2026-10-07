@@ -168,17 +168,28 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     ? Math.round((receivedMaterialsCount / displayMaterials.length) * 100)
     : 0;
 
-  // Aggregate all unique machine types from project definition and all materials (no forced '16 HD')
+  // Aggregate all unique machine types from materials (excluding project name or user names)
   const uniqueMachineTypes = useMemo(() => {
     const set = new Set<string>();
-    if (project.machineName) set.add(project.machineName);
-    if (project.machineType) set.add(project.machineType);
     displayMaterials.forEach((m) => {
-      if (m.machineName) set.add(m.machineName);
-      if (m.machineType) set.add(m.machineType);
+      const name = (m.machineName || m.machineType || '').trim();
+      if (
+        name &&
+        name.toLowerCase() !== project.name.toLowerCase().trim() &&
+        !['kaustubh', 'amit', 'admin', 'rahul', 'general'].includes(name.toLowerCase())
+      ) {
+        set.add(name);
+      }
     });
-    const res = Array.from(set).filter(Boolean);
-    return res;
+    if (
+      set.size === 0 &&
+      project.machineName &&
+      project.machineName.toLowerCase().trim() !== project.name.toLowerCase().trim() &&
+      !['kaustubh', 'amit', 'admin', 'rahul', 'general'].includes(project.machineName.toLowerCase())
+    ) {
+      set.add(project.machineName.trim());
+    }
+    return Array.from(set);
   }, [project, displayMaterials]);
 
   // Machine Folder Statistics Map (for each machine category folder)

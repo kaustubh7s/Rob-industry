@@ -142,15 +142,27 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
       const createdDate = p.createdDate || p.startDate || new Date().toISOString().split('T')[0];
       const lastUpdatedDate = p.lastUpdatedDate || 'Today';
 
-      // Aggregate all unique machine types from project and all its material requirements
+      // Aggregate all unique machine types from materials (excluding project name and user names)
       const machineSet = new Set<string>();
-      if (p.machineName) machineSet.add(p.machineName);
-      if (p.machineType) machineSet.add(p.machineType);
       mats.forEach((m) => {
-        if (m.machineName) machineSet.add(m.machineName);
-        if (m.machineType) machineSet.add(m.machineType);
+        const mName = (m.machineName || m.machineType || '').trim();
+        if (
+          mName &&
+          mName.toLowerCase() !== p.name.toLowerCase().trim() &&
+          !['kaustubh', 'amit', 'admin', 'rahul', 'general'].includes(mName.toLowerCase())
+        ) {
+          machineSet.add(mName);
+        }
       });
-      const machineTypes = Array.from(machineSet).filter(Boolean);
+      if (
+        machineSet.size === 0 &&
+        p.machineName &&
+        p.machineName.toLowerCase().trim() !== p.name.toLowerCase().trim() &&
+        !['kaustubh', 'amit', 'admin', 'rahul', 'general'].includes(p.machineName.toLowerCase())
+      ) {
+        machineSet.add(p.machineName.trim());
+      }
+      const machineTypes = Array.from(machineSet);
 
       const receivedMaterials = mats.filter((m) => m.isReceived).length;
       const arrivalPct = totalMaterials > 0 ? Math.round((receivedMaterials / totalMaterials) * 100) : 0;
