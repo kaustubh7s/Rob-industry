@@ -3799,17 +3799,6 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const resetToDemoData = () => {
-    const isKaustubh =
-      currentUser?.id === 'usr-kaustubh' ||
-      currentUser?.email?.toLowerCase().includes('kaustubh') ||
-      currentUser?.name?.toLowerCase().includes('kaustubh') ||
-      currentUser?.role === 'kaustubh';
-
-    if (!isKaustubh) {
-      addNotification('Access Denied', 'Factory Reset is strictly restricted to Kaustubh.', 'danger');
-      return;
-    }
-
     setMaterials(INITIAL_MATERIALS);
     setProjectRequirements(INITIAL_PROJECT_REQUIREMENTS);
     setVendors(INITIAL_VENDORS);

@@ -40,8 +40,8 @@ export const SuperAdminPanel: React.FC = () => {
 
   const isKaustubhAdmin =
     currentUser?.id === 'usr-kaustubh' ||
-    currentUser?.email?.toLowerCase().includes('kaustubh') ||
-    currentUser?.name?.toLowerCase().includes('kaustubh') ||
+    currentUser?.email?.toLowerCase() === 'kaustubh@rsbequipments.com' ||
+    currentUser?.name?.toLowerCase() === 'kaustubh' ||
     currentUser?.role === 'kaustubh';
 
   const handleBackupFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -203,26 +203,21 @@ export const SuperAdminPanel: React.FC = () => {
             )}
           </div>
 
-          {isKaustubhAdmin && (
-            <div className="sm:col-span-2 p-6 rounded-2xl bg-rose-500/10 border border-rose-500/30 space-y-3">
-              <div className="flex items-center gap-2 text-rose-400">
-                <AlertTriangle className="w-5 h-5 shrink-0" />
-                <h4 className="text-sm font-bold">Factory State Reset</h4>
-                <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30">
-                  Kaustubh Only
-                </span>
-              </div>
-              <p className="text-xs text-slate-400">
-                Clear all runtime data, suggestions, BOMs, active orders, and cached browser storage to restore a clean, pristine factory baseline.
-              </p>
-              <button
-                onClick={resetToDemoData}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-xl transition-all shadow-md cursor-pointer"
-              >
-                Reset to Factory Baseline
-              </button>
+          <div className="sm:col-span-2 p-6 rounded-2xl bg-rose-500/10 border border-rose-500/30 space-y-3">
+            <div className="flex items-center gap-2 text-rose-400">
+              <AlertTriangle className="w-5 h-5 shrink-0" />
+              <h4 className="text-sm font-bold">Factory State Reset</h4>
             </div>
-          )}
+            <p className="text-xs text-slate-400">
+              Clear all runtime data, suggestions, BOMs, active orders, and cached browser storage to restore a clean, pristine factory baseline.
+            </p>
+            <button
+              onClick={resetToDemoData}
+              className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-xl transition-all shadow-md cursor-pointer"
+            >
+              Reset to Factory Baseline
+            </button>
+          </div>
         </div>
       )}
 
