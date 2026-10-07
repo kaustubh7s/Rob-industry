@@ -775,7 +775,7 @@ export const ProjectMaterialEntry: React.FC = () => {
     const clientNameVal = newProjectForm.clientName.trim() || 'General Client';
     const clientNumVal = newProjectForm.clientNumber.trim();
     const customerDisplay = clientNumVal ? `${clientNameVal} (${clientNumVal})` : clientNameVal;
-    const resolvedMachine = newProjectForm.machineName?.trim() || machineName || newProjectForm.name.trim();
+    const resolvedMachine = newProjectForm.machineName?.trim() || '';
 
     const newPrj: Omit<ProjectItem, 'id'> = {
       name: newProjectForm.name.trim(),
@@ -784,7 +784,7 @@ export const ProjectMaterialEntry: React.FC = () => {
       clientName: clientNameVal,
       clientNumber: clientNumVal,
       orderSource: 'Customer PO',
-      machineType: resolvedMachine as any,
+      machineType: (resolvedMachine || newProjectForm.name.trim()) as any,
       machineName: resolvedMachine,
       poNumber: poNo || `PO-2026-${projects.length + 1}`,
       poNo: poNo || `PO-2026-${projects.length + 1}`,

@@ -100,7 +100,13 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
   } = useERP();
 
   const isSuperAdmin =
-    currentUser?.role === 'super_admin' || currentUser?.name?.toLowerCase().includes('amit');
+    currentUser?.role === 'super_admin' ||
+    currentUser?.role === 'admin' ||
+    currentUser?.role === 'kaustubh' ||
+    currentUser?.id === 'usr-kaustubh' ||
+    currentUser?.name?.toLowerCase().includes('kaustubh') ||
+    currentUser?.name?.toLowerCase().includes('amit') ||
+    currentUser?.name?.toLowerCase().includes('rahul');
   const isStoreIncharge = currentUser?.role === 'store_incharge';
 
   // Search & Filter state
@@ -614,9 +620,11 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
             const clientName = prj.customer || prj.clientName || 'Cadila Healthcare Ltd';
             const matCount = prj.totalMaterials ?? prj.materialsCount ?? 0;
             const ordBy = prj.orderedBy || 'Amit';
-            const machineList = prj.machineTypes && prj.machineTypes.length > 0
-              ? prj.machineTypes
-              : (prj.machineName || prj.machineType ? [prj.machineName || prj.machineType] : []);
+            const machineList = (
+              prj.machineTypes && prj.machineTypes.length > 0
+                ? prj.machineTypes
+                : (prj.machineName || prj.machineType ? [prj.machineName || prj.machineType] : [])
+            ).filter((mch: string) => mch && !['kaustubh', 'amit', 'admin', 'rahul', 'general'].includes(mch.toLowerCase().trim()));
 
             return (
               <div
@@ -798,9 +806,11 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
                 {filteredProjects.map((prj) => {
                   const clientName = prj.customer || prj.clientName || 'Cadila Healthcare Ltd';
                   const deliveryDate = prj.targetCompletionDate || prj.targetDate || '30-10-2026';
-                  const machineList = prj.machineTypes && prj.machineTypes.length > 0
-                    ? prj.machineTypes
-                    : (prj.machineName || prj.machineType ? [prj.machineName || prj.machineType] : []);
+                  const machineList = (
+                    prj.machineTypes && prj.machineTypes.length > 0
+                      ? prj.machineTypes
+                      : (prj.machineName || prj.machineType ? [prj.machineName || prj.machineType] : [])
+                  ).filter((mch: string) => mch && !['kaustubh', 'amit', 'admin', 'rahul', 'general'].includes(mch.toLowerCase().trim()));
 
                   return (
                     <tr key={prj.id} className="hover:bg-blue-50/40 transition-colors">
