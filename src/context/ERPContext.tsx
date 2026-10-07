@@ -64,6 +64,7 @@ import {
   dbBulkUpsertRequirements,
   pullAllDataFromSupabase,
   pushAllDataToSupabase,
+  dbFactoryResetDatabase,
   dbUpsertVendor,
   dbDeleteVendor,
   dbUpsertCustomer,
@@ -802,11 +803,68 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     safeLocalStorageSet(LOCAL_STORAGE_KEY + '_vdocs', vendorDocuments);
-  }, [vendorDocuments]);
-
-  // Initial Background Sync & Real-time Live Subscription with Supabase Cloud
+  }, [vendorDocuments]);  // Initial Background Sync & Real-time Live Subscription with Supabase Cloud
   useEffect(() => {
     let isMounted = true;
+
+    const applyGlobalFactoryReset = () => {
+      setMaterials(INITIAL_MATERIALS);
+      setProjectRequirements(INITIAL_PROJECT_REQUIREMENTS);
+      setVendors(INITIAL_VENDORS);
+      setCustomers(INITIAL_CUSTOMERS);
+      setMachines(INITIAL_MACHINES);
+      setProjects(INITIAL_PROJECTS);
+      setOrders(INITIAL_ORDERS);
+      setInwardEntries(INITIAL_INWARD);
+      setOutwardEntries(INITIAL_OUTWARD);
+      setJobCards(INITIAL_JOB_CARDS);
+      setQcInspections(INITIAL_QC);
+      setPurchaseOrders(INITIAL_PURCHASE_ORDERS);
+      setSalesOrders(INITIAL_SALES_ORDERS);
+      setCostingRecords(INITIAL_COSTING);
+      setAuditLogs(INITIAL_AUDIT_LOGS);
+      setNotifications(INITIAL_NOTIFICATIONS);
+      setBoms(INITIAL_BOMS);
+      setRfqs(INITIAL_RFQS);
+      setVendorDocuments(INITIAL_VENDOR_DOCUMENTS);
+      setTrashItems([]);
+
+      try {
+        const preserveSupabase = localStorage.getItem('RSB_SUPABASE_CONFIG_V1');
+        const preserveUser = localStorage.getItem('rsb_auth_user');
+
+        [
+          LOCAL_STORAGE_KEY + '_materials',
+          LOCAL_STORAGE_KEY + '_requirements',
+          LOCAL_STORAGE_KEY + '_vendors',
+          LOCAL_STORAGE_KEY + '_customers',
+          LOCAL_STORAGE_KEY + '_machines',
+          LOCAL_STORAGE_KEY + '_projects',
+          LOCAL_STORAGE_KEY + '_orders',
+          LOCAL_STORAGE_KEY + '_inward',
+          LOCAL_STORAGE_KEY + '_outward',
+          LOCAL_STORAGE_KEY + '_job_cards',
+          LOCAL_STORAGE_KEY + '_qc',
+          LOCAL_STORAGE_KEY + '_pos',
+          LOCAL_STORAGE_KEY + '_sos',
+          LOCAL_STORAGE_KEY + '_costing',
+          LOCAL_STORAGE_KEY + '_audit',
+          LOCAL_STORAGE_KEY + '_notifs',
+          LOCAL_STORAGE_KEY + '_boms',
+          LOCAL_STORAGE_KEY + '_rfqs',
+          LOCAL_STORAGE_KEY + '_vdocs',
+          LOCAL_STORAGE_KEY + '_trash',
+          'rsb_custom_descriptions',
+          'rsb_custom_sizes',
+          'rsb_custom_units',
+        ].forEach((k) => localStorage.removeItem(k));
+
+        if (preserveSupabase) localStorage.setItem('RSB_SUPABASE_CONFIG_V1', preserveSupabase);
+        if (preserveUser) localStorage.setItem('rsb_auth_user', preserveUser);
+      } catch (e) {
+        console.warn('LocalStorage clear error:', e);
+      }
+    };
 
     const initCloudSync = async () => {
       const client = getSupabaseClient();
@@ -818,51 +876,17 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (isMounted && pullRes.success && pullRes.data) {
           if (pullRes.data.projects) {
             const remoteProjects = pullRes.data.projects;
-            setProjects((prev) => {
-              const remoteIdSet = new Set(remoteProjects.map((p: ProjectItem) => p.id));
-              const remoteNameSet = new Set(remoteProjects.map((p: ProjectItem) => (p.name || '').trim().toLowerCase()));
-              const localOnly = prev.filter(
-                (p) => !remoteIdSet.has(p.id) && !remoteNameSet.has((p.name || '').trim().toLowerCase())
-              );
-              const merged = [...remoteProjects, ...localOnly];
-              try {
-                localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(merged));
-              } catch (e) {}
-              return merged;
-            });
+            setProjects(remoteProjects);
+            try {
+              localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(remoteProjects));
+            } catch (e) {}
           }
           if (pullRes.data.requirements) {
             const remoteReqs = pullRes.data.requirements;
-            setProjectRequirements((prev) => {
-              const localMap = new Map(prev.map((r) => [r.id, r]));
-              const updatedFromRemote = remoteReqs.map((remoteReq: ProjectMaterialRequirementItem) => {
-                const local = localMap.get(remoteReq.id);
-                const isArrived = Boolean(remoteReq.isReceived || local?.isReceived);
-                const finalVendor = local?.vendor || local?.vendorName || remoteReq.vendor || remoteReq.vendorName || '';
-                const finalVendorName = local?.vendorName || local?.vendor || remoteReq.vendorName || remoteReq.vendor || finalVendor;
-                const finalVendorStatus = local?.vendorStatus || remoteReq.vendorStatus || (finalVendor && finalVendor !== 'Unassigned' ? 'Assigned' : 'Unassigned');
-                return {
-                  ...remoteReq,
-                  vendor: finalVendor,
-                  vendorName: finalVendorName,
-                  vendorStatus: finalVendorStatus,
-                  isReceived: isArrived,
-                  receivedAt: (remoteReq.isReceived ? remoteReq.receivedAt : undefined) || local?.receivedAt || (isArrived ? (remoteReq.receivedAt || new Date().toISOString()) : undefined),
-                  receivedBy: (remoteReq.isReceived ? remoteReq.receivedBy : undefined) || local?.receivedBy || (isArrived ? (local?.receivedBy || 'Kaustubh') : undefined),
-                  receivedByInitials: (remoteReq.isReceived ? remoteReq.receivedByInitials : undefined) || local?.receivedByInitials || (isArrived ? (local?.receivedByInitials || 'K') : undefined),
-                  receivedByRole: (remoteReq.isReceived ? remoteReq.receivedByRole : undefined) || local?.receivedByRole || (isArrived ? (local?.receivedByRole || 'Admin') : undefined),
-                  receivedNotes: remoteReq.receivedNotes || local?.receivedNotes || undefined,
-                };
-              });
-
-              const remoteIdSet = new Set(remoteReqs.map((r) => r.id));
-              const localOnly = prev.filter((r) => !remoteIdSet.has(r.id));
-              const merged = [...updatedFromRemote, ...localOnly];
-              try {
-                localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(merged));
-              } catch (e) {}
-              return merged;
-            });
+            setProjectRequirements(remoteReqs);
+            try {
+              localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(remoteReqs));
+            } catch (e) {}
           }
           if (pullRes.data.materials && pullRes.data.materials.length > 0) {
             setMaterials(pullRes.data.materials);
@@ -896,7 +920,21 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn('Initial cloud pull skipped:', err);
       }
 
-      // 2. Realtime listener: Listen for any new orders/requirements saved on other devices/phones
+      // 2. Realtime broadcast listener: Global Factory Reset across all active admins/devices
+      try {
+        client
+          .channel('rsb-system-broadcast')
+          .on('broadcast', { event: 'FACTORY_RESET' }, () => {
+            console.warn('⚡ Global Factory Reset broadcast received from Supabase Cloud.');
+            applyGlobalFactoryReset();
+            addNotification('Factory Reset Applied', 'The system was reset to clean baseline by Super Admin Kaustubh.', 'warning');
+          })
+          .subscribe();
+      } catch (bErr) {
+        console.warn('System broadcast subscription error:', bErr);
+      }
+
+      // 3. Realtime listener: Listen for table mutations on other devices
       try {
         if (!isMounted) return;
         const channel = client
@@ -998,6 +1036,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   notes: updatedPrj.notes,
                   progressPct: Number(updatedPrj.progress_pct || 0),
                 };
+
                 setProjects((prev) => {
                   const existingIdx = prev.findIndex((p) => p.id === formattedPrj.id);
                   if (existingIdx >= 0) {
@@ -1031,55 +1070,22 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       broadcast = new BroadcastChannel('rsb_erp_live_sync');
       broadcast.onmessage = async (event) => {
-        if (event.data?.type === 'SYNC_ALL' || event.data?.type === 'PROJECTS_UPDATED') {
+        if (event.data?.type === 'FACTORY_RESET') {
+          applyGlobalFactoryReset();
+        } else if (event.data?.type === 'SYNC_ALL' || event.data?.type === 'PROJECTS_UPDATED') {
           const pullRes = await pullAllDataFromSupabase();
           if (pullRes.success && pullRes.data) {
-            if (pullRes.data.projects && pullRes.data.projects.length > 0) {
-              const remoteProjects = pullRes.data.projects;
-              setProjects((prev) => {
-                const remoteIdSet = new Set(remoteProjects.map((p: ProjectItem) => p.id));
-                const remoteNameSet = new Set(remoteProjects.map((p: ProjectItem) => (p.name || '').trim().toLowerCase()));
-                const localOnly = prev.filter(
-                  (p) => !remoteIdSet.has(p.id) && !remoteNameSet.has((p.name || '').trim().toLowerCase())
-                );
-                const merged = [...remoteProjects, ...localOnly];
-                try {
-                  localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(merged));
-                } catch (e) {}
-                return merged;
-              });
+            if (pullRes.data.projects) {
+              setProjects(pullRes.data.projects);
+              try {
+                localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(pullRes.data.projects));
+              } catch (e) {}
             }
-            if (pullRes.data.requirements && pullRes.data.requirements.length > 0) {
-              const remoteReqs = pullRes.data.requirements;
-              setProjectRequirements((prev) => {
-                const localMap = new Map(prev.map((r) => [r.id, r]));
-                const updatedFromRemote = remoteReqs.map((remoteReq: ProjectMaterialRequirementItem) => {
-                  const local = localMap.get(remoteReq.id);
-                  const isArrived = Boolean(remoteReq.isReceived || local?.isReceived);
-                  const finalVendor = local?.vendor || local?.vendorName || remoteReq.vendor || remoteReq.vendorName || '';
-                  const finalVendorName = local?.vendorName || local?.vendor || remoteReq.vendorName || remoteReq.vendor || finalVendor;
-                  const finalVendorStatus = local?.vendorStatus || remoteReq.vendorStatus || (finalVendor && finalVendor !== 'Unassigned' ? 'Assigned' : 'Unassigned');
-                  return {
-                    ...remoteReq,
-                    vendor: finalVendor,
-                    vendorName: finalVendorName,
-                    vendorStatus: finalVendorStatus,
-                    isReceived: isArrived,
-                    receivedAt: (remoteReq.isReceived ? remoteReq.receivedAt : undefined) || local?.receivedAt || (isArrived ? (remoteReq.receivedAt || new Date().toISOString()) : undefined),
-                    receivedBy: (remoteReq.isReceived ? remoteReq.receivedBy : undefined) || local?.receivedBy || (isArrived ? (local?.receivedBy || 'Kaustubh') : undefined),
-                    receivedByInitials: (remoteReq.isReceived ? remoteReq.receivedByInitials : undefined) || local?.receivedByInitials || (isArrived ? (local?.receivedByInitials || 'K') : undefined),
-                    receivedByRole: (remoteReq.isReceived ? remoteReq.receivedByRole : undefined) || local?.receivedByRole || (isArrived ? (local?.receivedByRole || 'Admin') : undefined),
-                    receivedNotes: remoteReq.receivedNotes || local?.receivedNotes || undefined,
-                  };
-                });
-                const remoteIdSet = new Set(remoteReqs.map((r) => r.id));
-                const localOnly = prev.filter((r) => !remoteIdSet.has(r.id));
-                const merged = [...updatedFromRemote, ...localOnly];
-                try {
-                  localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(merged));
-                } catch (e) {}
-                return merged;
-              });
+            if (pullRes.data.requirements) {
+              setProjectRequirements(pullRes.data.requirements);
+              try {
+                localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(pullRes.data.requirements));
+              } catch (e) {}
             }
           }
         }
@@ -1093,51 +1099,16 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const pullRes = await pullAllDataFromSupabase();
         if (pullRes.success && pullRes.data) {
           if (pullRes.data.projects) {
-            const remoteProjects = pullRes.data.projects;
-            setProjects((prev) => {
-              const remoteIdSet = new Set(remoteProjects.map((p: ProjectItem) => p.id));
-              const remoteNameSet = new Set(remoteProjects.map((p: ProjectItem) => (p.name || '').trim().toLowerCase()));
-              const localOnly = prev.filter(
-                (p) => !remoteIdSet.has(p.id) && !remoteNameSet.has((p.name || '').trim().toLowerCase())
-              );
-              const merged = [...remoteProjects, ...localOnly];
-              try {
-                localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(merged));
-              } catch (e) {}
-              return merged;
-            });
+            setProjects(pullRes.data.projects);
+            try {
+              localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(pullRes.data.projects));
+            } catch (e) {}
           }
           if (pullRes.data.requirements) {
-            const remoteReqs = pullRes.data.requirements;
-            setProjectRequirements((prev) => {
-              const localMap = new Map(prev.map((r) => [r.id, r]));
-              const updatedFromRemote = remoteReqs.map((remoteReq: ProjectMaterialRequirementItem) => {
-                const local = localMap.get(remoteReq.id);
-                const isArrived = Boolean(remoteReq.isReceived || local?.isReceived);
-                const finalVendor = local?.vendor || local?.vendorName || remoteReq.vendor || remoteReq.vendorName || '';
-                const finalVendorName = local?.vendorName || local?.vendor || remoteReq.vendorName || remoteReq.vendor || finalVendor;
-                const finalVendorStatus = local?.vendorStatus || remoteReq.vendorStatus || (finalVendor && finalVendor !== 'Unassigned' ? 'Assigned' : 'Unassigned');
-                return {
-                  ...remoteReq,
-                  vendor: finalVendor,
-                  vendorName: finalVendorName,
-                  vendorStatus: finalVendorStatus,
-                  isReceived: isArrived,
-                  receivedAt: (remoteReq.isReceived ? remoteReq.receivedAt : undefined) || local?.receivedAt || (isArrived ? (remoteReq.receivedAt || new Date().toISOString()) : undefined),
-                  receivedBy: (remoteReq.isReceived ? remoteReq.receivedBy : undefined) || local?.receivedBy || (isArrived ? (local?.receivedBy || 'Kaustubh') : undefined),
-                  receivedByInitials: (remoteReq.isReceived ? remoteReq.receivedByInitials : undefined) || local?.receivedByInitials || (isArrived ? (local?.receivedByInitials || 'K') : undefined),
-                  receivedByRole: (remoteReq.isReceived ? remoteReq.receivedByRole : undefined) || local?.receivedByRole || (isArrived ? (local?.receivedByRole || 'Admin') : undefined),
-                  receivedNotes: remoteReq.receivedNotes || local?.receivedNotes || undefined,
-                };
-              });
-              const remoteIdSet = new Set(remoteReqs.map((r) => r.id));
-              const localOnly = prev.filter((r) => !remoteIdSet.has(r.id));
-              const merged = [...updatedFromRemote, ...localOnly];
-              try {
-                localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(merged));
-              } catch (e) {}
-              return merged;
-            });
+            setProjectRequirements(pullRes.data.requirements);
+            try {
+              localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(pullRes.data.requirements));
+            } catch (e) {}
           }
         }
       } catch (err) {
@@ -3798,7 +3769,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
   };
 
-  const resetToDemoData = () => {
+  const resetToDemoData = async () => {
     const isKaustubh =
       currentUser?.id === 'usr-kaustubh' ||
       currentUser?.email?.toLowerCase().includes('kaustubh') ||
@@ -3810,6 +3781,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
 
+    // 1. Reset all React state slices to clean baseline
     setMaterials(INITIAL_MATERIALS);
     setProjectRequirements(INITIAL_PROJECT_REQUIREMENTS);
     setVendors(INITIAL_VENDORS);
@@ -3831,18 +3803,59 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setVendorDocuments(INITIAL_VENDOR_DOCUMENTS);
     setTrashItems([]);
 
+    // 2. Clear local storage cache
     try {
-      const preserveSupabase = localStorage.getItem('rsb_supabase_config');
-      localStorage.clear();
-      if (preserveSupabase) {
-        localStorage.setItem('rsb_supabase_config', preserveSupabase);
-      }
+      const preserveSupabase = localStorage.getItem('RSB_SUPABASE_CONFIG_V1');
+      const preserveUser = localStorage.getItem('rsb_auth_user');
+
+      [
+        LOCAL_STORAGE_KEY + '_materials',
+        LOCAL_STORAGE_KEY + '_requirements',
+        LOCAL_STORAGE_KEY + '_vendors',
+        LOCAL_STORAGE_KEY + '_customers',
+        LOCAL_STORAGE_KEY + '_machines',
+        LOCAL_STORAGE_KEY + '_projects',
+        LOCAL_STORAGE_KEY + '_orders',
+        LOCAL_STORAGE_KEY + '_inward',
+        LOCAL_STORAGE_KEY + '_outward',
+        LOCAL_STORAGE_KEY + '_job_cards',
+        LOCAL_STORAGE_KEY + '_qc',
+        LOCAL_STORAGE_KEY + '_pos',
+        LOCAL_STORAGE_KEY + '_sos',
+        LOCAL_STORAGE_KEY + '_costing',
+        LOCAL_STORAGE_KEY + '_audit',
+        LOCAL_STORAGE_KEY + '_notifs',
+        LOCAL_STORAGE_KEY + '_boms',
+        LOCAL_STORAGE_KEY + '_rfqs',
+        LOCAL_STORAGE_KEY + '_vdocs',
+        LOCAL_STORAGE_KEY + '_trash',
+        'rsb_custom_descriptions',
+        'rsb_custom_sizes',
+        'rsb_custom_units',
+      ].forEach((k) => localStorage.removeItem(k));
+
+      if (preserveSupabase) localStorage.setItem('RSB_SUPABASE_CONFIG_V1', preserveSupabase);
+      if (preserveUser) localStorage.setItem('rsb_auth_user', preserveUser);
     } catch (e) {
       console.warn('LocalStorage clear error:', e);
     }
 
-    logAudit('System Factory Reset', 'Super Admin', 'Reset full ERP database to factory baseline');
-    addNotification('Factory Reset Complete', 'Reset all info, suggestions, BOMs, and entries to clean factory state', 'warning');
+    // 3. Broadcast to all open local browser tabs
+    try {
+      const bc = new BroadcastChannel('rsb_erp_live_sync');
+      bc.postMessage({ type: 'FACTORY_RESET' });
+      bc.close();
+    } catch (e) {}
+
+    // 4. Purge Supabase Cloud Database & Broadcast global reset to all devices (e.g. Amit)
+    try {
+      await dbFactoryResetDatabase();
+    } catch (e) {
+      console.warn('Supabase cloud factory reset error:', e);
+    }
+
+    logAudit('System Factory Reset', 'Kaustubh Master', 'Reset full ERP cloud database and client states to clean factory baseline');
+    addNotification('Factory Reset Complete', 'Reset all projects, suggestions, BOMs, and entries across all connected devices.', 'warning');
   };
 
   const exportDatabaseBackup = () => {
