@@ -1450,3 +1450,52 @@ export const dbExportSheetToERPRequirements = async (
   };
 };
 
+// Purge all runtime records from Supabase Cloud PostgreSQL tables & broadcast global reset to all admins/devices
+export const dbFactoryResetDatabase = async (): Promise<{ success: boolean; message: string }> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    return { success: false, message: 'Supabase client is not configured' };
+  }
+
+  try {
+    const tables = [
+      'project_material_requirements',
+      'projects',
+      'manufacturing_orders',
+      'inward_entries',
+      'outward_entries',
+      'job_cards',
+    ];
+
+    for (const table of tables) {
+      try {
+        await supabase.from(table).delete().neq('id', '___force_delete_all_sentinel___');
+      } catch (e) {
+        console.warn(`Supabase table ${table} purge error:`, e);
+      }
+    }
+
+    // Send realtime broadcast to all active devices/admins (e.g. Amit, Rahul, Store Incharge)
+    try {
+      const channel = supabase.channel('rsb-system-broadcast');
+      await channel.subscribe();
+      await channel.send({
+        type: 'broadcast',
+        event: 'FACTORY_RESET',
+        payload: {
+          timestamp: Date.now(),
+          by: 'Kaustubh',
+        },
+      });
+    } catch (bErr) {
+      console.warn('Realtime broadcast FACTORY_RESET failed:', bErr);
+    }
+
+    return { success: true, message: 'Supabase tables purged and broadcast signal sent.' };
+  } catch (err: any) {
+    console.error('dbFactoryResetDatabase error:', err);
+    return { success: false, message: err?.message || 'Database purge error' };
+  }
+};
+
+

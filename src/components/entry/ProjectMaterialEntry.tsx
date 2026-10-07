@@ -814,7 +814,10 @@ export const ProjectMaterialEntry: React.FC = () => {
 
     addProject(newPrj);
     setSelectedProjectName(newPrj.name);
-    setMachineName(resolvedMachine);
+    setMachineName('');
+    setRows([]);
+    setVendorName('');
+    setPoNo('');
     setIsAddProjectModalOpen(false);
     setNewProjectForm({
       name: '',
@@ -826,7 +829,7 @@ export const ProjectMaterialEntry: React.FC = () => {
     });
 
     confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
-    setSaveToast(`✨ Created Project "${newPrj.name}" & Learned Machine "${resolvedMachine}"!`);
+    setSaveToast(`✨ Created Project "${newPrj.name}"!`);
     window.dispatchEvent(new CustomEvent('rsb:tour:project-created', { detail: { project: newPrj } }));
     setTimeout(() => setSaveToast(null), 4000);
   };
@@ -1654,7 +1657,7 @@ export const ProjectMaterialEntry: React.FC = () => {
             >
               {projects.map((p) => (
                 <option key={p.id} value={p.name} className="bg-slate-900 text-white py-2 text-sm font-semibold">
-                  📁 {p.name} (PO: {p.poNo || p.poNumber || 'N/A'}) — {p.machineName || p.machineType || 'Machine'}
+                  📁 {p.name} (PO: {p.poNo || p.poNumber || 'N/A'})
                 </option>
               ))}
               <option value="__NEW__" className="bg-indigo-950 text-amber-300 font-bold py-2">
