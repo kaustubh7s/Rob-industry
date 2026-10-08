@@ -459,27 +459,27 @@ export const ProjectMaterialEntry: React.FC = () => {
       .sort((a, b) => (Number(a.srNo) || 0) - (Number(b.srNo) || 0));
 
     if (isProjectSwitch) {
-      // Switched to a new project: update reference and load DB rows or cached draft
+      // Switched to a new project: update reference and load cached draft or DB rows
       lastSelectedProjectRef.current = selectedProjectName;
       isUserManuallyEditingRef.current = false;
-      if (mappedRows.length > 0) {
-        setRows(mappedRows);
-      } else {
-        const cached = localStorage.getItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`);
-        if (cached) {
-          try {
-            const parsed = JSON.parse(cached);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              setRows(parsed);
-            } else {
-              setRows([]);
-            }
-          } catch {
+      const cached = localStorage.getItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) {
+            setRows(parsed);
+          } else if (mappedRows.length > 0) {
+            setRows(mappedRows);
+          } else {
             setRows([]);
           }
-        } else {
-          setRows([]);
+        } catch {
+          setRows(mappedRows.length > 0 ? mappedRows : []);
         }
+      } else if (mappedRows.length > 0) {
+        setRows(mappedRows);
+      } else {
+        setRows([]);
       }
 
       // Update header fields to match project
@@ -499,22 +499,45 @@ export const ProjectMaterialEntry: React.FC = () => {
       // Still on the same project: only sync if external updates happened and user is not actively editing
       if (projectMats.length > 0) {
         setRows((prev) => {
-          // If current rows are empty or placeholder only, populate
-          const isPlaceholderOnly = prev.length === 0 || prev.every((r) => !r.description || r.description === 'New Component' || !r.sizeSpecs);
+          if (isUserManuallyEditingRef.current) return prev;
+          const isPlaceholderOnly =
+            prev.length === 0 ||
+            prev.every(
+              (r) =>
+                !r.description ||
+                r.description.trim() === '' ||
+                r.description === 'New Component' ||
+                !r.sizeSpecs ||
+                r.sizeSpecs.trim() === ''
+            );
           if (isPlaceholderOnly) {
             return mappedRows;
           }
-          if (!isUserManuallyEditingRef.current) {
-            const prevKey = prev.map((r) => `${r.id}_${r.quantity}_${r.description}_${r.sizeSpecs}`).join('|');
-            const nextKey = mappedRows.map((r) => `${r.id}_${r.quantity}_${r.description}_${r.sizeSpecs}`).join('|');
-            if (prevKey !== nextKey) {
-              return mappedRows;
-            }
+          const prevKey = prev.map((r) => `${r.id}_${r.quantity}_${r.description}_${r.sizeSpecs}_${r.materialType}`).join('|');
+          const nextKey = mappedRows.map((r) => `${r.id}_${r.quantity}_${r.description}_${r.sizeSpecs}_${r.materialType}`).join('|');
+          if (prevKey !== nextKey) {
+            return mappedRows;
           }
           return prev;
         });
+      } else {
+        if (!isUserManuallyEditingRef.current) {
+          setRows((prev) => {
+            const isPlaceholderOnly =
+              prev.length === 0 ||
+              prev.every(
+                (r) =>
+                  !r.description ||
+                  r.description.trim() === '' ||
+                  r.description === 'New Component' ||
+                  !r.sizeSpecs ||
+                  r.sizeSpecs.trim() === ''
+              );
+            if (isPlaceholderOnly) return [];
+            return prev;
+          });
+        }
       }
-      // If projectMats.length === 0 on the same project, do NOT wipe local draft rows!
     }
   }, [selectedProjectName, projectRequirements, projects]);
 
@@ -1068,13 +1091,62 @@ export const ProjectMaterialEntry: React.FC = () => {
 
   // Delete Row
   const handleDeleteRow = (rowId: string) => {
+    isUserManuallyEditingRef.current = true;
     const row = rows.find((r) => r.id === rowId);
-    if (row && projectRequirements.some((pr) => pr.id === row.id)) {
+    if (row) {
       deleteProjectRequirement(row.id);
+      const matched = projectRequirements.find(
+        (pr) =>
+          pr.id === row.id ||
+          (pr.description === row.description &&
+            pr.sizeSpecs === row.sizeSpecs &&
+            pr.projectName === (row.projectName || selectedProjectName))
+      );
+      if (matched && matched.id !== row.id) {
+        deleteProjectRequirement(matched.id);
+      }
     }
-    setRows((prev) => normalizeSrNumbers(prev.filter((r) => r.id !== rowId)));
+    const nextRows = normalizeSrNumbers(rows.filter((r) => r.id !== rowId));
+    setRows(nextRows);
+
+    if (selectedProjectName) {
+      localStorage.setItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`, JSON.stringify(nextRows));
+      localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextRows));
+
+      const targetProject = selectedProjectName;
+      const itemsToSave = nextRows.map((r, idx) => ({
+        id: r.id,
+        srNo: r.srNo || idx + 1,
+        projectName: r.projectName || targetProject,
+        customerName: targetProject,
+        poNumber: r.poNo || poNo,
+        poDate: r.date || entryDate,
+        date: r.date || entryDate,
+        machineType: (r.machineName || machineName || targetProject) as any,
+        machineName: r.machineName || machineName || targetProject,
+        poNo: r.poNo || poNo,
+        vendorName: r.vendorName || vendorName,
+        vendor: r.vendorName || vendorName,
+        description: r.description,
+        materialType: r.materialType,
+        materialGrade: 'SS 304',
+        sizeSpecs: r.sizeSpecs,
+        quantity: Number(r.quantity) || 1,
+        unit: r.unit || 'Nos',
+        orderedBy: activeOrderedBy,
+        orderSource: 'Customer PO',
+        productionStatus: 'In Production',
+        stockStatus: 'Available',
+        qcStatus: 'Passed',
+        dispatchStatus: 'Ready',
+      }));
+      replaceProjectRequirements(targetProject, itemsToSave);
+    }
     setSaveToast('Deleted row');
-    setTimeout(() => setSaveToast(null), 2000);
+    setTimeout(() => {
+      isUserManuallyEditingRef.current = false;
+      setSaveToast(null);
+    }, 1500);
   };
 
   // Delete Selected Rows in Bulk
@@ -1085,9 +1157,11 @@ export const ProjectMaterialEntry: React.FC = () => {
         `Are you sure you want to delete ${selectedRowIds.length} selected row(s)? This will move them to Trash and delete permanently from DB.`
       )
     ) {
+      isUserManuallyEditingRef.current = true;
       selectedRowIds.forEach((id) => {
         const row = rows.find((r) => r.id === id);
         if (row) {
+          deleteProjectRequirement(row.id);
           const matched = projectRequirements.find(
             (pr) =>
               pr.id === id ||
@@ -1095,15 +1169,53 @@ export const ProjectMaterialEntry: React.FC = () => {
                 pr.sizeSpecs === row.sizeSpecs &&
                 pr.projectName === (row.projectName || selectedProjectName))
           );
-          if (matched) {
+          if (matched && matched.id !== row.id) {
             deleteProjectRequirement(matched.id);
           }
         }
       });
-      setRows((prev) => normalizeSrNumbers(prev.filter((r) => !selectedRowIds.includes(r.id))));
+      const nextRows = normalizeSrNumbers(rows.filter((r) => !selectedRowIds.includes(r.id)));
+      setRows(nextRows);
+
+      if (selectedProjectName) {
+        localStorage.setItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`, JSON.stringify(nextRows));
+        localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextRows));
+
+        const targetProject = selectedProjectName;
+        const itemsToSave = nextRows.map((r, idx) => ({
+          id: r.id,
+          srNo: r.srNo || idx + 1,
+          projectName: r.projectName || targetProject,
+          customerName: targetProject,
+          poNumber: r.poNo || poNo,
+          poDate: r.date || entryDate,
+          date: r.date || entryDate,
+          machineType: (r.machineName || machineName || targetProject) as any,
+          machineName: r.machineName || machineName || targetProject,
+          poNo: r.poNo || poNo,
+          vendorName: r.vendorName || vendorName,
+          vendor: r.vendorName || vendorName,
+          description: r.description,
+          materialType: r.materialType,
+          materialGrade: 'SS 304',
+          sizeSpecs: r.sizeSpecs,
+          quantity: Number(r.quantity) || 1,
+          unit: r.unit || 'Nos',
+          orderedBy: activeOrderedBy,
+          orderSource: 'Customer PO',
+          productionStatus: 'In Production',
+          stockStatus: 'Available',
+          qcStatus: 'Passed',
+          dispatchStatus: 'Ready',
+        }));
+        replaceProjectRequirements(targetProject, itemsToSave);
+      }
       setSelectedRowIds([]);
       setSaveToast(`🗑️ Deleted ${selectedRowIds.length} rows • Moved to Trash & purged from DB`);
-      setTimeout(() => setSaveToast(null), 2500);
+      setTimeout(() => {
+        isUserManuallyEditingRef.current = false;
+        setSaveToast(null);
+      }, 2000);
     }
   };
 
