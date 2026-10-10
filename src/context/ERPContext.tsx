@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import {
   User,
   UserRole,
@@ -275,6 +275,17 @@ interface ERPContextType {
 
   // Heart of ERP: Replace/Sync project requirements with full DB reconciliation
   replaceProjectRequirements: (projectName: string, items: any[]) => void;
+  importMaterialRequirements: (
+    items: Partial<ProjectMaterialRequirementItem>[],
+    options?: {
+      projectName?: string;
+      machineName?: string;
+      vendorName?: string;
+      poNo?: string;
+      sheetName?: string;
+      batchId?: string;
+    }
+  ) => Promise<{ success: boolean; count: number; message?: string }>;
 
   // Dedicated Trash / Recycle Bin with Instant Recovery
   trashItems: TrashItem[];
@@ -866,6 +877,30 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     };
 
+    const safeMergeRequirements = (existing: ProjectMaterialRequirementItem[], remote: ProjectMaterialRequirementItem[]) => {
+      if (!remote || remote.length === 0) return existing;
+      const remoteMap = new Map(remote.map((r) => [r.id, r]));
+      const merged = [...remote];
+      existing.forEach((loc) => {
+        if (!remoteMap.has(loc.id)) {
+          merged.push(loc);
+        }
+      });
+      return merged;
+    };
+
+    const safeMergeProjects = (existing: ProjectItem[], remote: ProjectItem[]) => {
+      if (!remote || remote.length === 0) return existing;
+      const remoteMap = new Map(remote.map((p) => [p.id, p]));
+      const merged = [...remote];
+      existing.forEach((loc) => {
+        if (!remoteMap.has(loc.id)) {
+          merged.push(loc);
+        }
+      });
+      return merged;
+    };
+
     const initCloudSync = async () => {
       const client = getSupabaseClient();
       if (!client) return;
@@ -874,19 +909,25 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const pullRes = await pullAllDataFromSupabase();
         if (isMounted && pullRes.success && pullRes.data) {
-          if (pullRes.data.projects) {
+          if (pullRes.data.projects && pullRes.data.projects.length > 0) {
             const remoteProjects = pullRes.data.projects;
-            setProjects(remoteProjects);
-            try {
-              localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(remoteProjects));
-            } catch (e) {}
+            setProjects((prev) => {
+              const merged = safeMergeProjects(prev, remoteProjects);
+              try {
+                localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(merged));
+              } catch (e) {}
+              return merged;
+            });
           }
-          if (pullRes.data.requirements) {
+          if (pullRes.data.requirements && pullRes.data.requirements.length > 0) {
             const remoteReqs = pullRes.data.requirements;
-            setProjectRequirements(remoteReqs);
-            try {
-              localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(remoteReqs));
-            } catch (e) {}
+            setProjectRequirements((prev) => {
+              const merged = safeMergeRequirements(prev, remoteReqs);
+              try {
+                localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(merged));
+              } catch (e) {}
+              return merged;
+            });
           }
           if (pullRes.data.materials && pullRes.data.materials.length > 0) {
             setMaterials(pullRes.data.materials);
@@ -1075,17 +1116,25 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         } else if (event.data?.type === 'SYNC_ALL' || event.data?.type === 'PROJECTS_UPDATED') {
           const pullRes = await pullAllDataFromSupabase();
           if (pullRes.success && pullRes.data) {
-            if (pullRes.data.projects) {
-              setProjects(pullRes.data.projects);
-              try {
-                localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(pullRes.data.projects));
-              } catch (e) {}
+            if (pullRes.data.projects && pullRes.data.projects.length > 0) {
+              const remoteProjects = pullRes.data.projects;
+              setProjects((prev) => {
+                const merged = safeMergeProjects(prev, remoteProjects);
+                try {
+                  localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(merged));
+                } catch (e) {}
+                return merged;
+              });
             }
-            if (pullRes.data.requirements) {
-              setProjectRequirements(pullRes.data.requirements);
-              try {
-                localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(pullRes.data.requirements));
-              } catch (e) {}
+            if (pullRes.data.requirements && pullRes.data.requirements.length > 0) {
+              const remoteReqs = pullRes.data.requirements;
+              setProjectRequirements((prev) => {
+                const merged = safeMergeRequirements(prev, remoteReqs);
+                try {
+                  localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(merged));
+                } catch (e) {}
+                return merged;
+              });
             }
           }
         }
@@ -1098,17 +1147,25 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const pullRes = await pullAllDataFromSupabase();
         if (pullRes.success && pullRes.data) {
-          if (pullRes.data.projects) {
-            setProjects(pullRes.data.projects);
-            try {
-              localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(pullRes.data.projects));
-            } catch (e) {}
+          if (pullRes.data.projects && pullRes.data.projects.length > 0) {
+            const remoteProjects = pullRes.data.projects;
+            setProjects((prev) => {
+              const merged = safeMergeProjects(prev, remoteProjects);
+              try {
+                localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(merged));
+              } catch (e) {}
+              return merged;
+            });
           }
-          if (pullRes.data.requirements) {
-            setProjectRequirements(pullRes.data.requirements);
-            try {
-              localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(pullRes.data.requirements));
-            } catch (e) {}
+          if (pullRes.data.requirements && pullRes.data.requirements.length > 0) {
+            const remoteReqs = pullRes.data.requirements;
+            setProjectRequirements((prev) => {
+              const merged = safeMergeRequirements(prev, remoteReqs);
+              try {
+                localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(merged));
+              } catch (e) {}
+              return merged;
+            });
           }
         }
       } catch (err) {
@@ -1330,7 +1387,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return login(userId, password);
   };
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setIsAuthenticated(false);
     try {
       sessionStorage.removeItem(AUTH_SESSION_KEY);
@@ -1339,7 +1396,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.removeItem(LAST_ACTIVITY_KEY);
     } catch {}
     logAudit('System Logout', 'Authentication', `${currentUser.name} locked screen & logged out.`);
-  };
+  }, [currentUser.name]);
 
   // Automatic Inactivity Session Timeout & Activity Listener (15 minutes)
   useEffect(() => {
@@ -1392,7 +1449,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       clearInterval(interval);
     };
-  }, [isAuthenticated, currentUser.name]);
+  }, [isAuthenticated, currentUser.name, logout]);
 
   // Stock Delta Adjuster
   const adjustStock = (materialId: string, deltaQty: number, reason: string) => {
@@ -1428,8 +1485,8 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const formattedDate = req.date || req.poDate || new Date().toISOString().split('T')[0];
     const targetPrj = req.projectName || mchName;
 
-    const itemSrNo = (req as any).srNo !== undefined && (req as any).srNo !== null && !isNaN(Number((req as any).srNo)) && Number((req as any).srNo) > 0
-      ? Number((req as any).srNo)
+    const itemSrNo = (req as any).srNo !== undefined && (req as any).srNo !== null && String((req as any).srNo).trim() !== ''
+      ? (req as any).srNo
       : projectRequirements.length + 1;
 
     const newReq: ProjectMaterialRequirementItem = {
@@ -1749,10 +1806,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       (r) => (r.projectName || '').trim().toLowerCase() === projectName.trim().toLowerCase()
     );
 
-    // 1. Immediately delete from Supabase DB to purge any removed/duplicate rows
-    dbDeleteRequirementsByProject(projectName);
-
-    // 2. Map and insert active rows
+    // 1. Map active rows preserving exact Sr. No. and custom metadata
     const todayFormatted = new Date().toISOString().split('T')[0];
     const mapped: ProjectMaterialRequirementItem[] = items.map((it, idx) => {
       // Find if this item already existed in local state to preserve its receipt status / ID
@@ -1773,7 +1827,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const unit = it.unit || it['Unit'] || existing?.unit || 'Nos';
       const vendor = it.vendorName || it.vendor || existing?.vendor || '';
       const bomRef = it.bomRef || existing?.bomRef || `BOM-${prj}`;
-      const orderedBy = it.orderedBy || existing?.orderedBy || currentUser?.name || 'Amit';
+      const orderedBy = it.orderedBy || existing?.orderedBy || currentUser?.name || 'Unknown';
       const entryDate = it.date || it['Date'] || existing?.date || todayFormatted;
 
       const isReceived = it.isReceived !== undefined ? Boolean(it.isReceived) : (existing?.isReceived || false);
@@ -1798,10 +1852,10 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const machineCost = Math.round(matCost * 0.25);
 
       const resolvedId = it.id || existing?.id || ('pmr-' + (idx + 1) + '-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4));
-      const resolvedSrNo = (it.srNo !== undefined && it.srNo !== null && !isNaN(Number(it.srNo)) && Number(it.srNo) > 0)
-        ? Number(it.srNo)
-        : (existing?.srNo !== undefined && existing?.srNo !== null && !isNaN(Number(existing.srNo)) && Number(existing.srNo) > 0)
-        ? Number(existing.srNo)
+      const resolvedSrNo = (it.srNo !== undefined && it.srNo !== null && String(it.srNo).trim() !== '')
+        ? it.srNo
+        : (existing?.srNo !== undefined && existing?.srNo !== null && String(existing.srNo).trim() !== '')
+        ? existing.srNo
         : (idx + 1);
 
       return {
@@ -1852,14 +1906,34 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     });
 
-    setProjectRequirements((prev) => [
-      ...prev.filter((r) => (r.projectName || '').trim().toLowerCase() !== projectName.trim().toLowerCase()),
-      ...mapped,
-    ]);
+    // 2. Safely purge specifically removed rows from DB (rather than blanket project purge)
+    const activeIds = new Set(mapped.map((m) => m.id));
+    const removedReqs = currentProjectReqs.filter((r) => !activeIds.has(r.id));
+    removedReqs.forEach((r) => dbDeleteRequirement(r.id));
 
+    // 3. Update React state & LocalStorage
+    setProjectRequirements((prev) => {
+      const nextReqs = [
+        ...prev.filter((r) => (r.projectName || '').trim().toLowerCase() !== projectName.trim().toLowerCase()),
+        ...mapped,
+      ];
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(nextReqs));
+      } catch (e) {}
+      return nextReqs;
+    });
+
+    // 4. Authoritatively upsert active rows
     if (mapped.length > 0) {
       dbBulkUpsertRequirements(mapped);
     }
+
+    // 5. Broadcast to other open tabs
+    try {
+      const bc = new BroadcastChannel('rsb_erp_live_sync');
+      bc.postMessage({ type: 'PROJECTS_UPDATED', projectName });
+      bc.close();
+    } catch (e) {}
 
     // Update project metrics (materialsCount & totalQuantity) and sync to Supabase
     const existingProject = projects.find((p) => p.name.trim().toLowerCase() === projectName.trim().toLowerCase());
@@ -1910,7 +1984,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         progressPct: 10,
         materialsCount: mapped.length,
         totalQuantity: totalQty,
-        orderedBy: firstItem?.orderedBy || currentUser?.name || 'Amit',
+        orderedBy: firstItem?.orderedBy || currentUser?.name || 'Unknown',
       };
       addProject(autoProject);
       dbUpsertProject(autoProject);
@@ -1958,8 +2032,8 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const laborCost = Math.round(matCost * 0.4);
       const machineCost = Math.round(matCost * 0.25);
 
-      const resolvedSrNo = (it.srNo !== undefined && it.srNo !== null && !isNaN(Number(it.srNo)) && Number(it.srNo) > 0)
-        ? Number(it.srNo)
+      const resolvedSrNo = (it.srNo !== undefined && it.srNo !== null && String(it.srNo).trim() !== '')
+        ? it.srNo
         : projectRequirements.length + idx + 1;
 
       return {
@@ -2048,6 +2122,163 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       setTimeout(() => syncProjectToBOM(prjName), 50);
     });
+  };
+
+  // Authoritative Excel Import Engine Persistent Handlers
+  const importMaterialRequirements = async (
+    items: Partial<ProjectMaterialRequirementItem>[],
+    options?: {
+      projectName?: string;
+      machineName?: string;
+      vendorName?: string;
+      poNo?: string;
+      sheetName?: string;
+      batchId?: string;
+    }
+  ): Promise<{ success: boolean; count: number; message?: string }> => {
+    if (!items || items.length === 0) return { success: false, count: 0, message: 'No items to import' };
+
+    const todayFormatted = new Date().toISOString().split('T')[0];
+    const batchId = options?.batchId || `batch-${Date.now()}`;
+    const defaultProject = options?.projectName || 'Project-1';
+
+    const mapped: ProjectMaterialRequirementItem[] = items.map((it, idx) => {
+      const prj = (it.projectName || options?.projectName || defaultProject).trim();
+      const mch = (it.machineName || options?.machineName || prj).trim();
+      const poNum = (it.poNo || it.poNumber || options?.poNo || '').trim();
+      const vendorNm = (it.vendorName || it.vendor || options?.vendorName || '').trim();
+      const dateVal = it.date || it.poDate || todayFormatted;
+
+      const spec = it.sizeSpecs || 'Custom Spec';
+      const desc = it.description || 'Component';
+      const matType = it.materialType || 'SS Flat';
+      const qty = Number(it.quantity || 1);
+      const unit = it.unit || 'Nos';
+
+      const resolvedSrNo = (it.srNo !== undefined && it.srNo !== null && String(it.srNo).trim() !== '')
+        ? it.srNo
+        : (idx + 1);
+
+      const resolvedId = it.id || `pmr-imp-${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 4)}`;
+
+      return {
+        id: resolvedId,
+        srNo: resolvedSrNo,
+        description: desc,
+        materialType: matType as any,
+        materialGrade: it.materialGrade || 'SS 304',
+        sizeSpecs: spec,
+        quantity: qty,
+        unit,
+        projectName: prj,
+        customerName: it.customerName || prj,
+        poNumber: poNum,
+        poDate: dateVal,
+        machineType: (mch || prj) as any,
+        machineName: mch,
+        date: dateVal,
+        poNo: poNum,
+        vendorName: vendorNm,
+        vendor: vendorNm,
+        orderedBy: it.orderedBy || currentUser?.name || 'Unknown',
+        orderSource: 'Excel Import',
+        deliveryDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+        bomRef: it.bomRef || `BOM-${prj}`,
+        lastPurchaseRate: 450,
+        lastPurchaseDate: dateVal,
+        vendorRating: 4.9,
+        vendorReliability: 98,
+        stockStatus: 'Available',
+        availableStock: 20,
+        shortageQty: 0,
+        productionStatus: 'In Production',
+        qcStatus: 'Passed',
+        dispatchStatus: 'Ready',
+        materialCost: qty * 450,
+        laborCost: Math.round(qty * 450 * 0.4),
+        machineCost: Math.round(qty * 450 * 0.25),
+        outsourcingCost: 0,
+        totalCost: Math.round(qty * 450 * 1.65),
+        sellingPriceAllocated: Math.round(qty * 450 * 2.2),
+        isReceived: false,
+        importBatchId: batchId,
+        sourceSheetName: options?.sheetName,
+        sourceRowIndex: idx + 1,
+        originalSrNo: resolvedSrNo,
+        notes: `Imported via Intelligent Excel Parser (Batch ${batchId})`,
+      };
+    });
+
+    // 1. Update React state non-destructively
+    setProjectRequirements((prev) => {
+      const nextList = [...prev];
+      mapped.forEach((m) => {
+        const existingIdx = nextList.findIndex((r) => r.id === m.id);
+        if (existingIdx >= 0) {
+          nextList[existingIdx] = m;
+        } else {
+          nextList.push(m);
+        }
+      });
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(nextList));
+      } catch (e) {}
+      return nextList;
+    });
+
+    // 2. Persist directly to Supabase
+    const dbRes = await dbBulkUpsertRequirements(mapped);
+
+    // 3. Auto-link or update project metrics
+    const targetProjects = Array.from(new Set(mapped.map((m) => m.projectName)));
+    targetProjects.forEach((prjName) => {
+      const existingPrj = projects.find((p) => p.name.trim().toLowerCase() === prjName.trim().toLowerCase());
+      const prjRows = mapped.filter((m) => m.projectName.trim().toLowerCase() === prjName.trim().toLowerCase());
+      const firstRow = prjRows[0];
+      const totalQty = prjRows.reduce((s, r) => s + (Number(r.quantity) || 0), 0);
+
+      if (existingPrj) {
+        updateProject(existingPrj.id, {
+          materialsCount: (existingPrj.materialsCount || 0) + prjRows.length,
+          totalQuantity: (existingPrj.totalQuantity || 0) + totalQty,
+          machineName: firstRow?.machineName || existingPrj.machineName,
+          vendorName: firstRow?.vendorName || existingPrj.vendorName,
+          poNo: firstRow?.poNo || existingPrj.poNo,
+        });
+      } else {
+        addProject({
+          projectNumber: `PRJ-2026-${String(projects.length + 1).padStart(3, '0')}`,
+          name: prjName,
+          customer: firstRow?.customerName || prjName,
+          orderSource: 'Customer PO',
+          machineType: (firstRow?.machineName || prjName) as any,
+          machineName: firstRow?.machineName || prjName,
+          vendor: firstRow?.vendorName || 'Manav Metal',
+          vendorName: firstRow?.vendorName || 'Manav Metal',
+          poNumber: firstRow?.poNo || '36',
+          poNo: firstRow?.poNo || '36',
+          startDate: firstRow?.date || todayFormatted,
+          targetCompletionDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+          priority: 'medium',
+          status: 'Production',
+          projectValue: 450000,
+          progressPct: 10,
+          materialsCount: prjRows.length,
+          totalQuantity: totalQty,
+          notes: `Auto-created from Excel Import (${options?.sheetName || 'Sheet'})`,
+        });
+      }
+    });
+
+    // 4. Broadcast to other open tabs
+    try {
+      const bc = new BroadcastChannel('rsb_erp_live_sync');
+      bc.postMessage({ type: 'PROJECTS_UPDATED', projectName: defaultProject });
+      bc.close();
+    } catch (e) {}
+
+    logAudit('Excel Import Completed', 'Project Material Requirement', `Imported ${mapped.length} material records into ${targetProjects.join(', ')}`);
+    return { success: dbRes.success, count: mapped.length, message: dbRes.message };
   };
 
   // Populate from BOM
@@ -3195,11 +3426,11 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Purchase & Sales Handlers
   const addPurchaseOrder = (po: Omit<PurchaseOrder, 'id'>) => {
-    const finalOrderedBy = po.orderedBy || currentUser?.name || 'Amit';
+    const finalOrderedBy = po.orderedBy || currentUser?.name || 'Unknown';
     const newPO: PurchaseOrder = {
       ...po,
       orderedBy: finalOrderedBy,
-      issuedBy: finalOrderedBy,
+      issuedBy: po.issuedBy || finalOrderedBy,
       createdAt: po.createdAt || new Date().toISOString(),
       id: 'po-' + (purchaseOrders.length + 1) + '-' + Date.now().toString().slice(-4),
     };
@@ -3492,7 +3723,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const totalAmount = items.reduce((sum, item) => sum + (item.amount || (item.qty * (item.rate || 0))), 0);
     const projectNames = Array.from(new Set(items.map((i) => i.projectName).filter(Boolean))) as string[];
     const machineNames = Array.from(new Set(items.map((i) => i.machineName).filter(Boolean))) as string[];
-    const finalOrderedBy = orderedBy || currentUser?.name || 'Amit';
+    const finalOrderedBy = orderedBy || currentUser?.name || 'Unknown';
 
     const newPO: PurchaseOrder = {
       id: 'po-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
@@ -4026,6 +4257,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteUser,
         alterUserAuthorization,
         replaceProjectRequirements,
+        importMaterialRequirements,
         toggleMaterialReceived,
         updateMaterialArrivalQty,
         trashItems,

@@ -201,7 +201,7 @@ export type DispatchStatus = 'Not Ready' | 'Ready' | 'Dispatched' | 'Delivered';
 // =========================================================================
 export interface ProjectMaterialRequirementItem {
   id: string;
-  srNo: number;
+  srNo: number | string;
   description: string; // e.g. Mono Conveyor Inlet Patti
   materialType: MaterialType;
   materialGrade: string; // SS 304, SS 316, SS 316L
@@ -285,6 +285,13 @@ export interface ProjectMaterialRequirementItem {
   receivedByInitials?: string;
   receivedByRole?: string;
   receivedNotes?: string;
+
+  // Import Audit & Source Metadata
+  importBatchId?: string;
+  sourceRowIndex?: number;
+  sourceSheetName?: string;
+  originalSrNo?: number | string;
+  sourceMetadata?: Record<string, any>;
 }
 
 // Main Production & Traceability Master Row (Legacy / Summary alias)
@@ -410,7 +417,7 @@ export interface QCInspection {
 }
 
 export interface PurchaseOrderItem {
-  srNo?: number;
+  srNo?: number | string;
   material: string;
   sizeSpecs: string;
   qty: number;

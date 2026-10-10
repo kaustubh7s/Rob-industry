@@ -146,7 +146,7 @@ export const ProjectMaterialRequirementsTable: React.FC = () => {
       const matchProd = filterProdStatus === 'ALL' || req.productionStatus === filterProdStatus;
 
       return matchSearch && matchProject && matchMachine && matchMatType && matchStock && matchProd;
-    }).sort((a, b) => (Number(a.srNo) || 0) - (Number(b.srNo) || 0));
+    });
   }, [projectRequirements, searchTerm, filterProject, filterMachine, filterMaterialType, filterStockStatus, filterProdStatus]);
 
   // Dashboard Aggregates

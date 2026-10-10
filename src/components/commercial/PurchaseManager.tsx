@@ -53,7 +53,7 @@ export const PurchaseManager: React.FC = () => {
 
   const handleCreatePO = (e: React.FormEvent) => {
     e.preventDefault();
-    const finalOrderedBy = currentUser?.name || 'Amit';
+    const finalOrderedBy = currentUser?.name || 'Unknown';
     addPurchaseOrder({
       ...form,
       totalAmount: totalPOAmount,
@@ -110,7 +110,7 @@ export const PurchaseManager: React.FC = () => {
                 <div className="flex items-center gap-2 mt-1 text-xs text-slate-400 flex-wrap">
                   <span>Date: {po.date} &bull; Expected: {po.expectedDate}</span>
                   <span className="px-2 py-0.5 rounded bg-slate-800 text-indigo-300 font-bold border border-slate-700">
-                    Ordered By: {po.orderedBy || currentUser?.name || 'Amit'}
+                    Ordered By: {po.orderedBy || 'Unknown'}
                   </span>
                 </div>
               </div>
@@ -262,6 +262,7 @@ export const PurchaseManager: React.FC = () => {
                   </span>
                   <p className="text-xs font-mono font-bold mt-1">{printPO.poNumber}</p>
                   <p className="text-xs text-slate-600">Date: {printPO.date}</p>
+                  <p className="text-xs text-slate-700 font-bold">ORDERED BY: {printPO.orderedBy || 'Unknown'}</p>
                 </div>
               </div>
 
@@ -297,7 +298,9 @@ export const PurchaseManager: React.FC = () => {
               </table>
 
               <div className="pt-6 grid grid-cols-2 text-center text-xs">
-                <div className="border-t border-slate-400 pt-1">Prepared By (Purchase Dept)</div>
+                <div className="border-t border-slate-400 pt-1 font-semibold">
+                  ORDERED BY: <span className="font-bold text-slate-900">{printPO.orderedBy || 'Unknown'}</span>
+                </div>
                 <div className="border-t border-slate-400 pt-1">Authorized Signatory (RSB)</div>
               </div>
             </div>

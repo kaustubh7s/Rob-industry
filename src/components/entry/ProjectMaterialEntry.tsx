@@ -51,13 +51,16 @@ import { ProcurementBasket } from '../procurement/ProcurementBasket';
 import { getMaterialsForProject } from '../../utils/projectMaterialsHelper';
 import { MACHINE_BOM_TEMPLATES, MachineBOMTemplate } from '../../data/machineBOMTemplates';
 import { LiveWorldSSRatesModal } from '../rates/LiveWorldSSRatesModal';
+import { ExcelImportPreviewModal } from './ExcelImportPreviewModal';
+import { analyzeExcelFile, SheetAnalysisResult, ParsedImportRow } from '../../utils/excelImportEngine';
+import * as XLSX from 'xlsx';
 
 export interface EntryRow {
   id: string;
   machineName: string;
   date: string;
   poNo: string;
-  srNo: number;
+  srNo: number | string;
   materialType: MaterialType;
   sizeSpecs: string;
   quantity: number;
@@ -102,6 +105,7 @@ export const ProjectMaterialEntry: React.FC = () => {
     projectRequirements,
     bulkImportProjectRequirements,
     replaceProjectRequirements,
+    importMaterialRequirements,
     deleteProjectRequirement,
     trashItems,
     restoreFromTrash,
@@ -391,6 +395,10 @@ export const ProjectMaterialEntry: React.FC = () => {
   const [saveToast, setSaveToast] = useState<string | null>(null);
   const [lastAutoSavedTime, setLastAutoSavedTime] = useState<string>('Just now');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isImportPreviewOpen, setIsImportPreviewOpen] = useState(false);
+  const [importWorkbook, setImportWorkbook] = useState<XLSX.WorkBook | null>(null);
+  const [importAnalysis, setImportAnalysis] = useState<SheetAnalysisResult | null>(null);
+  const [importFileName, setImportFileName] = useState<string>('');
   const [isSavingOrder, setIsSavingOrder] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -409,16 +417,14 @@ export const ProjectMaterialEntry: React.FC = () => {
     setLastAutoSavedTime(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
   }, [rows, selectedProjectName]);
 
-  // Normalize Sr Numbers (Preserves user-defined manual Sr. No and sorts ascending)
+  // Normalize Sr Numbers (Preserves user-defined manual Sr. No without renumbering or sorting)
   const normalizeSrNumbers = (rowList: EntryRow[]) => {
-    return rowList
-      .map((r, index) => ({
-        ...r,
-        srNo: (r.srNo !== undefined && r.srNo !== null && !isNaN(Number(r.srNo)) && Number(r.srNo) > 0)
-          ? Number(r.srNo)
-          : index + 1,
-      }))
-      .sort((a, b) => (Number(a.srNo) || 0) - (Number(b.srNo) || 0));
+    return rowList.map((r, index) => ({
+      ...r,
+      srNo: (r.srNo !== undefined && r.srNo !== null && String(r.srNo).trim() !== '')
+        ? r.srNo
+        : index + 1,
+    }));
   };
 
   // Sync selectedProjectName when projects list updates if currently unselected
@@ -444,8 +450,8 @@ export const ProjectMaterialEntry: React.FC = () => {
         machineName: m.machineName || m.machineType || currentProject.machineName || currentProject.machineType || machineName,
         date: formatDate(m.poDate || m.date || currentProject.startDate || entryDate),
         poNo: m.poNumber || m.poNo || currentProject.poNo || currentProject.poNumber || poNo,
-        srNo: (m.srNo !== undefined && m.srNo !== null && !isNaN(Number(m.srNo)) && Number(m.srNo) > 0)
-          ? Number(m.srNo)
+        srNo: (m.srNo !== undefined && m.srNo !== null && String(m.srNo).trim() !== '')
+          ? m.srNo
           : idx + 1,
         materialType: (m.materialType || 'SS Flat') as MaterialType,
         sizeSpecs: m.sizeSpecs || 'Custom Specs',
@@ -455,31 +461,30 @@ export const ProjectMaterialEntry: React.FC = () => {
         description: m.description || 'Component',
         orderedBy: m.orderedBy || activeOrderedBy,
         projectName: currentProject.name,
-      }))
-      .sort((a, b) => (Number(a.srNo) || 0) - (Number(b.srNo) || 0));
+      }));
 
     if (isProjectSwitch) {
-      // Switched to a new project: update reference and load cached draft or DB rows
+      // Switched to a new project: update reference and prioritize authoritative DB/context rows
       lastSelectedProjectRef.current = selectedProjectName;
       isUserManuallyEditingRef.current = false;
-      const cached = localStorage.getItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`);
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed)) {
-            setRows(parsed);
-          } else if (mappedRows.length > 0) {
-            setRows(mappedRows);
-          } else {
-            setRows([]);
-          }
-        } catch {
-          setRows(mappedRows.length > 0 ? mappedRows : []);
-        }
-      } else if (mappedRows.length > 0) {
+      if (mappedRows.length > 0) {
         setRows(mappedRows);
       } else {
-        setRows([]);
+        const cached = localStorage.getItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`);
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setRows(parsed);
+            } else {
+              setRows([]);
+            }
+          } catch {
+            setRows([]);
+          }
+        } else {
+          setRows([]);
+        }
       }
 
       // Update header fields to match project
@@ -771,8 +776,8 @@ export const ProjectMaterialEntry: React.FC = () => {
           machineName: m.machineName || m.machineType || found.machineType || found.name,
           date: formatDate(m.poDate || m.date || found.startDate || entryDate),
           poNo: m.poNumber || m.poNo || found.poNumber || found.poNo || '',
-          srNo: (m.srNo !== undefined && m.srNo !== null && !isNaN(Number(m.srNo)) && Number(m.srNo) > 0)
-            ? Number(m.srNo)
+          srNo: (m.srNo !== undefined && m.srNo !== null && String(m.srNo).trim() !== '')
+            ? m.srNo
             : idx + 1,
           materialType: m.materialType as MaterialType,
           sizeSpecs: m.sizeSpecs,
@@ -782,8 +787,7 @@ export const ProjectMaterialEntry: React.FC = () => {
           description: m.description,
           orderedBy: m.orderedBy || activeOrderedBy,
           projectName: found.name,
-        }))
-        .sort((a, b) => (Number(a.srNo) || 0) - (Number(b.srNo) || 0));
+        }));
       setRows(mappedRows);
     }
   };
@@ -1049,12 +1053,10 @@ export const ProjectMaterialEntry: React.FC = () => {
       learnUnit(quickUnit);
     }
 
-    setRows((prev) => {
-      const nextList = [...prev, newRow];
-      return nextList.sort((a, b) => (Number(a.srNo) || 0) - (Number(b.srNo) || 0));
-    });
-    setManualSrNo(String(targetSrNo + 1));
-    setQuickSrNo(String(targetSrNo + 1));
+    setRows((prev) => [...prev, newRow]);
+    const nextSr = typeof targetSrNo === 'number' ? targetSrNo + 1 : (!isNaN(Number(targetSrNo)) ? Number(targetSrNo) + 1 : rows.length + 2);
+    setManualSrNo(String(nextSr));
+    setQuickSrNo(String(nextSr));
     window.dispatchEvent(new CustomEvent('rsb:tour:material-added', { detail: { newRow } }));
     setQuickDesc('');
     setQuickSize('');
@@ -1230,9 +1232,6 @@ export const ProjectMaterialEntry: React.FC = () => {
         }
         return r;
       });
-      if (field === 'srNo') {
-        return [...updated].sort((a, b) => (Number(a.srNo) || 0) - (Number(b.srNo) || 0));
-      }
       return updated;
     });
   };
@@ -1251,7 +1250,7 @@ export const ProjectMaterialEntry: React.FC = () => {
 
       const itemsToSave: Partial<ProjectMaterialRequirementItem>[] = rows.map((r, idx) => ({
         id: r.id,
-        srNo: (r.srNo !== undefined && r.srNo !== null && !isNaN(Number(r.srNo)) && Number(r.srNo) > 0) ? Number(r.srNo) : idx + 1,
+        srNo: (r.srNo !== undefined && r.srNo !== null && String(r.srNo).trim() !== '') ? r.srNo : idx + 1,
         projectName: r.projectName || targetProject,
         customerName: custName,
         poNumber: r.poNo || poNo,
@@ -1394,43 +1393,70 @@ export const ProjectMaterialEntry: React.FC = () => {
     setTimeout(() => setSaveToast(null), 3000);
   };
 
-  // Import from Excel (Supports 10-column & 11-column standard RSB Excel sheets)
+  // Intelligent Excel Import Engine Handlers
   const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     try {
-      const parsedData = await parseExcelFile(file);
-      if (!parsedData || parsedData.length === 0) {
-        alert('Invalid or empty Excel file.');
-        return;
-      }
-
-      const importedRows: EntryRow[] = parsedData.map((it: any, idx: number) => ({
-        id: `imp-${Date.now()}-${idx}`,
-        projectName: it['Project Name'] || it['Project'] || selectedProjectName || machineName || 'Project-1',
-        machineName: it['Machine Name'] || it['Machine'] || machineName || selectedProjectName || 'Custom Assembly',
-        date: it['Date'] || entryDate || new Date().toISOString().split('T')[0],
-        poNo: it['PO No'] || it['PO'] || it['poNumber'] || poNo || '36',
-        srNo: idx + 1,
-        materialType: (it['Material Type'] || it['materialType'] || 'SS Flat') as MaterialType,
-        sizeSpecs: it['Size Specification'] || it['Size Specs'] || it['sizeSpecs'] || 'Custom Spec',
-        quantity: Number(it['Quantity'] || it['Qty'] || it['quantity']) || 1,
-        unit: it['Unit'] || it['unit'] || 'Nos',
-        vendorName: it['Vendor Name'] || it['Vendor'] || it['vendor'] || vendorName || 'Manav Metal',
-        description: it['Description'] || it['Part Description'] || it['description'] || 'Component',
-        orderedBy: activeOrderedBy,
-      }));
-
-      setRows(importedRows);
+      setImportFileName(file.name);
+      const res = await analyzeExcelFile(file);
+      setImportWorkbook(res.workbook);
+      setImportAnalysis(res.analysis);
+      setIsImportPreviewOpen(true);
       setIsImportModalOpen(false);
-      confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
-      setSaveToast(`Imported ${importedRows.length} items from Excel into ${machineName}!`);
-      setTimeout(() => setSaveToast(null), 3500);
     } catch (err) {
       console.error(err);
-      alert('Failed to parse Excel file.');
+      alert('Failed to analyze Excel file. Please ensure it is a valid .xlsx, .xls, or .csv file.');
+    } finally {
+      e.target.value = '';
     }
+  };
+
+  const handleConfirmExcelImport = async (
+    importedRows: ParsedImportRow[],
+    batchInfo: {
+      sheetName: string;
+      overrideProject?: string;
+      overrideMachine?: string;
+      overrideVendor?: string;
+      overridePoNo?: string;
+    }
+  ) => {
+    const targetPrj = batchInfo.overrideProject || selectedProjectName || 'Project-1';
+    const targetMch = batchInfo.overrideMachine || machineName || targetPrj;
+
+    // Convert to EntryRow format for immediate table display
+    const newEntryRows: EntryRow[] = importedRows.map((r, idx) => ({
+      id: `imp-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 5)}`,
+      projectName: r.projectName || targetPrj,
+      machineName: r.machineName || targetMch,
+      date: r.date || entryDate || getTodayFormatted(),
+      poNo: r.poNo || poNo || '36',
+      srNo: r.srNo, // ABSOLUTE PRESERVATION OF ORIGINAL SR. NO.
+      materialType: r.materialType || 'SS Flat',
+      sizeSpecs: r.sizeSpecs || 'Custom Spec',
+      quantity: r.quantity || 1,
+      unit: r.unit || 'Nos',
+      vendorName: r.vendorName || vendorName || 'Manav Metal',
+      description: r.description || 'Component',
+      orderedBy: activeOrderedBy,
+    }));
+
+    // Authoritative persistence across ERPContext, LocalStorage & Supabase
+    await importMaterialRequirements(newEntryRows, {
+      projectName: targetPrj,
+      machineName: targetMch,
+      vendorName: batchInfo.overrideVendor || vendorName,
+      poNo: batchInfo.overridePoNo || poNo,
+      sheetName: batchInfo.sheetName,
+    });
+
+    setRows(newEntryRows);
+    setIsImportPreviewOpen(false);
+    confetti({ particleCount: 90, spread: 70, origin: { y: 0.6 } });
+    setSaveToast(`🎉 Successfully imported and persisted ${newEntryRows.length} items from sheet "${batchInfo.sheetName}"!`);
+    setTimeout(() => setSaveToast(null), 3500);
   };
 
   // Filtered rows for table
@@ -3400,6 +3426,20 @@ export const ProjectMaterialEntry: React.FC = () => {
             </div>
           </div>
         </Modal>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: EXCEL IMPORT PREVIEW & COLUMN MAPPING */}
+      {/* ========================================================================= */}
+      {isImportPreviewOpen && importWorkbook && importAnalysis && (
+        <ExcelImportPreviewModal
+          isOpen={isImportPreviewOpen}
+          onClose={() => setIsImportPreviewOpen(false)}
+          fileName={importFileName}
+          workbook={importWorkbook}
+          initialAnalysis={importAnalysis}
+          onConfirmImport={handleConfirmExcelImport}
+        />
       )}
     </div>
   );

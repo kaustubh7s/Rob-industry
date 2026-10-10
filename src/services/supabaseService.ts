@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS public.projects (
 -- 2. Project Material Requirements Table
 CREATE TABLE IF NOT EXISTS public.project_material_requirements (
   id TEXT PRIMARY KEY,
-  sr_no INTEGER,
+  sr_no TEXT,
   description TEXT NOT NULL,
   material_type TEXT NOT NULL,
   material_grade TEXT DEFAULT 'SS 304',
@@ -591,11 +591,19 @@ export const pullAllDataFromSupabase = async (): Promise<{
         }
       }
 
+      let resolvedSrNo: string | number = r.sr_no;
+      if (notesStr.includes('[ORIGINAL_SR_NO:')) {
+        const srMatch = notesStr.match(/\[ORIGINAL_SR_NO:([^\]]+)\]/);
+        if (srMatch && srMatch[1]) {
+          resolvedSrNo = srMatch[1];
+        }
+      }
+
       const isReceived = Boolean(r.is_received || r.isReceived || tagReceived);
 
       return {
         id: r.id,
-        srNo: r.sr_no,
+        srNo: resolvedSrNo,
         description: r.description,
         materialType: r.material_type,
         materialGrade: r.material_grade,
@@ -798,12 +806,12 @@ export const pullAllDataFromSupabase = async (): Promise<{
 };
 
 // Single project Supabase helpers
-export const dbUpsertProject = async (project: ProjectItem) => {
+export const dbUpsertProject = async (project: ProjectItem): Promise<{ success: boolean; message?: string }> => {
   const supabase = getSupabaseClient();
-  if (!supabase) return;
+  if (!supabase) return { success: false, message: 'Supabase client not configured' };
 
   try {
-    await supabase.from('projects').upsert({
+    const { error } = await supabase.from('projects').upsert({
       id: project.id,
       project_number: project.projectNumber,
       name: project.name,
@@ -820,8 +828,14 @@ export const dbUpsertProject = async (project: ProjectItem) => {
       notes: project.notes,
       updated_at: new Date().toISOString(),
     });
-  } catch (e) {
+    if (error) {
+      console.warn('Supabase project upsert warning:', error);
+      return { success: false, message: error.message };
+    }
+    return { success: true };
+  } catch (e: any) {
     console.warn('Supabase project upsert failed:', e);
+    return { success: false, message: e?.message };
   }
 };
 
@@ -847,11 +861,24 @@ export const dbDeleteRequirementsByProject = async (projectName: string) => {
   }
 };
 
-export const dbUpsertRequirement = async (req: ProjectMaterialRequirementItem) => {
+export const dbUpsertRequirement = async (req: ProjectMaterialRequirementItem): Promise<{ success: boolean; message?: string }> => {
   const supabase = getSupabaseClient();
-  if (!supabase) return;
+  if (!supabase) return { success: false, message: 'Supabase client not configured' };
 
   try {
+    let baseNotes = (req.notes || '')
+      .replace(/\[INWARD_VERIFIED:[^\]]*\]/g, '')
+      .replace(/\[ORIGINAL_SR_NO:[^\]]*\]/g, '')
+      .trim();
+
+    if (req.srNo !== undefined && req.srNo !== null && String(req.srNo).trim() !== '') {
+      baseNotes = `${baseNotes} [ORIGINAL_SR_NO:${req.srNo}]`.trim();
+    }
+
+    if (req.isReceived) {
+      baseNotes = `${baseNotes} [INWARD_VERIFIED:${req.receivedBy || 'Chandramani'}:${req.receivedAt || new Date().toISOString()}:${req.receivedByInitials || 'CP'}]`.trim();
+    }
+
     const payload = {
       id: req.id,
       sr_no: req.srNo,
@@ -887,9 +914,7 @@ export const dbUpsertRequirement = async (req: ProjectMaterialRequirementItem) =
       outsourcing_cost: req.outsourcingCost,
       total_cost: req.totalCost,
       selling_price_allocated: req.sellingPriceAllocated,
-      notes: req.isReceived
-        ? `${(req.notes || '').replace(/\[INWARD_VERIFIED:[^\]]*\]/g, '').trim()} [INWARD_VERIFIED:${req.receivedBy || 'Chandramani'}:${req.receivedAt || new Date().toISOString()}:${req.receivedByInitials || 'CP'}]`.trim()
-        : (req.notes || '').replace(/\[INWARD_VERIFIED:[^\]]*\]/g, '').trim(),
+      notes: baseNotes,
       ordered_by: req.orderedBy,
       is_received: Boolean(req.isReceived),
       received_at: req.receivedAt || null,
@@ -910,10 +935,19 @@ export const dbUpsertRequirement = async (req: ProjectMaterialRequirementItem) =
       delete (legacyPayload as any).received_by_initials;
       delete (legacyPayload as any).received_by_role;
       delete (legacyPayload as any).received_notes;
-      await supabase.from('project_material_requirements').upsert(legacyPayload, { onConflict: 'id' });
+      if (typeof legacyPayload.sr_no === 'string' && isNaN(Number(legacyPayload.sr_no))) {
+        (legacyPayload as any).sr_no = null;
+      }
+      const { error: legErr } = await supabase.from('project_material_requirements').upsert(legacyPayload, { onConflict: 'id' });
+      if (legErr) {
+        console.warn('Supabase requirement legacy upsert warning:', legErr);
+        return { success: false, message: legErr.message };
+      }
     }
-  } catch (e) {
+    return { success: true };
+  } catch (e: any) {
     console.warn('Supabase requirement upsert failed:', e);
+    return { success: false, message: e?.message };
   }
 };
 
@@ -935,57 +969,70 @@ export const dbBulkUpsertRequirements = async (
   if (!supabase || reqs.length === 0) return { success: false, count: 0, message: 'No Supabase client or empty list' };
 
   try {
-    const mapped = reqs.map((r) => ({
-      id: r.id,
-      sr_no: r.srNo,
-      description: r.description,
-      material_type: r.materialType,
-      material_grade: r.materialGrade,
-      size_specs: r.sizeSpecs,
-      quantity: r.quantity,
-      unit: r.unit,
-      weight_kg: r.weightKg,
-      project_name: r.projectName,
-      customer_name: r.customerName,
-      po_number: r.poNumber,
-      po_date: r.poDate,
-      machine_type: r.machineType,
-      order_source: r.orderSource,
-      delivery_date: r.deliveryDate,
-      vendor: r.vendor,
-      bom_ref: r.bomRef,
-      stock_status: r.stockStatus,
-      available_stock: r.availableStock,
-      shortage_qty: r.shortageQty,
-      production_status: r.productionStatus,
-      qc_status: r.qcStatus,
-      dispatch_status: r.dispatchStatus,
-      job_card_no: r.jobCardNo,
-      assigned_operator: r.assignedOperator,
-      assigned_machine: r.assignedMachine,
-      production_stage: r.productionStage,
-      material_cost: r.materialCost,
-      labor_cost: r.laborCost,
-      machine_cost: r.machineCost,
-      outsourcing_cost: r.outsourcingCost,
-      total_cost: r.totalCost,
-      selling_price_allocated: r.sellingPriceAllocated,
-      notes: r.isReceived
-        ? `${(r.notes || '').replace(/\[INWARD_VERIFIED:[^\]]*\]/g, '').trim()} [INWARD_VERIFIED:${r.receivedBy || 'Chandramani'}:${r.receivedAt || new Date().toISOString()}:${r.receivedByInitials || 'CP'}]`.trim()
-        : (r.notes || '').replace(/\[INWARD_VERIFIED:[^\]]*\]/g, '').trim(),
-      ordered_by: r.orderedBy,
-      is_received: Boolean(r.isReceived),
-      received_at: r.receivedAt || null,
-      received_by: r.receivedBy || null,
-      received_by_initials: r.receivedByInitials || null,
-      received_by_role: r.receivedByRole || null,
-      received_notes: r.receivedNotes || null,
-      timestamp: (r as any).timestamp || r.date || new Date().toISOString(),
-    }));
+    const mapped = reqs.map((r) => {
+      let baseNotes = (r.notes || '')
+        .replace(/\[INWARD_VERIFIED:[^\]]*\]/g, '')
+        .replace(/\[ORIGINAL_SR_NO:[^\]]*\]/g, '')
+        .trim();
+
+      if (r.srNo !== undefined && r.srNo !== null && String(r.srNo).trim() !== '') {
+        baseNotes = `${baseNotes} [ORIGINAL_SR_NO:${r.srNo}]`.trim();
+      }
+
+      if (r.isReceived) {
+        baseNotes = `${baseNotes} [INWARD_VERIFIED:${r.receivedBy || 'Chandramani'}:${r.receivedAt || new Date().toISOString()}:${r.receivedByInitials || 'CP'}]`.trim();
+      }
+
+      return {
+        id: r.id,
+        sr_no: r.srNo,
+        description: r.description,
+        material_type: r.materialType,
+        material_grade: r.materialGrade,
+        size_specs: r.sizeSpecs,
+        quantity: r.quantity,
+        unit: r.unit,
+        weight_kg: r.weightKg,
+        project_name: r.projectName,
+        customer_name: r.customerName,
+        po_number: r.poNumber,
+        po_date: r.poDate,
+        machine_type: r.machineType,
+        order_source: r.orderSource,
+        delivery_date: r.deliveryDate,
+        vendor: r.vendor,
+        bom_ref: r.bomRef,
+        stock_status: r.stockStatus,
+        available_stock: r.availableStock,
+        shortage_qty: r.shortageQty,
+        production_status: r.productionStatus,
+        qc_status: r.qcStatus,
+        dispatch_status: r.dispatchStatus,
+        job_card_no: r.jobCardNo,
+        assigned_operator: r.assignedOperator,
+        assigned_machine: r.assignedMachine,
+        production_stage: r.productionStage,
+        material_cost: r.materialCost,
+        labor_cost: r.laborCost,
+        machine_cost: r.machineCost,
+        outsourcing_cost: r.outsourcingCost,
+        total_cost: r.totalCost,
+        selling_price_allocated: r.sellingPriceAllocated,
+        notes: baseNotes,
+        ordered_by: r.orderedBy,
+        is_received: Boolean(r.isReceived),
+        received_at: r.receivedAt || null,
+        received_by: r.receivedBy || null,
+        received_by_initials: r.receivedByInitials || null,
+        received_by_role: r.receivedByRole || null,
+        received_notes: r.receivedNotes || null,
+        timestamp: (r as any).timestamp || r.date || new Date().toISOString(),
+      };
+    });
 
     const { error } = await supabase.from('project_material_requirements').upsert(mapped, { onConflict: 'id' });
     if (error) {
-      // Fallback for legacy database schema without new columns
+      // Fallback for legacy database schema without new columns or with INTEGER sr_no
       const legacyMapped = mapped.map((m) => {
         const item = { ...m };
         delete (item as any).is_received;
@@ -994,6 +1041,10 @@ export const dbBulkUpsertRequirements = async (
         delete (item as any).received_by_initials;
         delete (item as any).received_by_role;
         delete (item as any).received_notes;
+        if (typeof item.sr_no === 'string' && isNaN(Number(item.sr_no))) {
+          // If remote column is strictly INTEGER, provide numeric index while original remains in notes
+          (item as any).sr_no = null;
+        }
         return item;
       });
       const { error: legacyErr } = await supabase.from('project_material_requirements').upsert(legacyMapped, { onConflict: 'id' });

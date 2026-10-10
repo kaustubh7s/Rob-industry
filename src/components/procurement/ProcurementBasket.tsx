@@ -266,7 +266,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
       const matchVendor = poVendorFilter === 'ALL' || po.vendor === poVendorFilter;
       const matchOrderedBy =
         poOrderedByFilter === 'ALL' ||
-        (po.orderedBy || 'Amit').toLowerCase().includes(poOrderedByFilter.toLowerCase());
+        (po.orderedBy || 'Unknown').toLowerCase().includes(poOrderedByFilter.toLowerCase());
 
       return matchSearch && matchStatus && matchVendor && matchOrderedBy;
     });
@@ -277,7 +277,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
     const totalParts = purchaseOrders.reduce((sum, po) => sum + (po.items?.length || 0), 0);
     const sentCount = purchaseOrders.filter((po) => po.status === 'Sent' || po.status === 'Draft' || po.status === 'Partially Received').length;
     const receivedCount = purchaseOrders.filter((po) => po.status === 'Received').length;
-    const activeAdmin = currentUser?.name || 'Amit';
+    const activeAdmin = currentUser?.name || 'Unknown';
     return {
       total,
       totalParts,
@@ -320,15 +320,14 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
     totalPages: number;
     isFirstPage: boolean;
     isLastPage: boolean;
-    items: { item: ProjectMaterialRequirementItem; globalIndex: number }[];
+    items: { item: ProjectMaterialRequirementItem; globalIndex: number | string }[];
   }
 
   const chunkPOItems = (items: ProjectMaterialRequirementItem[]): POPageChunk[] => {
-    const sorted = [...items].sort((a, b) => (Number(a.srNo) || 0) - (Number(b.srNo) || 0));
-    const indexed = sorted.map((item, idx) => ({
+    const indexed = items.map((item, idx) => ({
       item,
-      globalIndex: (item.srNo !== undefined && item.srNo !== null && !isNaN(Number(item.srNo)) && Number(item.srNo) > 0)
-        ? Number(item.srNo)
+      globalIndex: (item.srNo !== undefined && item.srNo !== null && String(item.srNo).trim() !== '')
+        ? item.srNo
         : idx + 1,
     }));
     const SINGLE_PAGE_MAX = 24;
@@ -474,7 +473,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
 
       const rName = (r.projectName || '').trim().toLowerCase();
       return activeProjectNames.has(rName) || activeProjectNumbers.has(rName);
-    }).sort((a, b) => (Number(a.srNo) || 0) - (Number(b.srNo) || 0));
+    });
   }, [projectRequirements, projects]);
 
   // Extract all unique project names from active list
@@ -762,7 +761,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
         machineName: targetMaterialItems[0]?.machineName || targetMaterialItems[0]?.machineType || 'Standard Machine',
         dateOfIssue: new Date().toISOString().split('T')[0],
         expectedDeliveryDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
-        orderedBy: currentUser?.name || 'Amit',
+        orderedBy: currentUser?.name || 'Unknown',
         items: targetMaterialItems.map((i, iIdx) => ({
           id: `po-item-${iIdx}`,
           projectName: i.projectName || 'RSB',
@@ -774,7 +773,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
           quantity: Number(i.quantity) || 1,
           unit: i.unit || 'Nos',
           vendor: finalVendor,
-          orderedBy: currentUser?.name || 'Amit',
+          orderedBy: currentUser?.name || 'Unknown',
         })),
       };
       setWhatsAppDispatchTarget({
@@ -899,7 +898,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
       vendor: i.vendor || i.vendorName,
     }));
 
-    const currentAdminName = currentUser?.name || 'Amit';
+    const currentAdminName = currentUser?.name || 'Unknown';
     const newPO = generateProcurementPO(poTargetVendor, poItems, poExpectedDate, poNotes, poCustomNumber, currentAdminName);
 
     if (newPO) {
@@ -941,7 +940,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
     const finalPONum = poNum || `PO-RSB-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
     const dateStr = new Date().toISOString().split('T')[0];
     const targetDelDate = poExpectedDate || new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
-    const currentAdminName = currentUser?.name || 'Amit';
+    const currentAdminName = currentUser?.name || 'Unknown';
 
     const poPayload: WhatsAppPOMessageOptions = {
       poNumber: finalPONum,
@@ -957,7 +956,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
       notes: poNotes || 'Supply with Material Test Certificate (MTC SS 304). High precision cutting required.',
       items: targetItems.map((i, idx) => ({
         id: i.id,
-        srNo: (i.srNo !== undefined && i.srNo !== null && !isNaN(Number(i.srNo)) && Number(i.srNo) > 0) ? Number(i.srNo) : idx + 1,
+        srNo: (i.srNo !== undefined && i.srNo !== null && String(i.srNo).trim() !== '') ? i.srNo : idx + 1,
         projectName: i.projectName || pName || filterProject || 'jkjdsasds',
         machineName: i.machineName || i.machineType || 'Standard Machine',
         description: i.description,
@@ -990,7 +989,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
         machineNames: Array.from(new Set(targetItems.map((i) => i.machineName || i.machineType).filter(Boolean))) as string[],
         totalAmount: targetItems.reduce((acc, i) => acc + ((Number(i.quantity) || 1) * 500), 0),
         items: targetItems.map((i, idx) => ({
-          srNo: (i.srNo !== undefined && i.srNo !== null && !isNaN(Number(i.srNo)) && Number(i.srNo) > 0) ? Number(i.srNo) : idx + 1,
+          srNo: (i.srNo !== undefined && i.srNo !== null && String(i.srNo).trim() !== '') ? i.srNo : idx + 1,
           material: i.description,
           description: i.description,
           sizeSpecs: i.sizeSpecs,
@@ -1044,7 +1043,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
       'Date of Issue': po.date,
       'Expected Delivery': po.expectedDate,
       'Vendor': po.vendor,
-      'ORDERED BY': po.orderedBy || currentUser?.name || 'Amit',
+      'ORDERED BY': po.orderedBy || 'Unknown',
       'Projects': (po.projectNames || []).join(', ') || 'General',
       'Machines': (po.machineNames || []).join(', ') || 'General',
       'Total Items': po.items.length,
@@ -1099,7 +1098,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
   // Export Order Basket Excel
   const handleExportBasketExcel = () => {
     const dataToExport = filteredItems.map((item, idx) => ({
-      'Sr No': (item.srNo !== undefined && item.srNo !== null && !isNaN(Number(item.srNo)) && Number(item.srNo) > 0) ? Number(item.srNo) : idx + 1,
+      'Sr No': (item.srNo !== undefined && item.srNo !== null && String(item.srNo).trim() !== '') ? item.srNo : idx + 1,
       'Project Name': item.projectName,
       'Machine': item.machineName || item.machineType || 'Machine',
       'Material Description': item.description,
@@ -1125,7 +1124,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
 
     const dataToExport = poItemsToGenerate.map((item, idx) => {
       const rowData: Record<string, any> = {};
-      if (poColumnConfig.srNo) rowData['Sr No'] = (item.srNo !== undefined && item.srNo !== null && !isNaN(Number(item.srNo)) && Number(item.srNo) > 0) ? Number(item.srNo) : idx + 1;
+      if (poColumnConfig.srNo) rowData['Sr No'] = (item.srNo !== undefined && item.srNo !== null && String(item.srNo).trim() !== '') ? item.srNo : idx + 1;
       if (poColumnConfig.projectName) rowData['Project Name'] = item.projectName;
       if (poColumnConfig.machineName) rowData['Machine Name'] = item.machineName || item.machineType || 'Machine';
       if (poColumnConfig.description) rowData['Material Description'] = item.description;
@@ -1300,7 +1299,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
               </span>
               <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold border border-slate-200 flex items-center gap-1">
                 <UserCheck className="w-3 h-3 text-emerald-600" />
-                <span>ORDERED BY: <strong className="text-slate-900">{currentUser?.name || 'Amit'}</strong></span>
+                <span>CURRENT USER: <strong className="text-slate-900">{currentUser?.name || 'Unknown'}</strong></span>
               </span>
             </div>
             <p className="text-xs text-slate-500 font-medium mt-0.5">
@@ -1578,7 +1577,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                 type="text"
                 value={poSearchQuery}
                 onChange={(e) => setPoSearchQuery(e.target.value)}
-                placeholder="Search by PO #, Vendor, ORDERED BY (Amit), Project, Material specs..."
+                placeholder="Search by PO #, Vendor, ORDERED BY, Project, Material specs..."
                 className="w-full bg-slate-50 border border-slate-200 focus:bg-white focus:border-amber-500 rounded-xl pl-9 pr-8 py-2 text-xs font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-amber-400 transition-all"
               />
               {poSearchQuery && (
@@ -2310,7 +2309,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
               <div className="flex items-center gap-3 text-xs text-slate-300">
                 <span className="px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-xs font-black flex items-center gap-1.5">
                   <UserCheck className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>ORDERED BY: {currentUser?.name || 'Amit'}</span>
+                  <span>LOGGED IN: {currentUser?.name || 'Unknown'}</span>
                 </span>
               </div>
             </div>
@@ -2324,6 +2323,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                     <th className="py-3 px-3">Date & ETA</th>
                     <th className="py-3 px-3">Vendor / Supplier</th>
                     <th className="py-3 px-3">Project & Scope</th>
+                    <th className="py-3 px-3">Ordered By</th>
                     <th className="py-3 px-3">Items</th>
                     <th className="py-3 px-3 text-center w-36">Actions</th>
                   </tr>
@@ -2331,7 +2331,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                 <tbody className="divide-y divide-slate-100 font-medium">
                   {filteredPurchaseOrders.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-14 text-center text-slate-400">
+                      <td colSpan={7} className="py-14 text-center text-slate-400">
                         <FileText className="w-12 h-12 mx-auto text-slate-300 mb-3 animate-pulse" />
                         <h4 className="text-sm font-black text-slate-800">
                           {poSearchQuery || poStatusFilter !== 'ALL' || poVendorFilter !== 'ALL'
@@ -2369,7 +2369,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                     </tr>
                   ) : (
                     filteredPurchaseOrders.map((po, idx) => {
-                      const orderedByName = po.orderedBy || currentUser?.name || 'Amit';
+                      const orderedByName = po.orderedBy || 'Unknown';
                       const isEven = idx % 2 === 0;
                       const vendorPhone = getVendorMobile(po.vendor, vendors);
 
@@ -2430,6 +2430,14 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                                 {po.machineNames.join(', ')}
                               </div>
                             )}
+                          </td>
+
+                          {/* Ordered By (Creator) */}
+                          <td className="py-3 px-3 text-xs text-slate-800 whitespace-nowrap">
+                            <span className="inline-flex items-center gap-1 font-semibold text-slate-800 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">
+                              <UserCheck className="w-3 h-3 text-indigo-600 shrink-0" />
+                              <span>{orderedByName}</span>
+                            </span>
                           </td>
 
                           {/* Items (Simple Text) */}
@@ -3476,9 +3484,6 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                                 <strong className="text-xs font-black text-slate-950 block tracking-wide">
                                   MATERIAL PURCHASE ORDER
                                 </strong>
-                                <span className="text-[10px] font-bold text-emerald-800 font-mono">
-                                  STATUS: {generatedPOPreview.status.toUpperCase()}
-                                </span>
                               </div>
                             </div>
 
@@ -3503,10 +3508,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                                   </div>
                                   <div className="text-[11px] text-slate-700">
                                     <span className="font-bold text-slate-500 text-[10px]">ORDERED BY: </span>
-                                    <span className="font-bold text-slate-900">{currentUser?.name || 'Amit'}</span>
-                                  </div>
-                                  <div className="text-[10px] text-slate-500">
-                                    Scope: All {poItemsToGenerate.length} Materials (Sequential Vendor Grouping)
+                                    <span className="font-bold text-slate-900">{generatedPOPreview?.orderedBy || currentUser?.name || 'Unknown'}</span>
                                   </div>
                                 </div>
                               </div>
@@ -3662,7 +3664,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                             <div className="border-t border-dashed border-slate-600 pt-1.5">
                               <span className="block font-black text-slate-950 text-[11px] leading-tight">Prepared &amp; Ordered By</span>
                               <span className="text-[9.5px] text-slate-600 font-semibold leading-tight block mt-0.5">
-                                ORDERED BY: {currentUser?.name || 'Amit'}
+                                ORDERED BY: {generatedPOPreview?.orderedBy || currentUser?.name || 'Unknown'}
                               </span>
                             </div>
                             <div className="border-t border-dashed border-slate-600 pt-1.5">
@@ -3822,9 +3824,6 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                             <strong className="text-xs font-black text-slate-950 block tracking-wide">
                               MATERIAL PURCHASE ORDER
                             </strong>
-                            <span className="text-[10px] font-bold text-emerald-800 font-mono">
-                              STATUS: {selectedPoForSlip.status.toUpperCase()}
-                            </span>
                           </div>
                         </div>
 
@@ -3849,10 +3848,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                               </div>
                               <div className="text-[11px] text-slate-700">
                                 <span className="font-bold text-slate-500 text-[10px]">ORDERED BY: </span>
-                                <span className="font-bold text-slate-900">{selectedPoForSlip.orderedBy || currentUser?.name || 'Amit'}</span>
-                              </div>
-                              <div className="text-[10px] text-slate-500">
-                                Scope: All {selectedPoForSlip.items.length} Materials (Sequential Vendor Grouping)
+                                <span className="font-bold text-slate-900">{selectedPoForSlip.orderedBy || 'Unknown'}</span>
                               </div>
                             </div>
                           </div>
@@ -3986,7 +3982,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                         <div className="border-t border-dashed border-slate-600 pt-1.5">
                           <span className="block font-black text-slate-950 text-[11px] leading-tight">Prepared &amp; Ordered By</span>
                           <span className="text-[9.5px] text-slate-600 font-semibold leading-tight block mt-0.5">
-                            ORDERED BY: {selectedPoForSlip.orderedBy || currentUser?.name || 'Amit'}
+                            ORDERED BY: {selectedPoForSlip.orderedBy || 'Unknown'}
                           </span>
                         </div>
                         <div className="border-t border-dashed border-slate-600 pt-1.5">
@@ -4031,7 +4027,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                       machineName: (selectedPoForSlip.machineNames && selectedPoForSlip.machineNames[0]) || 'Standard Machine',
                       dateOfIssue: selectedPoForSlip.date,
                       expectedDeliveryDate: selectedPoForSlip.expectedDate,
-                      orderedBy: selectedPoForSlip.orderedBy || currentUser?.name || 'Amit',
+                      orderedBy: selectedPoForSlip.orderedBy || 'Unknown',
                       notes: selectedPoForSlip.notes,
                       items: selectedPoForSlip.items.map((i, iIdx) => ({
                         id: `po-item-${iIdx}`,
@@ -4044,7 +4040,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                         quantity: i.qty,
                         unit: i.unit,
                         vendor: selectedPoForSlip.vendor,
-                        orderedBy: selectedPoForSlip.orderedBy || currentUser?.name || 'Amit',
+                        orderedBy: selectedPoForSlip.orderedBy || 'Unknown',
                       })),
                     };
                     setWhatsAppDispatchTarget({
@@ -4072,7 +4068,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                       machineName: (selectedPoForSlip.machineNames && selectedPoForSlip.machineNames[0]) || 'Standard Machine',
                       dateOfIssue: selectedPoForSlip.date,
                       expectedDeliveryDate: selectedPoForSlip.expectedDate,
-                      orderedBy: selectedPoForSlip.orderedBy || currentUser?.name || 'Amit',
+                      orderedBy: selectedPoForSlip.orderedBy || 'Unknown',
                       notes: selectedPoForSlip.notes,
                       items: selectedPoForSlip.items.map((i, iIdx) => ({
                         id: `po-item-${iIdx}`,
@@ -4085,7 +4081,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                         quantity: i.qty,
                         unit: i.unit,
                         vendor: selectedPoForSlip.vendor,
-                        orderedBy: selectedPoForSlip.orderedBy || currentUser?.name || 'Amit',
+                        orderedBy: selectedPoForSlip.orderedBy || 'Unknown',
                       })),
                     };
                     const pdf = generatePurchaseOrderPDF(poPayload);
@@ -4165,10 +4161,10 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                 </div>
 
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">ORDERED BY (Admin)</label>
+                  <label className="font-bold text-slate-700 block mb-1">ORDERED BY</label>
                   <div className="w-full bg-slate-100 border border-slate-300 rounded-xl px-3 py-2 font-black text-indigo-900 flex items-center gap-1.5">
                     <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>{currentUser?.name || 'Amit'}</span>
+                    <span>{currentUser?.name || 'Unknown'}</span>
                   </div>
                 </div>
               </div>
@@ -4347,7 +4343,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                       alert('Please specify a vendor.');
                       return;
                     }
-                    const finalOrderedBy = currentUser?.name || 'Amit';
+                    const finalOrderedBy = currentUser?.name || 'Unknown';
                     const totalAmt = directPOForm.items.reduce((sum, i) => sum + i.amount, 0);
                     addPurchaseOrder({
                       poNumber: directPOForm.poNumber || `PO-2026-${String(purchaseOrders.length + 1).padStart(3, '0')}`,

@@ -4,7 +4,7 @@ import { formatDate } from './calculations';
 
 export interface WhatsAppPOItem {
   id?: string;
-  srNo?: number;
+  srNo?: number | string;
   projectName?: string;
   machineName?: string;
   machineType?: string;
@@ -73,6 +73,8 @@ export const formatShortWhatsAppPOMessage = (options: WhatsAppPOMessageOptions):
   }
   msg += `📦 *Scope:* ${itemCount} ${itemCount === 1 ? 'Part' : 'Parts'} (${totalQty} Nos Total)\n`;
   msg += `🎯 *Target Delivery:* ${formatDate(expectedDeliveryDate)}\n`;
+  const orderedByDisplay = options.orderedBy || 'Unknown';
+  msg += `👤 *Ordered By:* ${orderedByDisplay}\n`;
   msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
   msg += `📎 *Please find attached our official Purchase Order PDF.*\n`;
   msg += `_RSB Manufacturing ERP_`;
@@ -170,7 +172,7 @@ export const buildPurchaseOrderPDFDoc = (options: WhatsAppPOMessageOptions): { d
     machineName,
     dateOfIssue = new Date().toISOString().split('T')[0],
     expectedDeliveryDate = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
-    orderedBy = 'Amit (Admin)',
+    orderedBy = 'Unknown',
     notes,
     items,
   } = options;
@@ -196,7 +198,8 @@ export const buildPurchaseOrderPDFDoc = (options: WhatsAppPOMessageOptions): { d
     )
   );
 
-  const doc = new jsPDF('portrait', 'mm', 'a4');
+  const PDFConstructor = (jsPDF as any).jsPDF || jsPDF;
+  const doc = new PDFConstructor('portrait', 'mm', 'a4');
 
   // Top Dark Corporate Header Banner
   doc.setFillColor(15, 23, 42); // slate-900
@@ -227,9 +230,6 @@ export const buildPurchaseOrderPDFDoc = (options: WhatsAppPOMessageOptions): { d
   doc.setFont('helvetica', 'bold');
   doc.text('DOCUMENT TYPE: MATERIAL PURCHASE ORDER', 14, 37.5);
 
-  doc.setTextColor(52, 211, 153); // emerald-400
-  doc.text(`STATUS: ${status.toUpperCase()}`, 168, 37.5);
-
   // Two-Column Metadata Box (Project & Procurement Details + Order References)
   doc.setDrawColor(203, 213, 225);
   doc.setFillColor(248, 250, 252);
@@ -250,10 +250,9 @@ export const buildPurchaseOrderPDFDoc = (options: WhatsAppPOMessageOptions): { d
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   const vendorSummaryStr = distinctVendors.length > 0 ? distinctVendors.join(', ') : 'All Assigned Suppliers';
-  doc.text(`Assigned Vendors: ${vendorSummaryStr}`.substring(0, 60), 18, 60);
-  doc.text(`Scope: All ${sequentialItems.length} Materials (Sequential Vendor Grouping)`, 18, 65);
-  doc.text('Delivery: RSB Manufacturing Works, Chhatrapati Sambhajinagar', 18, 70);
-  doc.text(`ORDERED BY: ${orderedBy}`, 18, 75);
+  doc.text(`Assigned Vendors: ${vendorSummaryStr}`.substring(0, 60), 18, 61);
+  doc.text('Delivery: RSB Manufacturing Works, Chhatrapati Sambhajinagar', 18, 67);
+  doc.text(`ORDERED BY: ${orderedBy}`, 18, 73);
 
   // Right Column: ORDER REFERENCES
   doc.setTextColor(100, 116, 139);
@@ -310,7 +309,7 @@ export const buildPurchaseOrderPDFDoc = (options: WhatsAppPOMessageOptions): { d
       ];
 
   const rows = sequentialItems.map((item, idx) => {
-    const itemSr = (item.srNo !== undefined && item.srNo !== null && !isNaN(Number(item.srNo)) && Number(item.srNo) > 0)
+    const itemSr = item.srNo !== undefined && item.srNo !== null && String(item.srNo).trim() !== ''
       ? item.srNo
       : idx + 1;
     const base = [

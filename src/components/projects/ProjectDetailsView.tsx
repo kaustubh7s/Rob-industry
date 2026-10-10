@@ -265,7 +265,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           : !m.isReceived;
 
       return matchSearch && matchMat && matchMch && matchVnd && matchRecv;
-    }).sort((a, b) => (Number(a.srNo) || 0) - (Number(b.srNo) || 0));
+    });
   }, [materialsInFolder, searchTerm, filterMaterialType, filterMachine, filterVendor, filterReceived]);
 
   // Aggregated Summary Statistics for this project
@@ -458,7 +458,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         'Machine Name': m.machineName || m.machineType || project.machineName || project.machineType || 'Machine',
         'Date': formatDate(m.date || project.date || project.startDate),
         'PO No': m.poNo || m.poNumber || project.poNo || project.poNumber || '36',
-        'Sr No': (m.srNo !== undefined && m.srNo !== null && !isNaN(Number(m.srNo)) && Number(m.srNo) > 0) ? Number(m.srNo) : idx + 1,
+        'Sr No': (m.srNo !== undefined && m.srNo !== null && String(m.srNo).trim() !== '') ? m.srNo : idx + 1,
         'Material Type': m.materialType,
         'Size Specification': m.sizeSpecs,
         'Qty': totalQty,
@@ -500,7 +500,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         m.machineName || m.machineType || project.machineName || project.machineType || 'Machine',
         formatDate(m.date || project.date || project.startDate),
         m.poNo || m.poNumber || project.poNo || project.poNumber || '36',
-        String((m.srNo !== undefined && m.srNo !== null && !isNaN(Number(m.srNo)) && Number(m.srNo) > 0) ? m.srNo : idx + 1),
+        String((m.srNo !== undefined && m.srNo !== null && String(m.srNo).trim() !== '') ? m.srNo : idx + 1),
         m.materialType,
         m.sizeSpecs,
         `${totalQty} ${m.unit || 'Nos'}`,
@@ -1547,7 +1547,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                     {/* 4. Sr No */}
                     <td className="p-3 text-center font-mono font-bold text-slate-400 whitespace-nowrap">
-                      {(m.srNo !== undefined && m.srNo !== null && !isNaN(Number(m.srNo)) && Number(m.srNo) > 0) ? m.srNo : idx + 1}
+                      {(m.srNo !== undefined && m.srNo !== null && String(m.srNo).trim() !== '') ? m.srNo : idx + 1}
                     </td>
 
                     {/* 5. Material Type */}

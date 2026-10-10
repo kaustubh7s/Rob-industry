@@ -119,6 +119,7 @@ export const WhatsAppPOModal: React.FC<WhatsAppPOModalProps> = ({
       paymentTerms: paymentTerms,
       dateOfIssue: dateOfIssue,
       expectedDeliveryDate: deliveryDate,
+      orderedBy: options.orderedBy,
       notes: customNotes,
       items: syncedVendorItems,
     };
@@ -353,8 +354,8 @@ export const WhatsAppPOModal: React.FC<WhatsAppPOModalProps> = ({
               </p>
             </div>
             <div className="text-right">
-              <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950 px-2.5 py-1 rounded-md border border-emerald-500/40">
-                MATERIAL PURCHASE ORDER • STATUS: SENT
+              <span className="text-[10px] font-bold text-slate-300 bg-slate-800 px-2.5 py-1 rounded-md border border-slate-700">
+                MATERIAL PURCHASE ORDER
               </span>
             </div>
           </div>
@@ -385,7 +386,7 @@ export const WhatsAppPOModal: React.FC<WhatsAppPOModalProps> = ({
                   syncedVendorItems.map((item, idx) => (
                     <tr key={idx} className="hover:bg-slate-50 transition-colors">
                       <td className="py-2 px-2 text-center font-mono font-bold text-slate-400">
-                        {(item.srNo !== undefined && item.srNo !== null && !isNaN(Number(item.srNo)) && Number(item.srNo) > 0) ? item.srNo : idx + 1}
+                        {(item.srNo !== undefined && item.srNo !== null && String(item.srNo).trim() !== '') ? item.srNo : idx + 1}
                       </td>
                       <td className="py-2 px-2.5 font-bold text-slate-900">
                         {item.projectName || currentOptions.projectName || 'Mahalaxmi 3'}
