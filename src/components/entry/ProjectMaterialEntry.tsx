@@ -1806,21 +1806,21 @@ export const ProjectMaterialEntry: React.FC = () => {
           </div>
         </div>
 
-        {/* TOP PART: 3-STEP FACTORY ORDER WORKFLOW */}
+        {/* TOP PART: 4-STEP FACTORY ORDER WORKFLOW */}
         <div>
           <div className="flex items-center justify-between pb-3 mb-3.5 border-b border-slate-800/80">
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-amber-400" />
               <h2 className="text-xs font-black uppercase tracking-wider text-slate-200">
-                3-Step Factory Order Workflow
+                4-Step Factory Order Workflow
               </h2>
             </div>
             <span className="text-[11px] text-slate-400 font-mono">
-              Machine-centric • Auto-suggests • Repetitive Templates
+              Machine-centric • PO & Date • Vendor Sourcing • Auto-suggests
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
             {/* STEP 1: Select Machine Name */}
             <div className="space-y-1.5 bg-slate-800/60 p-3 rounded-xl border border-slate-700/60">
               <div className="flex items-center justify-between">
@@ -1899,7 +1899,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         e.preventDefault();
-                        quickSrNoInputRef.current?.focus();
+                        vendorInputRef.current?.focus();
                       }
                     }}
                     placeholder={getTodayFormatted()}
@@ -1909,12 +1909,54 @@ export const ProjectMaterialEntry: React.FC = () => {
               </div>
             </div>
 
-            {/* STEP 3: Materials Count & Save Action */}
+            {/* STEP 3: Enter / Select Vendor / Supplier */}
+            <div className="space-y-1.5 bg-slate-800/60 p-3 rounded-xl border border-slate-700/60">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-1">
+                  <span className="w-4 h-4 rounded-full bg-cyan-400/20 text-cyan-300 inline-flex items-center justify-center text-[10px]">
+                    3
+                  </span>
+                  Vendor / Supplier
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsCustomVendorModalOpen(true)}
+                  className="text-[10px] text-cyan-300 hover:text-white underline cursor-pointer"
+                  title="Add a new custom vendor to the system"
+                >
+                  + New Vendor
+                </button>
+              </div>
+              <div className="relative">
+                <input
+                  ref={vendorInputRef}
+                  type="text"
+                  list="vendor-suggestions"
+                  value={vendorName}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setVendorName(val);
+                    if (val.trim()) learnVendor(val.trim());
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      if (vendorName.trim()) learnVendor(vendorName.trim());
+                      quickSrNoInputRef.current?.focus();
+                    }
+                  }}
+                  placeholder="e.g. Manav Metal, Jindal..."
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs font-bold text-cyan-200 placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all font-mono"
+                />
+              </div>
+            </div>
+
+            {/* STEP 4: Materials Count & Save Action */}
             <div className="space-y-1.5 bg-slate-800/60 p-3 rounded-xl border border-slate-700/60 flex flex-col justify-between">
               <div>
                 <label className="text-[11px] font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1">
                   <span className="w-4 h-4 rounded-full bg-purple-400/20 text-purple-300 inline-flex items-center justify-center text-[10px]">
-                    3
+                    4
                   </span>
                   Materials Count
                 </label>
