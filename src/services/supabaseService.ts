@@ -1083,11 +1083,16 @@ export const dbUpsertVendor = async (vendor: VendorItem) => {
   }
 };
 
-export const dbDeleteVendor = async (vendorId: string) => {
+export const dbDeleteVendor = async (vendorId: string, vendorName?: string) => {
   const supabase = getSupabaseClient();
   if (!supabase) return;
   try {
-    await supabase.from('vendors').delete().eq('id', vendorId);
+    if (vendorId) {
+      await supabase.from('vendors').delete().eq('id', vendorId);
+    }
+    if (vendorName) {
+      await supabase.from('vendors').delete().ilike('name', vendorName.trim());
+    }
   } catch (e) {
     console.warn('Supabase vendor delete failed:', e);
   }

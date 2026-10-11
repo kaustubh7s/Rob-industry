@@ -932,11 +932,17 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (pullRes.data.materials && pullRes.data.materials.length > 0) {
             setMaterials(pullRes.data.materials);
           }
-          if (pullRes.data.vendors && pullRes.data.vendors.length > 0) {
+          if (pullRes.data.vendors && Array.isArray(pullRes.data.vendors)) {
             setVendors(pullRes.data.vendors);
+            try {
+              localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(pullRes.data.vendors));
+            } catch (e) {}
           }
-          if (pullRes.data.customers && pullRes.data.customers.length > 0) {
+          if (pullRes.data.customers && Array.isArray(pullRes.data.customers)) {
             setCustomers(pullRes.data.customers);
+            try {
+              localStorage.setItem(LOCAL_STORAGE_KEY + '_customers', JSON.stringify(pullRes.data.customers));
+            } catch (e) {}
           }
           if (pullRes.data.users && pullRes.data.users.length > 0) {
             const remoteUsers = pullRes.data.users;
@@ -961,7 +967,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn('Initial cloud pull skipped:', err);
       }
 
-      // 2. Realtime broadcast listener: Global Factory Reset across all active admins/devices
+      // 2. Realtime broadcast listener: Global Sync & Events across all active admins/devices
       try {
         client
           .channel('rsb-system-broadcast')
@@ -969,6 +975,40 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             console.warn('⚡ Global Factory Reset broadcast received from Supabase Cloud.');
             applyGlobalFactoryReset();
             addNotification('Factory Reset Applied', 'The system was reset to clean baseline.', 'warning');
+          })
+          .on('broadcast', { event: 'VENDOR_DELETED' }, (payload: any) => {
+            const deletedId = payload.payload?.id;
+            const deletedName = payload.payload?.name;
+            if (deletedId || deletedName) {
+              setVendors((prev) => {
+                const next = prev.filter(
+                  (v) => (deletedId ? v.id !== deletedId : true) && (deletedName ? v.name.toLowerCase() !== deletedName.toLowerCase() : true)
+                );
+                try {
+                  localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(next));
+                } catch (e) {}
+                return next;
+              });
+            }
+          })
+          .on('broadcast', { event: 'VENDOR_UPDATED' }, (payload: any) => {
+            const v = payload.payload?.vendor;
+            if (v && v.id) {
+              setVendors((prev) => {
+                const idx = prev.findIndex((old) => old.id === v.id || old.name.toLowerCase() === v.name.toLowerCase());
+                let next: VendorItem[];
+                if (idx >= 0) {
+                  next = [...prev];
+                  next[idx] = { ...next[idx], ...v };
+                } else {
+                  next = [v, ...prev];
+                }
+                try {
+                  localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(next));
+                } catch (e) {}
+                return next;
+              });
+            }
           })
           .subscribe();
       } catch (bErr) {
@@ -1095,6 +1135,62 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               }
             }
           )
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'vendors' },
+            async (payload) => {
+              if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+                const row = payload.new as any;
+                if (!row || !row.id) return;
+                const formatted: VendorItem = {
+                  id: row.id,
+                  name: row.name,
+                  contactPerson: row.contact_person || '',
+                  mobile: row.mobile || '',
+                  email: row.email || '',
+                  gstin: row.gstin || '',
+                  address: row.address || '',
+                  materialSupplied: row.material_supplied || '',
+                  rating: Number(row.rating || 5.0),
+                  paymentTerms: row.payment_terms || '30 Days Net',
+                  totalOrders: Number(row.total_orders || 0),
+                  totalPurchaseValue: Number(row.total_purchase_value || 0),
+                  onTimeDeliveries: Number(row.on_time_deliveries || 0),
+                  delayedDeliveries: Number(row.delayed_deliveries || 0),
+                  averageDeliveryDays: Number(row.average_delivery_days || 3),
+                  rejectionRate: Number(row.rejection_rate || 0),
+                  qualityRating: Number(row.quality_rating || 100),
+                  costCompetitiveness: Number(row.cost_competitiveness || 10),
+                  reliabilityScore: Number(row.reliability_score || 100),
+                };
+                setVendors((prev) => {
+                  const idx = prev.findIndex((v) => v.id === formatted.id || v.name.toLowerCase() === formatted.name.toLowerCase());
+                  let next: VendorItem[];
+                  if (idx >= 0) {
+                    next = [...prev];
+                    next[idx] = { ...next[idx], ...formatted };
+                  } else {
+                    next = [formatted, ...prev];
+                  }
+                  try {
+                    localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(next));
+                  } catch (e) {}
+                  return next;
+                });
+              } else if (payload.eventType === 'DELETE') {
+                const oldId = (payload.old as any)?.id;
+                if (oldId) {
+                  setVendors((prev) => {
+                    const next = prev.filter((v) => v.id !== oldId);
+                    try {
+                      localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(next));
+                    } catch (e) {}
+                    return next;
+                  });
+                }
+              }
+            }
+          )
           .subscribe();
 
         activeChannel = channel;
@@ -1136,6 +1232,27 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 return merged;
               });
             }
+            if (pullRes.data.vendors && Array.isArray(pullRes.data.vendors)) {
+              setVendors(pullRes.data.vendors);
+              try {
+                localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(pullRes.data.vendors));
+              } catch (e) {}
+            }
+          }
+        } else if (event.data?.type === 'VENDORS_UPDATED') {
+          if (event.data.vendors && Array.isArray(event.data.vendors)) {
+            setVendors(event.data.vendors);
+            try {
+              localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(event.data.vendors));
+            } catch (e) {}
+          } else {
+            const pullRes = await pullAllDataFromSupabase();
+            if (pullRes.success && pullRes.data?.vendors) {
+              setVendors(pullRes.data.vendors);
+              try {
+                localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(pullRes.data.vendors));
+              } catch (e) {}
+            }
           }
         }
       };
@@ -1166,6 +1283,18 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               } catch (e) {}
               return merged;
             });
+          }
+          if (pullRes.data.vendors && Array.isArray(pullRes.data.vendors)) {
+            setVendors(pullRes.data.vendors);
+            try {
+              localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(pullRes.data.vendors));
+            } catch (e) {}
+          }
+          if (pullRes.data.customers && Array.isArray(pullRes.data.customers)) {
+            setCustomers(pullRes.data.customers);
+            try {
+              localStorage.setItem(LOCAL_STORAGE_KEY + '_customers', JSON.stringify(pullRes.data.customers));
+            } catch (e) {}
           }
         }
       } catch (err) {
@@ -3000,29 +3129,103 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...vendor,
       id: 'vnd-' + (vendors.length + 1) + '-' + Date.now().toString().slice(-4),
     };
-    setVendors((prev) => [newVendor, ...prev]);
+    const updated = [newVendor, ...vendors];
+    setVendors(updated);
+    try {
+      localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(updated));
+    } catch (e) {}
+
     dbUpsertVendor(newVendor);
+
+    try {
+      const client = getSupabaseClient();
+      if (client) {
+        client.channel('rsb-system-broadcast').send({
+          type: 'broadcast',
+          event: 'VENDOR_UPDATED',
+          payload: { vendor: newVendor },
+        });
+      }
+    } catch (e) {}
+
+    try {
+      const bc = new BroadcastChannel('rsb_erp_live_sync');
+      bc.postMessage({ type: 'VENDORS_UPDATED', vendors: updated });
+      bc.close();
+    } catch (e) {}
+
     logAudit('Vendor Created', 'Vendor Management', `Added vendor ${newVendor.name}`);
   };
 
   const updateVendor = (id: string, updates: Partial<VendorItem>) => {
-    setVendors((prev) =>
-      prev.map((v) => {
-        if (v.id === id) {
-          const merged = { ...v, ...updates };
-          dbUpsertVendor(merged);
-          return merged;
+    let mergedVendor: VendorItem | null = null;
+    const updated = vendors.map((v) => {
+      if (v.id === id) {
+        mergedVendor = { ...v, ...updates };
+        return mergedVendor;
+      }
+      return v;
+    });
+    setVendors(updated);
+    try {
+      localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(updated));
+    } catch (e) {}
+
+    if (mergedVendor) {
+      dbUpsertVendor(mergedVendor);
+
+      try {
+        const client = getSupabaseClient();
+        if (client) {
+          client.channel('rsb-system-broadcast').send({
+            type: 'broadcast',
+            event: 'VENDOR_UPDATED',
+            payload: { vendor: mergedVendor },
+          });
         }
-        return v;
-      })
-    );
+      } catch (e) {}
+
+      try {
+        const bc = new BroadcastChannel('rsb_erp_live_sync');
+        bc.postMessage({ type: 'VENDORS_UPDATED', vendors: updated });
+        bc.close();
+      } catch (e) {}
+    }
+
     logAudit('Vendor Updated', 'Vendor Management', `Updated vendor ID ${id}`);
   };
 
-  const deleteVendor = (id: string) => {
-    setVendors((prev) => prev.filter((v) => v.id !== id));
-    dbDeleteVendor(id);
-    logAudit('Vendor Deleted', 'Vendor Management', `Deleted vendor ID ${id}`);
+  const deleteVendor = async (id: string) => {
+    const target = vendors.find((v) => v.id === id);
+    const updated = vendors.filter((v) => v.id !== id);
+    setVendors(updated);
+    try {
+      localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(updated));
+    } catch (e) {}
+
+    // 1. Delete in Supabase (by ID and by Name)
+    dbDeleteVendor(id, target?.name);
+
+    // 2. Broadcast across all devices via Supabase
+    try {
+      const client = getSupabaseClient();
+      if (client) {
+        client.channel('rsb-system-broadcast').send({
+          type: 'broadcast',
+          event: 'VENDOR_DELETED',
+          payload: { id, name: target?.name },
+        });
+      }
+    } catch (e) {}
+
+    // 3. Broadcast to all local browser tabs
+    try {
+      const bc = new BroadcastChannel('rsb_erp_live_sync');
+      bc.postMessage({ type: 'VENDORS_UPDATED', vendors: updated });
+      bc.close();
+    } catch (e) {}
+
+    logAudit('Vendor Deleted', 'Vendor Management', `Deleted vendor ${target?.name || id}`);
   };
 
   const learnVendor = (name: string, contactPerson?: string, mobile?: string, category?: string): VendorItem => {
