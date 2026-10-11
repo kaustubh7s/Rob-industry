@@ -56,6 +56,17 @@ import {
   INITIAL_PROJECT_REQUIREMENTS,
 } from '../data/seedData';
 import {
+  isRequirementMatchedToProject,
+  isRequirementMatchingProjectName,
+} from '../utils/projectMaterialsHelper';
+import {
+  getDeletedRequirementTombstones,
+  addRequirementTombstone,
+  addRequirementTombstones,
+  getDeletedProjectTombstones,
+  addProjectTombstone,
+} from '../utils/tombstones';
+import {
   dbUpsertProject,
   dbDeleteProject,
   dbDeleteRequirementsByProject,
@@ -423,11 +434,12 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [projectRequirements, setProjectRequirements] = useState<ProjectMaterialRequirementItem[]>(() => {
+    const tombstones = getDeletedRequirementTombstones();
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_requirements');
     if (saved) {
       try {
         const parsed: ProjectMaterialRequirementItem[] = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) return parsed.filter((r) => !tombstones.has(r.id));
       } catch (e) {
         console.error(e);
       }
@@ -451,12 +463,14 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [projects, setProjects] = useState<ProjectItem[]>(() => {
+    const pTombstones = getDeletedProjectTombstones();
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_projects');
     if (saved) {
       try {
         const parsed: ProjectItem[] = JSON.parse(saved);
         return parsed.filter(
           (p) =>
+            !pTombstones.has(p.id) &&
             !['prj-foha', 'prj-1', 'prj-2', 'prj-cip-skid', 'prj-sun-liquid', 'prj-int-fab', 'prj-pipeline', 'prj-rotary-dist', 'prj-cap-trans', 'prj-sealing-30'].includes(p.id)
         );
       } catch (e) {
@@ -855,11 +869,15 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           LOCAL_STORAGE_KEY + '_inward',
           LOCAL_STORAGE_KEY + '_outward',
           LOCAL_STORAGE_KEY + '_job_cards',
+          LOCAL_STORAGE_KEY + '_jobCards',
           LOCAL_STORAGE_KEY + '_qc',
+          LOCAL_STORAGE_KEY + '_po',
           LOCAL_STORAGE_KEY + '_pos',
+          LOCAL_STORAGE_KEY + '_so',
           LOCAL_STORAGE_KEY + '_sos',
           LOCAL_STORAGE_KEY + '_costing',
           LOCAL_STORAGE_KEY + '_audit',
+          LOCAL_STORAGE_KEY + '_notif',
           LOCAL_STORAGE_KEY + '_notifs',
           LOCAL_STORAGE_KEY + '_boms',
           LOCAL_STORAGE_KEY + '_rfqs',
@@ -877,91 +895,104 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     };
 
-    const safeMergeRequirements = (existing: ProjectMaterialRequirementItem[], remote: ProjectMaterialRequirementItem[]) => {
-      if (!remote || remote.length === 0) return existing;
-      const remoteMap = new Map(remote.map((r) => [r.id, r]));
-      const merged = [...remote];
-      existing.forEach((loc) => {
-        if (!remoteMap.has(loc.id)) {
-          merged.push(loc);
-        }
-      });
-      return merged;
-    };
+    // Authoritative Remote State Synchronization Helper
+    const applyRemoteData = (data: NonNullable<Awaited<ReturnType<typeof pullAllDataFromSupabase>>['data']>) => {
+      if (data.projects && Array.isArray(data.projects)) {
+        const pTombstones = getDeletedProjectTombstones();
+        const validProjects = data.projects.filter((p) => !pTombstones.has(p.id));
+        setProjects(validProjects);
+        try {
+          localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(validProjects));
+        } catch (e) {}
+      }
+      if (data.requirements && Array.isArray(data.requirements)) {
+        const rTombstones = getDeletedRequirementTombstones();
+        const validReqs = data.requirements.filter((r) => !rTombstones.has(r.id));
+        setProjectRequirements(validReqs);
+        try {
+          localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(validReqs));
+        } catch (e) {}
 
-    const safeMergeProjects = (existing: ProjectItem[], remote: ProjectItem[]) => {
-      if (!remote || remote.length === 0) return existing;
-      const remoteMap = new Map(remote.map((p) => [p.id, p]));
-      const merged = [...remote];
-      existing.forEach((loc) => {
-        if (!remoteMap.has(loc.id)) {
-          merged.push(loc);
+        // In background, ensure Supabase purges any tombstoned requirement IDs
+        if (rTombstones.size > 0) {
+          rTombstones.forEach((tombId) => {
+            dbDeleteRequirement(tombId).catch(() => {});
+          });
         }
-      });
-      return merged;
+      }
+      if (data.materials && Array.isArray(data.materials)) {
+        setMaterials(data.materials);
+        try {
+          localStorage.setItem(LOCAL_STORAGE_KEY + '_materials', JSON.stringify(data.materials));
+        } catch (e) {}
+      }
+      if (data.vendors && Array.isArray(data.vendors)) {
+        setVendors(data.vendors);
+        try {
+          localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(data.vendors));
+        } catch (e) {}
+      }
+      if (data.customers && Array.isArray(data.customers)) {
+        setCustomers(data.customers);
+        try {
+          localStorage.setItem(LOCAL_STORAGE_KEY + '_customers', JSON.stringify(data.customers));
+        } catch (e) {}
+      }
+      if (data.orders && Array.isArray(data.orders)) {
+        setOrders(data.orders);
+        try {
+          localStorage.setItem(LOCAL_STORAGE_KEY + '_orders', JSON.stringify(data.orders));
+        } catch (e) {}
+      }
+      if (data.inwardEntries && Array.isArray(data.inwardEntries)) {
+        setInwardEntries(data.inwardEntries);
+        try {
+          localStorage.setItem(LOCAL_STORAGE_KEY + '_inward', JSON.stringify(data.inwardEntries));
+        } catch (e) {}
+      }
+      if (data.jobCards && Array.isArray(data.jobCards)) {
+        setJobCards(data.jobCards);
+        try {
+          localStorage.setItem(LOCAL_STORAGE_KEY + '_jobCards', JSON.stringify(data.jobCards));
+        } catch (e) {}
+      }
+      if (data.purchaseOrders && Array.isArray(data.purchaseOrders)) {
+        setPurchaseOrders(data.purchaseOrders);
+        try {
+          localStorage.setItem(LOCAL_STORAGE_KEY + '_po', JSON.stringify(data.purchaseOrders));
+        } catch (e) {}
+      }
+      if (data.users && data.users.length > 0) {
+        const remoteUsers = data.users;
+        const remoteMap = new Map<string, User>();
+        remoteUsers.forEach((u: User) => {
+          if (u.id) remoteMap.set(u.id, u);
+          if (u.email) remoteMap.set(u.email.toLowerCase(), u);
+        });
+
+        const mergedUsers: User[] = [...remoteUsers];
+        for (const seedU of INITIAL_USERS) {
+          const matched = remoteMap.get(seedU.id) || (seedU.email ? remoteMap.get(seedU.email.toLowerCase()) : undefined);
+          if (!matched) {
+            mergedUsers.push(seedU);
+          }
+        }
+        setUsers(mergedUsers);
+        try {
+          localStorage.setItem(LOCAL_STORAGE_KEY + '_users', JSON.stringify(mergedUsers));
+        } catch (e) {}
+      }
     };
 
     const initCloudSync = async () => {
       const client = getSupabaseClient();
       if (!client) return;
 
-      // 1. Pull latest projects and requirements from cloud on startup
+      // 1. Pull latest database records from cloud on startup
       try {
         const pullRes = await pullAllDataFromSupabase();
         if (isMounted && pullRes.success && pullRes.data) {
-          if (pullRes.data.projects && pullRes.data.projects.length > 0) {
-            const remoteProjects = pullRes.data.projects;
-            setProjects((prev) => {
-              const merged = safeMergeProjects(prev, remoteProjects);
-              try {
-                localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(merged));
-              } catch (e) {}
-              return merged;
-            });
-          }
-          if (pullRes.data.requirements && pullRes.data.requirements.length > 0) {
-            const remoteReqs = pullRes.data.requirements;
-            setProjectRequirements((prev) => {
-              const merged = safeMergeRequirements(prev, remoteReqs);
-              try {
-                localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(merged));
-              } catch (e) {}
-              return merged;
-            });
-          }
-          if (pullRes.data.materials && pullRes.data.materials.length > 0) {
-            setMaterials(pullRes.data.materials);
-          }
-          if (pullRes.data.vendors && Array.isArray(pullRes.data.vendors)) {
-            setVendors(pullRes.data.vendors);
-            try {
-              localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(pullRes.data.vendors));
-            } catch (e) {}
-          }
-          if (pullRes.data.customers && Array.isArray(pullRes.data.customers)) {
-            setCustomers(pullRes.data.customers);
-            try {
-              localStorage.setItem(LOCAL_STORAGE_KEY + '_customers', JSON.stringify(pullRes.data.customers));
-            } catch (e) {}
-          }
-          if (pullRes.data.users && pullRes.data.users.length > 0) {
-            const remoteUsers = pullRes.data.users;
-            const remoteMap = new Map<string, User>();
-            remoteUsers.forEach((u: User) => {
-              if (u.id) remoteMap.set(u.id, u);
-              if (u.email) remoteMap.set(u.email.toLowerCase(), u);
-            });
-
-            const mergedUsers: User[] = [...remoteUsers];
-            for (const seedU of INITIAL_USERS) {
-              const matched = remoteMap.get(seedU.id) || (seedU.email ? remoteMap.get(seedU.email.toLowerCase()) : undefined);
-              if (!matched) {
-                mergedUsers.push(seedU);
-              }
-            }
-            setUsers(mergedUsers);
-            localStorage.setItem(LOCAL_STORAGE_KEY + '_users', JSON.stringify(mergedUsers));
-          }
+          applyRemoteData(pullRes.data);
         }
       } catch (err) {
         console.warn('Initial cloud pull skipped:', err);
@@ -975,6 +1006,111 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             console.warn('⚡ Global Factory Reset broadcast received from Supabase Cloud.');
             applyGlobalFactoryReset();
             addNotification('Factory Reset Applied', 'The system was reset to clean baseline.', 'warning');
+          })
+          .on('broadcast', { event: 'PROJECT_DELETED' }, (payload: any) => {
+            const deletedId = payload.payload?.id;
+            const deletedName = payload.payload?.name;
+            if (deletedId || deletedName) {
+              setProjects((prev) => {
+                const next = prev.filter(
+                  (p) => (deletedId ? p.id !== deletedId : true) && (deletedName ? p.name.toLowerCase() !== deletedName.toLowerCase() : true)
+                );
+                try {
+                  localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(next));
+                } catch (e) {}
+                return next;
+              });
+              if (deletedName) {
+                setProjectRequirements((prev) => {
+                  const next = prev.filter((r) => (r.projectName || '').toLowerCase() !== deletedName.toLowerCase());
+                  try {
+                    localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(next));
+                  } catch (e) {}
+                  return next;
+                });
+              }
+            }
+          })
+          .on('broadcast', { event: 'PROJECT_UPDATED' }, (payload: any) => {
+            const p = payload.payload?.project;
+            if (p && p.id) {
+              setProjects((prev) => {
+                const idx = prev.findIndex((old) => old.id === p.id || old.name.toLowerCase() === p.name.toLowerCase());
+                let next: ProjectItem[];
+                if (idx >= 0) {
+                  next = [...prev];
+                  next[idx] = { ...next[idx], ...p };
+                } else {
+                  next = [p, ...prev];
+                }
+                try {
+                  localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(next));
+                } catch (e) {}
+                return next;
+              });
+            }
+          })
+          .on('broadcast', { event: 'REQUIREMENT_DELETED' }, (payload: any) => {
+            const deletedId = payload.payload?.id;
+            if (deletedId) {
+              setProjectRequirements((prev) => {
+                const next = prev.filter((r) => r.id !== deletedId);
+                try {
+                  localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(next));
+                } catch (e) {}
+                return next;
+              });
+            }
+          })
+          .on('broadcast', { event: 'REQUIREMENT_UPDATED' }, (payload: any) => {
+            const req = payload.payload?.requirement;
+            if (req && req.id) {
+              setProjectRequirements((prev) => {
+                const idx = prev.findIndex((old) => old.id === req.id);
+                let next: ProjectMaterialRequirementItem[];
+                if (idx >= 0) {
+                  next = [...prev];
+                  next[idx] = { ...next[idx], ...req };
+                } else {
+                  next = [req, ...prev];
+                }
+                try {
+                  localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(next));
+                } catch (e) {}
+                return next;
+              });
+            }
+          })
+          .on('broadcast', { event: 'PO_UPDATED' }, (payload: any) => {
+            const po = payload.payload?.po;
+            if (po && (po.id || po.poNumber)) {
+              setPurchaseOrders((prev) => {
+                const idx = prev.findIndex((old) => old.id === po.id || old.poNumber === po.poNumber);
+                let next: PurchaseOrder[];
+                if (idx >= 0) {
+                  next = [...prev];
+                  next[idx] = { ...next[idx], ...po };
+                } else {
+                  next = [po, ...prev];
+                }
+                try {
+                  localStorage.setItem(LOCAL_STORAGE_KEY + '_po', JSON.stringify(next));
+                } catch (e) {}
+                return next;
+              });
+            }
+          })
+          .on('broadcast', { event: 'PO_DELETED' }, (payload: any) => {
+            const poId = payload.payload?.id;
+            if (poId) {
+              setPurchaseOrders((prev) => {
+                const next = prev.filter((p) => p.id !== poId);
+                try {
+                  localStorage.setItem(LOCAL_STORAGE_KEY + '_po', JSON.stringify(next));
+                } catch (e) {}
+                return next;
+              });
+            }
           })
           .on('broadcast', { event: 'VENDOR_DELETED' }, (payload: any) => {
             const deletedId = payload.payload?.id;
@@ -1209,35 +1345,10 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       broadcast.onmessage = async (event) => {
         if (event.data?.type === 'FACTORY_RESET') {
           applyGlobalFactoryReset();
-        } else if (event.data?.type === 'SYNC_ALL' || event.data?.type === 'PROJECTS_UPDATED') {
+        } else if (event.data?.type === 'SYNC_ALL' || event.data?.type === 'PROJECTS_UPDATED' || event.data?.type === 'REQUIREMENTS_UPDATED') {
           const pullRes = await pullAllDataFromSupabase();
           if (pullRes.success && pullRes.data) {
-            if (pullRes.data.projects && pullRes.data.projects.length > 0) {
-              const remoteProjects = pullRes.data.projects;
-              setProjects((prev) => {
-                const merged = safeMergeProjects(prev, remoteProjects);
-                try {
-                  localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(merged));
-                } catch (e) {}
-                return merged;
-              });
-            }
-            if (pullRes.data.requirements && pullRes.data.requirements.length > 0) {
-              const remoteReqs = pullRes.data.requirements;
-              setProjectRequirements((prev) => {
-                const merged = safeMergeRequirements(prev, remoteReqs);
-                try {
-                  localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(merged));
-                } catch (e) {}
-                return merged;
-              });
-            }
-            if (pullRes.data.vendors && Array.isArray(pullRes.data.vendors)) {
-              setVendors(pullRes.data.vendors);
-              try {
-                localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(pullRes.data.vendors));
-              } catch (e) {}
-            }
+            applyRemoteData(pullRes.data);
           }
         } else if (event.data?.type === 'VENDORS_UPDATED') {
           if (event.data.vendors && Array.isArray(event.data.vendors)) {
@@ -1264,38 +1375,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const pullRes = await pullAllDataFromSupabase();
         if (pullRes.success && pullRes.data) {
-          if (pullRes.data.projects && pullRes.data.projects.length > 0) {
-            const remoteProjects = pullRes.data.projects;
-            setProjects((prev) => {
-              const merged = safeMergeProjects(prev, remoteProjects);
-              try {
-                localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(merged));
-              } catch (e) {}
-              return merged;
-            });
-          }
-          if (pullRes.data.requirements && pullRes.data.requirements.length > 0) {
-            const remoteReqs = pullRes.data.requirements;
-            setProjectRequirements((prev) => {
-              const merged = safeMergeRequirements(prev, remoteReqs);
-              try {
-                localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(merged));
-              } catch (e) {}
-              return merged;
-            });
-          }
-          if (pullRes.data.vendors && Array.isArray(pullRes.data.vendors)) {
-            setVendors(pullRes.data.vendors);
-            try {
-              localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(pullRes.data.vendors));
-            } catch (e) {}
-          }
-          if (pullRes.data.customers && Array.isArray(pullRes.data.customers)) {
-            setCustomers(pullRes.data.customers);
-            try {
-              localStorage.setItem(LOCAL_STORAGE_KEY + '_customers', JSON.stringify(pullRes.data.customers));
-            } catch (e) {}
-          }
+          applyRemoteData(pullRes.data);
         }
       } catch (err) {
         // silent
@@ -1303,10 +1383,12 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     window.addEventListener('focus', handleWindowFocus);
+    window.addEventListener('online', handleWindowFocus);
 
     return () => {
       isMounted = false;
       window.removeEventListener('focus', handleWindowFocus);
+      window.removeEventListener('online', handleWindowFocus);
       if (broadcast) broadcast.close();
       if (activeChannel) {
         try {
@@ -1705,6 +1787,10 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteProjectRequirement = (id: string) => {
+    // 1. Add to durable tombstones to prevent resurrection from cache or stale pulls
+    addRequirementTombstone(id);
+
+    // 2. Find and move to trash if present
     const reqToDelete = projectRequirements.find((r) => r.id === id);
     if (reqToDelete) {
       const trashEntry: TrashItem = {
@@ -1727,14 +1813,74 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             materialsCount: Math.max(0, (existingProject.materialsCount || 1) - 1),
             totalQuantity: Math.max(0, (existingProject.totalQuantity || reqToDelete.quantity) - Number(reqToDelete.quantity || 0)),
           };
-          setProjects((prev) => prev.map((p) => (p.id === updatedPrj.id ? updatedPrj : p)));
+          setProjects((prev) => {
+            const nextPrjs = prev.map((p) => (p.id === updatedPrj.id ? updatedPrj : p));
+            try {
+              localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(nextPrjs));
+            } catch (e) {}
+            return nextPrjs;
+          });
           dbUpsertProject(updatedPrj);
         }
+
+        // Clean draft storage for this project
+        try {
+          const draftKey = `RSB_PROJECT_DRAFT_${reqToDelete.projectName}`;
+          const cachedDraft = localStorage.getItem(draftKey);
+          if (cachedDraft) {
+            const parsedDraft = JSON.parse(cachedDraft);
+            if (Array.isArray(parsedDraft)) {
+              const cleanedDraft = parsedDraft.filter((r) => r.id !== id);
+              if (cleanedDraft.length === 0) {
+                localStorage.removeItem(draftKey);
+              } else {
+                localStorage.setItem(draftKey, JSON.stringify(cleanedDraft));
+              }
+            }
+          }
+        } catch (e) {}
       }
     }
 
-    setProjectRequirements((prev) => prev.filter((r) => r.id !== id));
+    // 3. Clean up if this was backed by a manufacturing order item (ord-mat-)
+    if (id.startsWith('ord-mat-')) {
+      const ordId = id.replace('ord-mat-', '');
+      setOrders((prev) => {
+        const next = prev.filter((o) => o.id !== ordId);
+        try {
+          localStorage.setItem(LOCAL_STORAGE_KEY + '_orders', JSON.stringify(next));
+        } catch (e) {}
+        return next;
+      });
+    }
+
+    // 4. Update React state AND save to LocalStorage immediately
+    setProjectRequirements((prev) => {
+      const next = prev.filter((r) => r.id !== id);
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+
+    // 5. Delete authoritatively from Supabase
     dbDeleteRequirement(id);
+
+    // 6. Broadcast deletion to all other tabs and devices
+    try {
+      const client = getSupabaseClient();
+      if (client) {
+        client.channel('rsb-system-broadcast').send({
+          type: 'broadcast',
+          event: 'REQUIREMENT_DELETED',
+          payload: { id },
+        });
+      }
+      const bc = new BroadcastChannel('rsb_erp_live_sync');
+      bc.postMessage({ type: 'REQUIREMENT_DELETED', id });
+      bc.close();
+    } catch (e) {}
+
     logAudit('Requirement Deleted', 'Project Material Requirement', `Deleted Requirement ID ${id} (Moved to Trash)`);
   };
 
@@ -1930,9 +2076,9 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const replaceProjectRequirements = (projectName: string, items: any[]) => {
     if (!projectName) return;
     
-    // Find existing requirements in state for this project so we can preserve inward verification, custom flags, IDs if matched
-    const currentProjectReqs = projectRequirements.filter(
-      (r) => (r.projectName || '').trim().toLowerCase() === projectName.trim().toLowerCase()
+    // Find existing requirements in state for this project using robust matcher
+    const currentProjectReqs = projectRequirements.filter((r) =>
+      isRequirementMatchingProjectName(r.projectName, projectName, projects)
     );
 
     // 1. Map active rows preserving exact Sr. No. and custom metadata
@@ -2035,15 +2181,19 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     });
 
-    // 2. Safely purge specifically removed rows from DB (rather than blanket project purge)
+    // 2. Safely purge removed rows from DB and tombstone them to prevent resurrection
     const activeIds = new Set(mapped.map((m) => m.id));
     const removedReqs = currentProjectReqs.filter((r) => !activeIds.has(r.id));
-    removedReqs.forEach((r) => dbDeleteRequirement(r.id));
+    if (removedReqs.length > 0) {
+      addRequirementTombstones(removedReqs.map((r) => r.id));
+      removedReqs.forEach((r) => dbDeleteRequirement(r.id));
+    }
 
     // 3. Update React state & LocalStorage
+    const currentProjectReqIds = new Set(currentProjectReqs.map((r) => r.id));
     setProjectRequirements((prev) => {
       const nextReqs = [
-        ...prev.filter((r) => (r.projectName || '').trim().toLowerCase() !== projectName.trim().toLowerCase()),
+        ...prev.filter((r) => !currentProjectReqIds.has(r.id)),
         ...mapped,
       ];
       try {
@@ -2057,8 +2207,25 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       dbBulkUpsertRequirements(mapped);
     }
 
-    // 5. Broadcast to other open tabs
+    // 5. Clean or sync draft storage for this project
     try {
+      if (mapped.length === 0) {
+        localStorage.removeItem(`RSB_PROJECT_DRAFT_${projectName}`);
+      } else {
+        localStorage.setItem(`RSB_PROJECT_DRAFT_${projectName}`, JSON.stringify(mapped));
+      }
+    } catch (e) {}
+
+    // 6. Broadcast to other open tabs and devices
+    try {
+      const client = getSupabaseClient();
+      if (client) {
+        client.channel('rsb-system-broadcast').send({
+          type: 'broadcast',
+          event: 'REQUIREMENT_UPDATED',
+          payload: { projectName, count: mapped.length },
+        });
+      }
       const bc = new BroadcastChannel('rsb_erp_live_sync');
       bc.postMessage({ type: 'PROJECTS_UPDATED', projectName });
       bc.close();
@@ -2670,11 +2837,22 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Inward (Auto-Increases Stock)
   const addInwardEntry = (entry: Omit<InwardEntry, 'id'>) => {
+    const existing = inwardEntries.find((i) => i.inwardNumber.trim().toLowerCase() === entry.inwardNumber.trim().toLowerCase());
+    if (existing) {
+      logAudit('Duplicate Inward Skipped', 'Inward Management', `Duplicate Inward GRN ${entry.inwardNumber} ignored.`);
+      return;
+    }
+
     const newInward: InwardEntry = {
       ...entry,
       id: 'inw-' + (inwardEntries.length + 1) + '-' + Date.now().toString().slice(-4),
     };
-    setInwardEntries((prev) => [newInward, ...prev]);
+    setInwardEntries((prev) => {
+      if (prev.some((i) => i.inwardNumber.trim().toLowerCase() === newInward.inwardNumber.trim().toLowerCase())) {
+        return prev;
+      }
+      return [newInward, ...prev];
+    });
 
     if (newInward.qualityStatus === 'Approved') {
       const matchedMaterial = materials.find(
@@ -3049,15 +3227,19 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteProject = (id: string, cascadeRequirements: boolean = true) => {
+    // 1. Tombstone project ID
+    addProjectTombstone(id);
+
     const projectToDelete = projects.find((p) => p.id === id);
     if (projectToDelete) {
-      const pNameLower = (projectToDelete.name || '').trim().toLowerCase();
-      const pNumLower = (projectToDelete.projectNumber || '').trim().toLowerCase();
+      const deletedReqs = projectRequirements.filter((r) =>
+        isRequirementMatchedToProject(r.projectName, projectToDelete)
+      );
 
-      const deletedReqs = projectRequirements.filter((r) => {
-        const rProjLower = (r.projectName || '').trim().toLowerCase();
-        return rProjLower === pNameLower || rProjLower === pNumLower;
-      });
+      // Tombstone all linked requirement IDs
+      if (deletedReqs.length > 0) {
+        addRequirementTombstones(deletedReqs.map((r) => r.id));
+      }
 
       // Move Project to Trash Bin
       const trashEntry: TrashItem = {
@@ -3071,22 +3253,57 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
       setTrashItems((prev) => [trashEntry, ...prev]);
 
-      // Always remove linked requirements when deleting project to prevent orphan ghost materials
-      setProjectRequirements((prev) =>
-        prev.filter((r) => {
-          const rProjLower = (r.projectName || '').trim().toLowerCase();
-          return rProjLower !== pNameLower && rProjLower !== pNumLower;
-        })
-      );
+      // Remove linked requirements and persist to localStorage
+      const deletedReqIds = new Set(deletedReqs.map((r) => r.id));
+      setProjectRequirements((prev) => {
+        const next = prev.filter((r) => !deletedReqIds.has(r.id));
+        try {
+          localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(next));
+        } catch (e) {}
+        return next;
+      });
+
+      // Clear draft keys from localStorage
+      try {
+        localStorage.removeItem(`RSB_PROJECT_DRAFT_${projectToDelete.name}`);
+        if (projectToDelete.projectNumber) {
+          localStorage.removeItem(`RSB_PROJECT_DRAFT_${projectToDelete.projectNumber}`);
+        }
+      } catch (e) {}
     }
 
-    setProjects((prev) => prev.filter((p) => p.id !== id));
+    setProjects((prev) => {
+      const next = prev.filter((p) => p.id !== id);
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
 
     // INSTANT DB DELETE
     dbDeleteProject(id);
     if (projectToDelete) {
       dbDeleteRequirementsByProject(projectToDelete.name);
     }
+
+    // Broadcast live across all devices
+    try {
+      const client = getSupabaseClient();
+      if (client) {
+        client.channel('rsb-system-broadcast').send({
+          type: 'broadcast',
+          event: 'PROJECT_DELETED',
+          payload: { id, name: projectToDelete?.name },
+        });
+      }
+    } catch (e) {}
+
+    try {
+      const bc = new BroadcastChannel('rsb_erp_live_sync');
+      bc.postMessage({ type: 'PROJECTS_UPDATED', id, name: projectToDelete?.name });
+      bc.close();
+    } catch (e) {}
+
     logAudit('Project Deleted', 'Projects', `Deleted project ${projectToDelete?.name || id} (Moved to Trash)`);
     addNotification('Project Moved to Trash', `Deleted project ${projectToDelete?.name || id}. Restore anytime from Trash Bin.`, 'warning', 'projects');
   };
@@ -3125,6 +3342,13 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Stakeholders Handlers
   const addVendor = (vendor: Omit<VendorItem, 'id'>) => {
+    const trimmedName = (vendor.name || '').trim().toLowerCase();
+    const existing = vendors.find((v) => v.name.trim().toLowerCase() === trimmedName);
+    if (existing) {
+      updateVendor(existing.id, vendor);
+      return;
+    }
+
     const newVendor: VendorItem = {
       ...vendor,
       id: 'vnd-' + (vendors.length + 1) + '-' + Date.now().toString().slice(-4),
@@ -3637,14 +3861,82 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: po.createdAt || new Date().toISOString(),
       id: 'po-' + (purchaseOrders.length + 1) + '-' + Date.now().toString().slice(-4),
     };
-    setPurchaseOrders((prev) => [newPO, ...prev]);
+
+    let isDuplicate = false;
+    setPurchaseOrders((prev) => {
+      if (prev.some((p) => p.poNumber.trim().toLowerCase() === newPO.poNumber.trim().toLowerCase())) {
+        isDuplicate = true;
+        return prev;
+      }
+      const updated = [newPO, ...prev];
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY + '_po', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+
+    if (isDuplicate) return;
+
+    try {
+      const client = getSupabaseClient();
+      if (client) {
+        client.from('purchase_orders').upsert({
+          id: newPO.id,
+          po_number: newPO.poNumber,
+          date: newPO.date || null,
+          vendor: newPO.vendor,
+          expected_date: newPO.expectedDate || null,
+          payment_terms: newPO.paymentTerms || null,
+          status: newPO.status || 'Sent',
+          ordered_by: newPO.orderedBy || null,
+          issued_by: newPO.issuedBy || null,
+          notes: newPO.notes || null,
+          project_names: newPO.projectNames || [],
+          machine_names: newPO.machineNames || [],
+          total_amount: Number(newPO.totalAmount) || 0,
+          items: newPO.items || [],
+        }, { onConflict: 'id' }).then(() => {});
+
+        client.channel('rsb-system-broadcast').send({
+          type: 'broadcast',
+          event: 'PO_UPDATED',
+          payload: { po: newPO },
+        });
+      }
+    } catch (e) {}
+
+    try {
+      const bc = new BroadcastChannel('rsb_erp_live_sync');
+      bc.postMessage({ type: 'PO_UPDATED', po: newPO });
+      bc.close();
+    } catch (e) {}
+
     logAudit('PO Created', 'Purchase', `Generated PO ${newPO.poNumber} for ${newPO.vendor} (Ordered by ${finalOrderedBy})`);
     addNotification('PO Issued', `Purchase Order ${newPO.poNumber} issued to ${newPO.vendor}`, 'info', 'purchase');
   };
 
   const deletePurchaseOrder = (id: string) => {
     const target = purchaseOrders.find((po) => po.id === id);
-    setPurchaseOrders((prev) => prev.filter((po) => po.id !== id));
+    setPurchaseOrders((prev) => {
+      const updated = prev.filter((po) => po.id !== id);
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY + '_po', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+
+    try {
+      const client = getSupabaseClient();
+      if (client) {
+        client.from('purchase_orders').delete().eq('id', id).then(() => {});
+        client.channel('rsb-system-broadcast').send({
+          type: 'broadcast',
+          event: 'PO_DELETED',
+          payload: { id },
+        });
+      }
+    } catch (e) {}
+
     logAudit('PO Deleted', 'Purchase', `Deleted PO ${target?.poNumber || id} from PO basket`);
     addNotification('PO Deleted', `Purchase Order ${target?.poNumber || id} deleted`, 'info', 'purchase');
   };

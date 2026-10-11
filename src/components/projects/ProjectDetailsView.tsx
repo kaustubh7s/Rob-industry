@@ -390,6 +390,23 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const handleDelete = (id: string) => {
     if (window.confirm('Are you sure you want to remove this material entry from this project?')) {
       deleteProjectRequirement(id);
+      if (project?.name) {
+        try {
+          const draftKey = `RSB_PROJECT_DRAFT_${project.name}`;
+          const cachedDraft = localStorage.getItem(draftKey);
+          if (cachedDraft) {
+            const parsedDraft = JSON.parse(cachedDraft);
+            if (Array.isArray(parsedDraft)) {
+              const cleaned = parsedDraft.filter((r) => r.id !== id);
+              if (cleaned.length === 0) {
+                localStorage.removeItem(draftKey);
+              } else {
+                localStorage.setItem(draftKey, JSON.stringify(cleaned));
+              }
+            }
+          }
+        } catch {}
+      }
     }
   };
 

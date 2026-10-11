@@ -45,6 +45,7 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
     vendors,
     customers,
     users,
+    purchaseOrders,
     setProjects,
     setProjectRequirements,
   } = useERP();
@@ -142,6 +143,7 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
       vendors,
       customers,
       users,
+      purchaseOrders,
     });
 
     setSyncStatus({
