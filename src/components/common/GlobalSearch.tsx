@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, X, FolderKanban, Layers, Truck, Factory, Users, HardHat, FileText, ArrowRight, Building2 } from 'lucide-react';
+import { Search, X, FolderKanban, Layers, Truck, Factory, Users, HardHat, FileText, ArrowRight } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 
 interface GlobalSearchProps {
@@ -39,20 +39,6 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose }) =
 
   const query = searchTerm.toLowerCase().trim();
 
-  // Detect explicit vendor or supplier keywords
-  const isVendorIntent = Boolean(
-    query &&
-      ('vendors'.includes(query) ||
-        'vendor'.includes(query) ||
-        'suppliers'.includes(query) ||
-        'supplier'.includes(query) ||
-        query.includes('vendor') ||
-        query.includes('suppl') ||
-        query.includes('dealer') ||
-        query.includes('seller') ||
-        query.includes('partner'))
-  );
-
   // Search aggregations
   const matchedProjects = query
     ? projects.filter(p => p.name.toLowerCase().includes(query) || p.projectNumber.toLowerCase().includes(query) || p.customer.toLowerCase().includes(query))
@@ -67,14 +53,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose }) =
     : [];
 
   const matchedVendors = query
-    ? vendors.filter(
-        v =>
-          v.name.toLowerCase().includes(query) ||
-          (v.contactPerson || '').toLowerCase().includes(query) ||
-          (v.gstin || '').toLowerCase().includes(query) ||
-          (v.materialSupplied || '').toLowerCase().includes(query) ||
-          (v.mobile || '').toLowerCase().includes(query)
-      )
+    ? vendors.filter(v => v.name.toLowerCase().includes(query) || v.materialSupplied.toLowerCase().includes(query))
     : [];
 
   const matchedCustomers = query
@@ -101,8 +80,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose }) =
     matchedCustomers.length +
     matchedJobs.length +
     matchedInward.length +
-    matchedOutward.length +
-    (isVendorIntent ? 1 : 0);
+    matchedOutward.length;
 
   const handleNavigate = (tab: string) => {
     setActiveTab(tab);
@@ -149,37 +127,6 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose }) =
             <div className="py-8 text-center text-slate-400">
               <p className="text-sm font-semibold">No matches found for &ldquo;{searchTerm}&rdquo;</p>
               <p className="text-xs mt-1 text-slate-500">Try searching for &quot;FOHA&quot;, &quot;SS Flat&quot;, &quot;Manav Metal&quot;, or &quot;36&quot;</p>
-            </div>
-          )}
-
-          {/* Dedicated Vendor Directory Quick Navigation Card */}
-          {(isVendorIntent || matchedVendors.length > 0) && (
-            <div
-              onClick={() => handleNavigate('vendors')}
-              className="p-3.5 rounded-xl bg-gradient-to-r from-amber-950/90 via-slate-900 to-indigo-950/80 border-2 border-amber-500/70 hover:border-amber-400 hover:bg-slate-850 cursor-pointer transition-all shadow-xl flex items-center justify-between group animate-fadeIn"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center font-black group-hover:scale-105 group-hover:shadow-md group-hover:shadow-amber-500/20 transition-all shrink-0">
-                  <Building2 className="w-5 h-5 text-amber-400" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-black text-white group-hover:text-amber-300 transition-colors">
-                      Open Vendors & Suppliers Page
-                    </span>
-                    <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-200 border border-amber-500/30 text-[10px] font-mono font-bold">
-                      {vendors.length} Registered
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-300 mt-0.5">
-                    Click to open Vendor Directory: add new suppliers, manage GSTIN, contacts, ratings & PO spend
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-300 text-xs font-bold group-hover:bg-amber-500 group-hover:text-slate-950 transition-all shrink-0">
-                <span>Open Page</span>
-                <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-              </div>
             </div>
           )}
 

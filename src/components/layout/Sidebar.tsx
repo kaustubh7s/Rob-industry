@@ -9,7 +9,6 @@ import {
   Sparkles,
   Command,
   FileSpreadsheet,
-  Building2,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 
@@ -28,7 +27,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     projectRequirements,
     purchaseOrders,
     trashItems,
-    vendors,
   } = useERP();
 
   // Close drawer on Escape key
@@ -78,7 +76,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       icon: FileText,
       shortcut: 'Ctrl+3',
       badge: purchaseOrders.length > 0 ? String(purchaseOrders.length) : null,
-      badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
+      badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
     },
     {
       id: 'microsoft',

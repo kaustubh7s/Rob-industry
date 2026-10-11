@@ -11,7 +11,6 @@ import {
   VendorItem,
   CustomerItem,
   User,
-  PurchaseOrder,
 } from '../types/erp';
 import {
   Workbook,
@@ -301,24 +300,6 @@ CREATE TABLE IF NOT EXISTS public.deleted_workbook_items (
   deleted_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS public.purchase_orders (
-  id TEXT PRIMARY KEY,
-  po_number TEXT NOT NULL,
-  date DATE,
-  vendor TEXT,
-  expected_date DATE,
-  payment_terms TEXT,
-  status TEXT DEFAULT 'Sent',
-  ordered_by TEXT,
-  issued_by TEXT,
-  notes TEXT,
-  project_names JSONB DEFAULT '[]'::jsonb,
-  machine_names JSONB DEFAULT '[]'::jsonb,
-  total_amount NUMERIC DEFAULT 0,
-  items JSONB DEFAULT '[]'::jsonb,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
 -- Enable Row Level Security (RLS) & allow authenticated / anon access
 ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.project_material_requirements ENABLE ROW LEVEL SECURITY;
@@ -330,7 +311,6 @@ ALTER TABLE public.outward_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.vendors ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.erp_users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.purchase_orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.workbook_directories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.workbooks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.workbook_activity_logs ENABLE ROW LEVEL SECURITY;
@@ -346,7 +326,6 @@ CREATE POLICY "Allow public full access for outward" ON public.outward_entries F
 CREATE POLICY "Allow public full access for vendors" ON public.vendors FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public full access for customers" ON public.customers FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public full access for users" ON public.erp_users FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public full access for purchase_orders" ON public.purchase_orders FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public full access for workbook_directories" ON public.workbook_directories FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public full access for workbooks" ON public.workbooks FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public full access for workbook_activity_logs" ON public.workbook_activity_logs FOR ALL USING (true) WITH CHECK (true);
@@ -365,7 +344,6 @@ export const pushAllDataToSupabase = async (erpState: {
   vendors: VendorItem[];
   customers: CustomerItem[];
   users: User[];
-  purchaseOrders?: PurchaseOrder[];
 }): Promise<{ success: boolean; count: number; message: string; details?: string[] }> => {
   const supabase = getSupabaseClient();
   if (!supabase) {
@@ -403,93 +381,59 @@ export const pushAllDataToSupabase = async (erpState: {
 
     // 2. Project Requirements
     if (erpState.requirements.length > 0) {
-      const mappedReqs = erpState.requirements.map((r) => {
-        let baseNotes = (r.notes || '')
-          .replace(/\[INWARD_VERIFIED:[^\]]*\]/g, '')
-          .replace(/\[ORIGINAL_SR_NO:[^\]]*\]/g, '')
-          .trim();
-
-        if (r.srNo !== undefined && r.srNo !== null && String(r.srNo).trim() !== '') {
-          baseNotes = `${baseNotes} [ORIGINAL_SR_NO:${r.srNo}]`.trim();
-        }
-
-        if (r.isReceived) {
-          baseNotes = `${baseNotes} [INWARD_VERIFIED:${r.receivedBy || 'Chandramani'}:${r.receivedAt || new Date().toISOString()}:${r.receivedByInitials || 'CP'}]`.trim();
-        }
-
-        return {
-          id: r.id,
-          sr_no: r.srNo,
-          description: r.description,
-          material_type: r.materialType,
-          material_grade: r.materialGrade,
-          size_specs: r.sizeSpecs,
-          quantity: r.quantity,
-          unit: r.unit,
-          weight_kg: r.weightKg,
-          project_name: r.projectName,
-          customer_name: r.customerName,
-          po_number: r.poNumber,
-          po_date: r.poDate,
-          machine_type: r.machineType,
-          order_source: r.orderSource,
-          delivery_date: r.deliveryDate,
-          vendor: r.vendor,
-          bom_ref: r.bomRef,
-          last_purchase_rate: r.lastPurchaseRate,
-          last_purchase_date: r.lastPurchaseDate,
-          vendor_rating: r.vendorRating,
-          vendor_reliability: r.vendorReliability,
-          stock_status: r.stockStatus,
-          available_stock: r.availableStock,
-          shortage_qty: r.shortageQty,
-          production_status: r.productionStatus,
-          qc_status: r.qcStatus,
-          dispatch_status: r.dispatchStatus,
-          job_card_no: r.jobCardNo,
-          assigned_operator: r.assignedOperator,
-          assigned_machine: r.assignedMachine,
-          production_stage: r.productionStage,
-          material_cost: r.materialCost,
-          labor_cost: r.laborCost,
-          machine_cost: r.machineCost,
-          outsourcing_cost: r.outsourcingCost,
-          total_cost: r.totalCost,
-          selling_price_allocated: r.sellingPriceAllocated,
-          notes: baseNotes,
-          ordered_by: r.orderedBy,
-          is_received: Boolean(r.isReceived),
-          received_at: r.receivedAt || null,
-          received_by: r.receivedBy || null,
-          received_by_initials: r.receivedByInitials || null,
-          received_by_role: r.receivedByRole || null,
-          received_notes: r.receivedNotes || null,
-          timestamp: (r as any).timestamp || r.date || new Date().toISOString(),
-        };
-      });
+      const mappedReqs = erpState.requirements.map((r) => ({
+        id: r.id,
+        sr_no: r.srNo,
+        description: r.description,
+        material_type: r.materialType,
+        material_grade: r.materialGrade,
+        size_specs: r.sizeSpecs,
+        quantity: r.quantity,
+        unit: r.unit,
+        weight_kg: r.weightKg,
+        project_name: r.projectName,
+        customer_name: r.customerName,
+        po_number: r.poNumber,
+        po_date: r.poDate,
+        machine_type: r.machineType,
+        order_source: r.orderSource,
+        delivery_date: r.deliveryDate,
+        vendor: r.vendor,
+        bom_ref: r.bomRef,
+        last_purchase_rate: r.lastPurchaseRate,
+        last_purchase_date: r.lastPurchaseDate,
+        vendor_rating: r.vendorRating,
+        vendor_reliability: r.vendorReliability,
+        stock_status: r.stockStatus,
+        available_stock: r.availableStock,
+        shortage_qty: r.shortageQty,
+        production_status: r.productionStatus,
+        qc_status: r.qcStatus,
+        dispatch_status: r.dispatchStatus,
+        job_card_no: r.jobCardNo,
+        assigned_operator: r.assignedOperator,
+        assigned_machine: r.assignedMachine,
+        production_stage: r.productionStage,
+        material_cost: r.materialCost,
+        labor_cost: r.laborCost,
+        machine_cost: r.machineCost,
+        outsourcing_cost: r.outsourcingCost,
+        total_cost: r.totalCost,
+        selling_price_allocated: r.sellingPriceAllocated,
+        notes: r.notes,
+        ordered_by: r.orderedBy,
+        is_received: Boolean(r.isReceived),
+        received_at: r.receivedAt || null,
+        received_by: r.receivedBy || null,
+        received_by_initials: r.receivedByInitials || null,
+        received_by_role: r.receivedByRole || null,
+        received_notes: r.receivedNotes || null,
+        timestamp: (r as any).timestamp || r.date || new Date().toISOString(),
+      }));
 
       const { error } = await supabase.from('project_material_requirements').upsert(mappedReqs, { onConflict: 'id' });
-      if (error) {
-        // Fallback for legacy database schema without new columns or with INTEGER sr_no
-        const legacyMapped = mappedReqs.map((m) => {
-          const item = { ...m };
-          delete (item as any).is_received;
-          delete (item as any).received_at;
-          delete (item as any).received_by;
-          delete (item as any).received_by_initials;
-          delete (item as any).received_by_role;
-          delete (item as any).received_notes;
-          if (typeof item.sr_no === 'string' && isNaN(Number(item.sr_no))) {
-            (item as any).sr_no = null;
-          }
-          return item;
-        });
-        const { error: legErr } = await supabase.from('project_material_requirements').upsert(legacyMapped, { onConflict: 'id' });
-        if (legErr) details.push(`Requirements sync warning: ${legErr.message}`);
-        else totalCount += legacyMapped.length;
-      } else {
-        totalCount += mappedReqs.length;
-      }
+      if (error) details.push(`Requirements sync warning: ${error.message}`);
+      else totalCount += mappedReqs.length;
     }
 
     // 3. Raw Materials Catalog
@@ -572,116 +516,6 @@ export const pushAllDataToSupabase = async (erpState: {
       else totalCount += mappedUsers.length;
     }
 
-    // 7. Manufacturing Orders
-    if (erpState.orders && erpState.orders.length > 0) {
-      try {
-        const mappedOrders = erpState.orders.map((o) => ({
-          id: o.id,
-          order_number: o.orderNumber,
-          po_number: o.poNumber || '',
-          date: o.date || null,
-          customer: o.customer || '',
-          vendor: o.vendor || null,
-          machine_type: o.machineType || '',
-          project: o.project || '',
-          drawing_ref: o.drawingRef || null,
-          material_type: o.materialType || '',
-          size_specs: o.sizeSpecs || '',
-          quantity: Number(o.quantity) || 0,
-          unit: o.unit || 'Nos',
-          inward_qty: Number(o.inwardQty) || 0,
-          outward_qty: Number(o.outwardQty) || 0,
-          current_stock: Number(o.currentStock) || 0,
-          status: o.status || 'Pending',
-          delivery_date: o.deliveryDate || null,
-          order_source: o.orderSource || null,
-          unit_rate: Number(o.unitRate) || 0,
-          total_amount: Number(o.totalAmount) || 0,
-          notes: o.notes || null,
-        }));
-        const { error: ordErr } = await supabase.from('manufacturing_orders').upsert(mappedOrders, { onConflict: 'id' });
-        if (!ordErr) totalCount += mappedOrders.length;
-      } catch (e) {}
-    }
-
-    // 8. Inward Entries
-    if (erpState.inwardEntries && erpState.inwardEntries.length > 0) {
-      try {
-        const mappedInward = erpState.inwardEntries.map((i) => ({
-          id: i.id,
-          inward_number: i.inwardNumber,
-          date: i.date || null,
-          vendor: i.vendor,
-          po_number: i.poNumber || null,
-          challan_number: i.challanNumber || null,
-          invoice_number: i.invoiceNumber || null,
-          material_type: i.materialType,
-          size_specs: i.sizeSpecs,
-          quantity: Number(i.quantity) || 0,
-          unit: i.unit || 'Nos',
-          weight_kg: Number(i.weightKg) || 0,
-          received_by: i.receivedBy || null,
-          quality_status: i.qualityStatus || 'Approved',
-          remarks: i.remarks || null,
-          linked_order_id: i.linkedOrderId || null,
-        }));
-        const { error: inwErr } = await supabase.from('inward_entries').upsert(mappedInward, { onConflict: 'id' });
-        if (!inwErr) totalCount += mappedInward.length;
-      } catch (e) {}
-    }
-
-    // 9. Job Cards
-    if (erpState.jobCards && erpState.jobCards.length > 0) {
-      try {
-        const mappedJobCards = erpState.jobCards.map((j) => ({
-          id: j.id,
-          job_card_no: j.jobCardNo,
-          project: j.project,
-          customer: j.customer,
-          drawing_ref: j.drawingRef || null,
-          material: j.material,
-          size_specs: j.sizeSpecs,
-          quantity: Number(j.quantity) || 0,
-          unit: j.unit || 'Nos',
-          machine_type: j.machineType,
-          assigned_operator: j.assignedOperator || null,
-          start_date: j.startDate || null,
-          end_date: j.endDate || null,
-          completion_pct: Number(j.completionPct) || 0,
-          status: j.status || 'Pending',
-          linked_order_id: j.linkedOrderId || null,
-          linked_requirement_id: j.linkedRequirementId || null,
-          notes: j.notes || null,
-        }));
-        const { error: jcErr } = await supabase.from('job_cards').upsert(mappedJobCards, { onConflict: 'id' });
-        if (!jcErr) totalCount += mappedJobCards.length;
-      } catch (e) {}
-    }
-
-    // 10. Purchase Orders
-    if (erpState.purchaseOrders && erpState.purchaseOrders.length > 0) {
-      try {
-        const mappedPOs = erpState.purchaseOrders.map((po) => ({
-          id: po.id,
-          po_number: po.poNumber,
-          date: po.date || null,
-          vendor: po.vendor,
-          expected_date: po.expectedDate || null,
-          payment_terms: po.paymentTerms || null,
-          status: po.status || 'Sent',
-          ordered_by: po.orderedBy || null,
-          issued_by: po.issuedBy || null,
-          notes: po.notes || null,
-          project_names: po.projectNames || [],
-          machine_names: po.machineNames || [],
-          total_amount: Number(po.totalAmount) || 0,
-          items: po.items || [],
-        }));
-        const { error: poErr } = await supabase.from('purchase_orders').upsert(mappedPOs, { onConflict: 'id' });
-        if (!poErr) totalCount += mappedPOs.length;
-      } catch (e) {}
-    }
-
     return {
       success: true,
       count: totalCount,
@@ -696,9 +530,7 @@ export const pushAllDataToSupabase = async (erpState: {
       details,
     };
   }
-};
-
-// Pull remote data from Supabase into local ERP
+};// Pull remote data from Supabase into local ERP
 export const pullAllDataFromSupabase = async (): Promise<{
   success: boolean;
   data?: {
@@ -708,10 +540,6 @@ export const pullAllDataFromSupabase = async (): Promise<{
     vendors?: VendorItem[];
     customers?: CustomerItem[];
     users?: User[];
-    orders?: ManufacturingOrderItem[];
-    inwardEntries?: InwardEntry[];
-    jobCards?: JobCard[];
-    purchaseOrders?: PurchaseOrder[];
   };
   message: string;
 }> => {
@@ -957,118 +785,6 @@ export const pullAllDataFromSupabase = async (): Promise<{
       });
     }
 
-    // 7. Fetch Manufacturing Orders (gracefully)
-    let parsedOrders: ManufacturingOrderItem[] | undefined;
-    try {
-      const { data: ordData, error: ordErr } = await supabase.from('manufacturing_orders').select('*').order('created_at', { ascending: false });
-      if (!ordErr && ordData && ordData.length > 0) {
-        parsedOrders = ordData.map((o: any) => ({
-          id: o.id,
-          orderNumber: o.order_number,
-          poNumber: o.po_number || '',
-          date: o.date,
-          customer: o.customer,
-          vendor: o.vendor,
-          machineType: o.machine_type,
-          project: o.project,
-          drawingRef: o.drawing_ref,
-          materialType: o.material_type,
-          sizeSpecs: o.size_specs,
-          quantity: Number(o.quantity || 0),
-          unit: o.unit || 'Nos',
-          inwardQty: Number(o.inward_qty || 0),
-          outwardQty: Number(o.outward_qty || 0),
-          currentStock: Number(o.current_stock || 0),
-          status: o.status || 'Pending',
-          deliveryDate: o.delivery_date,
-          orderSource: o.order_source,
-          unitRate: Number(o.unit_rate || 0),
-          totalAmount: Number(o.total_amount || 0),
-          notes: o.notes,
-        }));
-      }
-    } catch (e) {}
-
-    // 8. Fetch Inward Entries (gracefully)
-    let parsedInward: InwardEntry[] | undefined;
-    try {
-      const { data: inwData, error: inwErr } = await supabase.from('inward_entries').select('*').order('created_at', { ascending: false });
-      if (!inwErr && inwData && inwData.length > 0) {
-        parsedInward = inwData.map((i: any) => ({
-          id: i.id,
-          inwardNumber: i.inward_number,
-          date: i.date,
-          vendor: i.vendor,
-          poNumber: i.po_number,
-          challanNumber: i.challan_number,
-          invoiceNumber: i.invoice_number,
-          materialType: i.material_type,
-          sizeSpecs: i.size_specs,
-          quantity: Number(i.quantity || 0),
-          unit: i.unit || 'Nos',
-          weightKg: Number(i.weight_kg || 0),
-          receivedBy: i.received_by,
-          qualityStatus: i.quality_status || 'Approved',
-          remarks: i.remarks,
-          linkedOrderId: i.linked_order_id,
-        }));
-      }
-    } catch (e) {}
-
-    // 9. Fetch Job Cards (gracefully)
-    let parsedJobCards: JobCard[] | undefined;
-    try {
-      const { data: jcData, error: jcErr } = await supabase.from('job_cards').select('*').order('created_at', { ascending: false });
-      if (!jcErr && jcData && jcData.length > 0) {
-        parsedJobCards = jcData.map((j: any) => ({
-          id: j.id,
-          jobCardNo: j.job_card_no,
-          project: j.project,
-          customer: j.customer,
-          drawingRef: j.drawing_ref,
-          material: j.material,
-          sizeSpecs: j.size_specs,
-          quantity: Number(j.quantity || 0),
-          unit: j.unit || 'Nos',
-          machineType: j.machine_type,
-          assignedOperator: j.assigned_operator,
-          startDate: j.start_date,
-          endDate: j.end_date,
-          completionPct: Number(j.completion_pct || 0),
-          status: j.status || 'Pending',
-          linkedOrderId: j.linked_order_id,
-          linkedRequirementId: j.linked_requirement_id,
-          operations: Array.isArray(j.operations) ? j.operations : [],
-          notes: j.notes,
-        }));
-      }
-    } catch (e) {}
-
-    // 10. Fetch Purchase Orders (gracefully)
-    let parsedPOs: PurchaseOrder[] | undefined;
-    try {
-      const { data: poData, error: poErr } = await supabase.from('purchase_orders').select('*').order('created_at', { ascending: false });
-      if (!poErr && poData && poData.length > 0) {
-        parsedPOs = poData.map((p: any) => ({
-          id: p.id,
-          poNumber: p.po_number,
-          date: p.date,
-          vendor: p.vendor,
-          expectedDate: p.expected_date,
-          paymentTerms: p.payment_terms,
-          status: p.status || 'Sent',
-          orderedBy: p.ordered_by,
-          issuedBy: p.issued_by,
-          notes: p.notes,
-          projectNames: Array.isArray(p.project_names) ? p.project_names : [],
-          machineNames: Array.isArray(p.machine_names) ? p.machine_names : [],
-          totalAmount: Number(p.total_amount || 0),
-          items: Array.isArray(p.items) ? p.items : [],
-          createdAt: p.created_at,
-        }));
-      }
-    } catch (e) {}
-
     return {
       success: true,
       data: {
@@ -1078,10 +794,6 @@ export const pullAllDataFromSupabase = async (): Promise<{
         vendors: parsedVendors,
         customers: parsedCustomers,
         users: parsedUsers,
-        orders: parsedOrders,
-        inwardEntries: parsedInward,
-        jobCards: parsedJobCards,
-        purchaseOrders: parsedPOs,
       },
       message: `Pulled ${parsedProjects.length} projects, ${parsedRequirements.length} requirements, ${parsedVendors.length} vendors, ${parsedCustomers.length} customers from Supabase.`,
     };
@@ -1239,20 +951,14 @@ export const dbUpsertRequirement = async (req: ProjectMaterialRequirementItem): 
   }
 };
 
-export const dbDeleteRequirement = async (reqId: string): Promise<{ success: boolean; offline?: boolean; error?: string }> => {
+export const dbDeleteRequirement = async (reqId: string) => {
   const supabase = getSupabaseClient();
-  if (!supabase) return { success: false, offline: true };
+  if (!supabase) return;
 
   try {
-    const { error } = await supabase.from('project_material_requirements').delete().eq('id', reqId);
-    if (error) {
-      console.warn('Supabase requirement delete failed:', error);
-      return { success: false, error: error.message };
-    }
-    return { success: true };
-  } catch (e: any) {
+    await supabase.from('project_material_requirements').delete().eq('id', reqId);
+  } catch (e) {
     console.warn('Supabase requirement delete failed:', e);
-    return { success: false, error: e?.message };
   }
 };
 
@@ -1377,16 +1083,11 @@ export const dbUpsertVendor = async (vendor: VendorItem) => {
   }
 };
 
-export const dbDeleteVendor = async (vendorId: string, vendorName?: string) => {
+export const dbDeleteVendor = async (vendorId: string) => {
   const supabase = getSupabaseClient();
   if (!supabase) return;
   try {
-    if (vendorId) {
-      await supabase.from('vendors').delete().eq('id', vendorId);
-    }
-    if (vendorName) {
-      await supabase.from('vendors').delete().ilike('name', vendorName.trim());
-    }
+    await supabase.from('vendors').delete().eq('id', vendorId);
   } catch (e) {
     console.warn('Supabase vendor delete failed:', e);
   }

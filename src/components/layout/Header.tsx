@@ -34,7 +34,6 @@ import {
   User as UserIcon,
   Settings as SettingsIcon,
   LogOut,
-  Building2,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 import { UserRole, User } from '../../types/erp';
@@ -71,7 +70,6 @@ export const Header: React.FC<HeaderProps> = ({
     activeTab,
     setActiveTab,
     users,
-    vendors,
   } = useERP();
 
   const [isNotifOpen, setIsNotifOpen] = useState(false);

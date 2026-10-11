@@ -170,14 +170,6 @@
           <span class="text-[10px] font-mono text-slate-500">Ctrl+3</span>
         </button>
 
-        <button onclick="switchTab('vendors')" class="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-slate-300 hover:bg-slate-900 transition-all text-left">
-          <div class="flex items-center gap-2.5">
-            <i data-lucide="building-2" class="w-4 h-4 text-amber-400"></i>
-            <span>Vendors & Suppliers</span>
-          </div>
-          <span class="text-[10px] font-mono text-amber-400">Ctrl+6</span>
-        </button>
-
         <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-3 pt-4 py-1">Plant Operations</div>
         
         <button onclick="switchTab('dashboard')" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-slate-300 hover:bg-slate-900 transition-all text-left">
@@ -631,94 +623,6 @@
           </div>
         </section>
 
-        <!-- =================================================================================== -->
-        <!-- TAB: VENDORS & SUPPLIERS DIRECTORY                                                 -->
-        <!-- =================================================================================== -->
-        <section id="tab-vendors" class="tab-content space-y-6">
-          <div class="p-6 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-850 to-indigo-950 border border-slate-800 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div class="flex items-center gap-3">
-              <div class="w-11 h-11 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center font-black">
-                <i data-lucide="building-2" class="w-6 h-6"></i>
-              </div>
-              <div>
-                <div class="flex items-center gap-2">
-                  <h2 class="text-lg font-black text-white">Vendor Management & Supplier Partners</h2>
-                  <span id="vendor-count-badge" class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-mono font-bold">4 Verified Suppliers</span>
-                </div>
-                <p class="text-xs text-slate-300 mt-0.5">Track supplier contacts, payment terms, GSTIN compliance, and procurement spend</p>
-              </div>
-            </div>
-
-            <button onclick="openModal('vendorModal')" class="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 font-black text-xs rounded-xl shadow-lg transition-all active:scale-95 cursor-pointer">
-              <i data-lucide="plus" class="w-4 h-4"></i>
-              <span>+ Add Supplier</span>
-            </button>
-          </div>
-
-          <!-- Vendors Table Card -->
-          <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div class="p-4 border-b border-slate-100 flex items-center justify-between">
-              <h3 class="font-bold text-slate-900 text-sm flex items-center gap-2">
-                <i data-lucide="users" class="w-4 h-4 text-amber-600"></i>
-                <span>Registered Raw Material & SS Suppliers</span>
-              </h3>
-            </div>
-            <div class="overflow-x-auto">
-              <table class="w-full text-left text-xs">
-                <thead class="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
-                  <tr>
-                    <th class="py-3 px-4">Vendor / Company Name</th>
-                    <th class="py-3 px-4">Contact Person</th>
-                    <th class="py-3 px-4">Mobile / WhatsApp</th>
-                    <th class="py-3 px-4">GSTIN</th>
-                    <th class="py-3 px-4">Materials Supplied</th>
-                    <th class="py-3 px-4">Payment Terms</th>
-                    <th class="py-3 px-4 text-center">Status</th>
-                  </tr>
-                </thead>
-                <tbody id="vendorsTableBody" class="divide-y divide-slate-100">
-                  <tr class="hover:bg-slate-50/80 transition-colors">
-                    <td class="py-3 px-4 font-bold text-slate-900">Manav Metal</td>
-                    <td class="py-3 px-4 text-slate-700">Sanjay Jain</td>
-                    <td class="py-3 px-4 font-mono text-blue-600">+91 98220 12345</td>
-                    <td class="py-3 px-4 font-mono text-slate-600">27AABCM1234F1Z5</td>
-                    <td class="py-3 px-4 text-slate-600">SS 304 / 316 Flats, Plates & Round Bars</td>
-                    <td class="py-3 px-4 text-slate-700 font-semibold">30 Days Net</td>
-                    <td class="py-3 px-4 text-center"><span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">Approved</span></td>
-                  </tr>
-                  <tr class="hover:bg-slate-50/80 transition-colors">
-                    <td class="py-3 px-4 font-bold text-slate-900">Jindal Stainless Steel</td>
-                    <td class="py-3 px-4 text-slate-700">Rajesh Sharma</td>
-                    <td class="py-3 px-4 font-mono text-blue-600">+91 98900 54321</td>
-                    <td class="py-3 px-4 font-mono text-slate-600">27AAACJ2234K1ZG</td>
-                    <td class="py-3 px-4 text-slate-600">SS Sheets, Coils & Heavy Plates</td>
-                    <td class="py-3 px-4 text-slate-700 font-semibold">45 Days Net</td>
-                    <td class="py-3 px-4 text-center"><span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">Approved</span></td>
-                  </tr>
-                  <tr class="hover:bg-slate-50/80 transition-colors">
-                    <td class="py-3 px-4 font-bold text-slate-900">Pooja Metal & Tubes</td>
-                    <td class="py-3 px-4 text-slate-700">Pooja Agarwal</td>
-                    <td class="py-3 px-4 font-mono text-blue-600">+91 94222 98765</td>
-                    <td class="py-3 px-4 font-mono text-slate-600">27AABCP5678Q1Z1</td>
-                    <td class="py-3 px-4 text-slate-600">SS Seamless & ERW Pipes, Square Tubes</td>
-                    <td class="py-3 px-4 text-slate-700 font-semibold">30 Days Net</td>
-                    <td class="py-3 px-4 text-center"><span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">Approved</span></td>
-                  </tr>
-                  <tr class="hover:bg-slate-50/80 transition-colors">
-                    <td class="py-3 px-4 font-bold text-slate-900">Apex Precision Laser Blanks</td>
-                    <td class="py-3 px-4 text-slate-700">Vikas Deshmukh</td>
-                    <td class="py-3 px-4 font-mono text-blue-600">+91 98600 11223</td>
-                    <td class="py-3 px-4 font-mono text-slate-600">27AAACA9876L1ZX</td>
-                    <td class="py-3 px-4 text-slate-600">CNC Laser Cut SS Profiles & Flanges</td>
-                    <td class="py-3 px-4 text-slate-700 font-semibold">15 Days Net</td>
-                    <td class="py-3 px-4 text-center"><span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">Approved</span></td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
       </div>
     </main>
   </div>
@@ -770,61 +674,6 @@
     </div>
   </div>
 
-  <!-- Modal: Add Supplier / Vendor -->
-  <div id="vendorModal" class="fixed inset-0 bg-black/60 z-50 hidden items-center justify-center p-4">
-    <div class="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
-      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
-        <div>
-          <h3 class="font-bold text-slate-900 text-base">Add New Vendor / Supplier</h3>
-          <p class="text-xs text-slate-500">Register new verified steel or tooling supplier</p>
-        </div>
-        <button onclick="closeModal('vendorModal')" class="text-slate-400 hover:text-slate-600 cursor-pointer">
-          <i data-lucide="x" class="w-5 h-5"></i>
-        </button>
-      </div>
-
-      <form onsubmit="handleAddNewVendor(event)" class="space-y-3 text-xs">
-        <div>
-          <label class="font-bold text-slate-700 block mb-1">Company / Vendor Name *</label>
-          <input id="new-vnd-name" type="text" required placeholder="e.g. Manav Metal, Jindal..." class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:border-amber-500 outline-none font-bold" />
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="font-bold text-slate-700 block mb-1">Contact Person</label>
-            <input id="new-vnd-person" type="text" placeholder="e.g. Sanjay Jain" class="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none" />
-          </div>
-          <div>
-            <label class="font-bold text-slate-700 block mb-1">Mobile / WhatsApp *</label>
-            <input id="new-vnd-mobile" type="text" required placeholder="+91 98220 00000" class="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none font-mono" />
-          </div>
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="font-bold text-slate-700 block mb-1">GSTIN Number</label>
-            <input id="new-vnd-gstin" type="text" placeholder="27AABCM..." class="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none font-mono" />
-          </div>
-          <div>
-            <label class="font-bold text-slate-700 block mb-1">Payment Terms</label>
-            <input id="new-vnd-terms" type="text" value="30 Days Net" class="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none" />
-          </div>
-        </div>
-        <div>
-          <label class="font-bold text-slate-700 block mb-1">Materials Supplied</label>
-          <input id="new-vnd-mats" type="text" placeholder="e.g. SS Flats, Plates, Tubes" class="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none" />
-        </div>
-
-        <div class="flex justify-end gap-2 pt-3 border-t border-slate-100">
-          <button type="button" onclick="closeModal('vendorModal')" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold cursor-pointer">
-            Cancel
-          </button>
-          <button type="submit" class="px-5 py-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 font-black rounded-xl cursor-pointer">
-            Save Vendor
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-
   <!-- ========================================================================================= -->
   <!-- 5. JAVASCRIPT LOGIC (Clean, Transparent, Easy to Edit)                                    -->
   <!-- ========================================================================================= -->
@@ -839,7 +688,7 @@
       if (target) target.classList.add('active');
 
       // Update Nav Buttons
-      const navIds = ['entry', 'projects', 'procurement', 'vendors', 'dashboard', 'calculator'];
+      const navIds = ['entry', 'projects', 'procurement', 'dashboard', 'calculator'];
       navIds.forEach(id => {
         const btn = document.getElementById('nav-btn-' + id);
         if (btn) {
@@ -962,40 +811,6 @@
       document.getElementById('calc-tab-result-cost').textContent = '₹ ' + cost;
     }
 
-    // Add New Vendor Form Submit
-    function handleAddNewVendor(e) {
-      e.preventDefault();
-      const name = document.getElementById('new-vnd-name').value.trim();
-      const person = document.getElementById('new-vnd-person').value.trim() || 'Vendor Rep';
-      const mobile = document.getElementById('new-vnd-mobile').value.trim();
-      const gstin = document.getElementById('new-vnd-gstin').value.trim() || '27AABCM...';
-      const terms = document.getElementById('new-vnd-terms').value.trim() || '30 Days Net';
-      const mats = document.getElementById('new-vnd-mats').value.trim() || 'SS Raw Materials';
-
-      if (!name) return;
-
-      const tbody = document.getElementById('vendorsTableBody');
-      const tr = document.createElement('tr');
-      tr.className = 'hover:bg-slate-50/80 transition-colors animate-fadeIn';
-      tr.innerHTML = `
-        <td class="py-3 px-4 font-bold text-slate-900">${name}</td>
-        <td class="py-3 px-4 text-slate-700">${person}</td>
-        <td class="py-3 px-4 font-mono text-blue-600">${mobile}</td>
-        <td class="py-3 px-4 font-mono text-slate-600">${gstin}</td>
-        <td class="py-3 px-4 text-slate-600">${mats}</td>
-        <td class="py-3 px-4 text-slate-700 font-semibold">${terms}</td>
-        <td class="py-3 px-4 text-center"><span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">Approved</span></td>
-      `;
-      tbody.prepend(tr);
-
-      const count = tbody.querySelectorAll('tr').length;
-      document.getElementById('vendor-count-badge').textContent = count + ' Verified Suppliers';
-
-      closeModal('vendorModal');
-      e.target.reset();
-      alert(`Vendor "${name}" has been registered successfully!`);
-    }
-
     // Keyboard Shortcuts (Ctrl+1, Ctrl+2, etc.)
     document.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
@@ -1004,7 +819,6 @@
         if (e.key === '3') { e.preventDefault(); switchTab('procurement'); }
         if (e.key === '4') { e.preventDefault(); switchTab('dashboard'); }
         if (e.key === '5') { e.preventDefault(); switchTab('calculator'); }
-        if (e.key === '6') { e.preventDefault(); switchTab('vendors'); }
       }
     });
   </script>

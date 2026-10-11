@@ -150,79 +150,6 @@ export const ReportCenter: React.FC = () => {
         const rows = costingRecords.map(c => [c.projectName, c.customer, formatINR(c.totalProductionCost), formatINR(c.sellingPrice), formatINR(c.grossProfit), `${c.profitMarginPct}%`]);
         exportToPdfReport('RSB Executive Profit & Loss (P&L) Report', headers, rows, 'RSB_Profit_Loss_Report');
       }
-    } else if (selectedReport === 'purchase') {
-      const data = purchaseOrders.map((p) => ({
-        'PO Number': p.poNumber,
-        'Date': p.date || today,
-        'Vendor': p.vendor || '',
-        'Status': p.status || 'Sent',
-        'Ordered By': p.orderedBy || '',
-        'Total Amount (₹)': p.totalAmount || 0,
-        'Items Count': p.items?.length || 0,
-      }));
-      if (format === 'xlsx') exportToExcel(data, `RSB_Purchase_Orders_Report_${today}`);
-      else if (format === 'csv') exportToCsv(data, `RSB_Purchase_Orders_Report_${today}`);
-      else {
-        const headers = ['PO No', 'Date', 'Vendor', 'Status', 'Ordered By', 'Total (₹)', 'Items'];
-        const rows = purchaseOrders.map((p) => [
-          p.poNumber || '',
-          p.date || today,
-          p.vendor || '',
-          p.status || 'Sent',
-          p.orderedBy || 'Admin',
-          formatINR(p.totalAmount || 0),
-          String(p.items?.length || 0),
-        ]);
-        exportToPdfReport('RSB Purchase Orders Master Report', headers, rows, 'RSB_Purchase_Orders_Report');
-      }
-    } else if (selectedReport === 'vendors') {
-      const data = vendors.map((v) => ({
-        'Vendor Name': v.name,
-        'Contact Person': v.contactPerson || '',
-        'Mobile': v.mobile || '',
-        'GSTIN': v.gstin || '',
-        'Rating': v.rating || 5,
-        'Payment Terms': v.paymentTerms || '',
-        'Material Supplied': v.materialSupplied || '',
-      }));
-      if (format === 'xlsx') exportToExcel(data, `RSB_Vendors_Report_${today}`);
-      else if (format === 'csv') exportToCsv(data, `RSB_Vendors_Report_${today}`);
-      else {
-        const headers = ['Vendor Name', 'Contact Person', 'Mobile', 'GSTIN', 'Rating', 'Payment Terms'];
-        const rows = vendors.map((v) => [v.name, v.contactPerson || '', v.mobile || '', v.gstin || '', String(v.rating || 5), v.paymentTerms || '']);
-        exportToPdfReport('RSB Vendors Master Directory', headers, rows, 'RSB_Vendors_Report');
-      }
-    } else if (selectedReport === 'customers') {
-      const data = customers.map((c) => ({
-        'Customer Name': c.name,
-        'Contact Person': c.contactPerson || '',
-        'Mobile': c.mobile || '',
-        'GSTIN': c.gstin || '',
-        'City / Address': c.address || '',
-      }));
-      if (format === 'xlsx') exportToExcel(data, `RSB_Customers_Report_${today}`);
-      else if (format === 'csv') exportToCsv(data, `RSB_Customers_Report_${today}`);
-      else {
-        const headers = ['Customer Name', 'Contact Person', 'Mobile', 'GSTIN', 'Address'];
-        const rows = customers.map((c) => [c.name, c.contactPerson || '', c.mobile || '', c.gstin || '', c.address || '']);
-        exportToPdfReport('RSB Customers Master Directory', headers, rows, 'RSB_Customers_Report');
-      }
-    } else if (selectedReport === 'machines') {
-      const data = machines.map((m) => ({
-        'Machine Code': m.code,
-        'Name': m.name,
-        'Type': m.type,
-        'Status': m.status,
-        'Efficiency %': `${m.efficiency}%`,
-        'Operator': m.operatorAssigned || 'Unassigned',
-      }));
-      if (format === 'xlsx') exportToExcel(data, `RSB_Machines_Report_${today}`);
-      else if (format === 'csv') exportToCsv(data, `RSB_Machines_Report_${today}`);
-      else {
-        const headers = ['Code', 'Machine Name', 'Type', 'Status', 'Efficiency %', 'Operator'];
-        const rows = machines.map((m) => [m.code, m.name, m.type, m.status, `${m.efficiency}%`, m.operatorAssigned || 'Unassigned']);
-        exportToPdfReport('RSB Machine Utilization Report', headers, rows, 'RSB_Machines_Report');
-      }
     } else {
       // General fallback
       exportToExcel(orders, `RSB_Report_${selectedReport}_${today}`);
@@ -388,48 +315,6 @@ export const ReportCenter: React.FC = () => {
                   <th className="p-2.5">Margin %</th>
                 </tr>
               )}
-              {selectedReport === 'purchase' && (
-                <tr>
-                  <th className="p-2.5">PO Number</th>
-                  <th className="p-2.5">Date</th>
-                  <th className="p-2.5">Vendor</th>
-                  <th className="p-2.5">Ordered By</th>
-                  <th className="p-2.5">Status</th>
-                  <th className="p-2.5">Total (₹)</th>
-                  <th className="p-2.5">Items</th>
-                </tr>
-              )}
-              {selectedReport === 'vendors' && (
-                <tr>
-                  <th className="p-2.5">Vendor Name</th>
-                  <th className="p-2.5">Contact Person</th>
-                  <th className="p-2.5">Mobile</th>
-                  <th className="p-2.5">GSTIN</th>
-                  <th className="p-2.5">Rating</th>
-                  <th className="p-2.5">Payment Terms</th>
-                  <th className="p-2.5">Material Supplied</th>
-                </tr>
-              )}
-              {selectedReport === 'customers' && (
-                <tr>
-                  <th className="p-2.5">Customer Name</th>
-                  <th className="p-2.5">Contact Person</th>
-                  <th className="p-2.5">Mobile</th>
-                  <th className="p-2.5">GSTIN</th>
-                  <th className="p-2.5">Address</th>
-                  <th className="p-2.5">Segment</th>
-                </tr>
-              )}
-              {selectedReport === 'machines' && (
-                <tr>
-                  <th className="p-2.5">Code</th>
-                  <th className="p-2.5">Machine Name</th>
-                  <th className="p-2.5">Type</th>
-                  <th className="p-2.5">Status</th>
-                  <th className="p-2.5">Utilization %</th>
-                  <th className="p-2.5">Operator</th>
-                </tr>
-              )}
             </thead>
             <tbody className="divide-y divide-slate-750 font-medium text-slate-300">
               {selectedReport === 'production' &&
@@ -489,52 +374,6 @@ export const ReportCenter: React.FC = () => {
                     <td className="p-2.5 font-mono text-cyan-400">{formatINR(c.sellingPrice)}</td>
                     <td className="p-2.5 font-mono font-bold text-emerald-400">{formatINR(c.grossProfit)}</td>
                     <td className="p-2.5 font-mono font-bold">{c.profitMarginPct}%</td>
-                  </tr>
-                ))}
-              {selectedReport === 'purchase' &&
-                purchaseOrders.slice(0, 6).map((p) => (
-                  <tr key={p.id}>
-                    <td className="p-2.5 font-mono text-emerald-400">{p.poNumber}</td>
-                    <td className="p-2.5">{p.date}</td>
-                    <td className="p-2.5 font-semibold">{p.vendor}</td>
-                    <td className="p-2.5">{p.orderedBy}</td>
-                    <td className="p-2.5 text-cyan-400">{p.status}</td>
-                    <td className="p-2.5 font-mono text-emerald-300 font-bold">{formatINR(p.totalAmount || 0)}</td>
-                    <td className="p-2.5 font-bold">{p.items?.length || 0}</td>
-                  </tr>
-                ))}
-              {selectedReport === 'vendors' &&
-                vendors.slice(0, 6).map((v) => (
-                  <tr key={v.id}>
-                    <td className="p-2.5 font-semibold text-white">{v.name}</td>
-                    <td className="p-2.5">{v.contactPerson}</td>
-                    <td className="p-2.5 font-mono text-cyan-300">{v.mobile}</td>
-                    <td className="p-2.5 font-mono text-slate-400">{v.gstin}</td>
-                    <td className="p-2.5 text-amber-300 font-bold">{v.rating} ★</td>
-                    <td className="p-2.5">{v.paymentTerms}</td>
-                    <td className="p-2.5 text-slate-300">{v.materialSupplied}</td>
-                  </tr>
-                ))}
-              {selectedReport === 'customers' &&
-                customers.slice(0, 6).map((c) => (
-                  <tr key={c.id}>
-                    <td className="p-2.5 font-semibold text-white">{c.name}</td>
-                    <td className="p-2.5">{c.contactPerson}</td>
-                    <td className="p-2.5 font-mono text-cyan-300">{c.mobile}</td>
-                    <td className="p-2.5 font-mono text-slate-400">{c.gstin}</td>
-                    <td className="p-2.5">{c.address}</td>
-                    <td className="p-2.5 text-slate-300">{c.segment}</td>
-                  </tr>
-                ))}
-              {selectedReport === 'machines' &&
-                machines.slice(0, 6).map((m) => (
-                  <tr key={m.id}>
-                    <td className="p-2.5 font-mono text-cyan-400">{m.code}</td>
-                    <td className="p-2.5 font-semibold text-white">{m.name}</td>
-                    <td className="p-2.5">{m.type}</td>
-                    <td className="p-2.5 text-emerald-400">{m.status}</td>
-                    <td className="p-2.5 font-mono font-bold">{m.efficiency}%</td>
-                    <td className="p-2.5 text-slate-300">{m.operatorAssigned || 'Unassigned'}</td>
                   </tr>
                 ))}
             </tbody>

@@ -119,26 +119,6 @@ export function isRequirementMatchedToProject(reqProjectName: string, project: P
 }
 
 /**
- * Universal matcher checking if a requirement's project string belongs to a named project.
- */
-export function isRequirementMatchingProjectName(
-  reqProjectName: string,
-  projectName: string,
-  projectsList: ProjectItem[] = []
-): boolean {
-  if (!reqProjectName || !projectName) return false;
-  const projectObj = projectsList.find(
-    (p) => p.name.trim().toLowerCase() === projectName.trim().toLowerCase()
-  );
-  if (projectObj) {
-    return isRequirementMatchedToProject(reqProjectName, projectObj);
-  }
-  const r = reqProjectName.trim().toLowerCase();
-  const p = projectName.trim().toLowerCase();
-  return r === p || r.startsWith(p + ' (') || r.startsWith(p + ' -') || r.startsWith(p + ' [') || r.startsWith(p + ' /');
-}
-
-/**
  * Retrieves all materials strictly belonging to a project.
  * Returns an empty array [] if no materials have been added yet, ensuring real and authentic project state.
  */
