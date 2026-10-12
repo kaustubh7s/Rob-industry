@@ -408,7 +408,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           );
           const merged = [...displayMaterials, ...otherReqs];
           try {
-            localStorage.setItem('rsb_erp_production_v2.0_requirements', JSON.stringify(merged));
+            localStorage.setItem('RSB_ERP_STATE_V6_requirements', JSON.stringify(merged));
           } catch (e) {}
           return merged;
         });

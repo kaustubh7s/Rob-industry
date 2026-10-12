@@ -278,13 +278,13 @@ export const WhatsAppPOModal: React.FC<WhatsAppPOModalProps> = ({
 
             <div>
               <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
-                Payment Terms:
+                Payment Terms <span className="text-slate-400 font-normal lowercase">(optional)</span>:
               </label>
               <input
                 type="text"
                 value={paymentTerms}
                 onChange={(e) => setPaymentTerms(e.target.value)}
-                placeholder="e.g. 30 Days Net"
+                placeholder="e.g. 30 Days Net (Optional)"
                 className="w-full px-3 py-1.5 rounded-xl bg-white border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:border-emerald-500"
               />
             </div>

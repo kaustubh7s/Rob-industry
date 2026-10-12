@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Building2,
   Plus,
@@ -36,12 +36,21 @@ import { createWhatsAppUrl } from '../../utils/whatsappHelper';
 import { Modal } from '../common/Modal';
 
 export const VendorManager: React.FC = () => {
-  const { vendors, addVendor, updateVendor, deleteVendor, purchaseOrders, inwardEntries } = useERP();
+  const { vendors, addVendor, updateVendor, deleteVendor, purchaseOrders, inwardEntries, activeVendorId } = useERP();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTerms, setFilterTerms] = useState<string>('ALL');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [copiedGstin, setCopiedGstin] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (activeVendorId) {
+      const targetVendor = vendors.find((v) => v.id === activeVendorId);
+      if (targetVendor) {
+        setSearchTerm(targetVendor.name);
+      }
+    }
+  }, [activeVendorId, vendors]);
 
   // Modal States
   const [isVendorModalOpen, setIsVendorModalOpen] = useState(false);
@@ -56,7 +65,7 @@ export const VendorManager: React.FC = () => {
     address: 'Chhatrapati Sambhajinagar, Maharashtra',
     materialSupplied: 'SS Flat, SS Pipe, SS Sheet, Laser Cut Blanks',
     rating: 5.0,
-    paymentTerms: '30 Days Net',
+    paymentTerms: '',
   };
 
   const [form, setForm] = useState(initialFormState);
@@ -139,7 +148,7 @@ export const VendorManager: React.FC = () => {
       address: vendor.address || '',
       materialSupplied: vendor.materialSupplied || '',
       rating: vendor.rating || 5.0,
-      paymentTerms: vendor.paymentTerms || '30 Days Net',
+      paymentTerms: vendor.paymentTerms || '',
     });
     setIsVendorModalOpen(true);
   };
@@ -516,27 +525,37 @@ export const VendorManager: React.FC = () => {
                     <div className="flex items-center justify-between text-[11px]">
                       <div className="flex items-center gap-1.5">
                         <span className="text-slate-400 font-bold">GSTIN:</span>
-                        <span className="font-mono font-bold text-slate-800">{v.gstin || '24AAECM1234F1Z8'}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleCopyGSTIN(v.gstin || '24AAECM1234F1Z8')}
-                          className="text-slate-400 hover:text-indigo-600 p-0.5 transition-colors cursor-pointer"
-                          title="Copy GSTIN"
-                        >
-                          {copiedGstin === (v.gstin || '24AAECM1234F1Z8') ? (
-                            <Check className="w-3 h-3 text-emerald-600" />
-                          ) : (
-                            <Copy className="w-3 h-3" />
-                          )}
-                        </button>
+                        {v.gstin ? (
+                          <>
+                            <span className="font-mono font-bold text-slate-800">{v.gstin}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyGSTIN(v.gstin)}
+                              className="text-slate-400 hover:text-indigo-600 p-0.5 transition-colors cursor-pointer"
+                              title="Copy GSTIN"
+                            >
+                              {copiedGstin === v.gstin ? (
+                                <Check className="w-3 h-3 text-emerald-600" />
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                            </button>
+                          </>
+                        ) : (
+                          <span className="font-mono text-slate-400 italic text-[10px]">Optional / None</span>
+                        )}
                       </div>
 
-                      <div className="flex items-center gap-1">
-                        <CreditCard className="w-3 h-3 text-indigo-500" />
-                        <span className="font-bold text-indigo-900 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
-                          {v.paymentTerms}
-                        </span>
-                      </div>
+                      {v.paymentTerms ? (
+                        <div className="flex items-center gap-1">
+                          <CreditCard className="w-3 h-3 text-indigo-500" />
+                          <span className="font-bold text-indigo-900 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+                            {v.paymentTerms}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-slate-400 italic">No terms</span>
+                      )}
                     </div>
 
                     {v.address && (
@@ -783,15 +802,14 @@ export const VendorManager: React.FC = () => {
 
             <div>
               <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                GSTIN Number *
+                GSTIN Number <span className="text-slate-400 font-normal lowercase">(optional)</span>
               </label>
               <input
                 type="text"
-                required
                 value={form.gstin}
                 onChange={(e) => setForm({ ...form, gstin: e.target.value })}
                 className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs font-mono font-bold focus:outline-none focus:border-amber-500"
-                placeholder="24AAECM1234F1Z8"
+                placeholder="e.g. 24AAECM1234F1Z8 (Optional)"
               />
             </div>
           </div>
@@ -813,14 +831,14 @@ export const VendorManager: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                Payment Terms
+                Payment Terms <span className="text-slate-400 font-normal lowercase">(optional)</span>
               </label>
               <input
                 type="text"
                 value={form.paymentTerms}
                 onChange={(e) => setForm({ ...form, paymentTerms: e.target.value })}
                 className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 text-xs font-bold focus:outline-none focus:border-amber-500"
-                placeholder="30 Days Net"
+                placeholder="e.g. 30 Days Net, Immediate, 15 Days (Optional)"
               />
             </div>
 

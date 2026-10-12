@@ -43,6 +43,7 @@ import { useERP } from '../../context/ERPContext';
 import { ProjectMaterialRequirementItem, VendorItem, PurchaseOrder, RFQRecord, ProjectItem } from '../../types/erp';
 import { exportToExcel } from '../../utils/excelIntegration';
 import { formatINR, formatDate } from '../../utils/calculations';
+import { isRequirementMatchedToProject } from '../../utils/projectMaterialsHelper';
 import {
   formatWhatsAppPOMessage,
   formatShortWhatsAppPOMessage,
@@ -472,7 +473,8 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
       if (isAlreadyOrdered) return false;
 
       const rName = (r.projectName || '').trim().toLowerCase();
-      return activeProjectNames.has(rName) || activeProjectNumbers.has(rName);
+      if (activeProjectNames.has(rName) || activeProjectNumbers.has(rName)) return true;
+      return projects.some((p) => isRequirementMatchedToProject(r.projectName, p));
     });
   }, [projectRequirements, projects]);
 
@@ -4192,11 +4194,14 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                 </div>
 
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Payment Terms</label>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Payment Terms <span className="text-slate-400 font-normal text-xs lowercase">(optional)</span>
+                  </label>
                   <input
                     type="text"
                     value={directPOForm.paymentTerms}
                     onChange={(e) => setDirectPOForm({ ...directPOForm, paymentTerms: e.target.value })}
+                    placeholder="e.g. 30 Days Net (Optional)"
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold text-slate-900 focus:bg-white focus:border-indigo-500"
                   />
                 </div>

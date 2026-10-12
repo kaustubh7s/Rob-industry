@@ -18,6 +18,16 @@ import {
   WorkbookSheet,
   SheetCell,
 } from '../types/workbook';
+import {
+  getDeletedRequirementTombstones,
+  addRequirementTombstone,
+  getDeletedProjectTombstones,
+  addProjectTombstone,
+  getDeletedMaterialTombstones,
+  addMaterialTombstone,
+  getDeletedVendorTombstones,
+  addVendorTombstone,
+} from '../utils/tombstones';
 
 export const SUPABASE_SCHEMA_SQL = `-- =========================================================================
 -- RSB EQUIPMENTS ERP — SUPABASE POSTGRESQL SCHEMA INITIALIZATION
@@ -553,108 +563,165 @@ export const pullAllDataFromSupabase = async (): Promise<{
     const { data: prjData, error: prjErr } = await supabase.from('projects').select('*').order('created_at', { ascending: false });
     if (prjErr) throw prjErr;
 
-    const parsedProjects: ProjectItem[] = (prjData || []).map((p: any) => ({
-      id: p.id,
-      projectNumber: p.project_number,
-      name: p.name,
-      customer: p.customer,
-      orderSource: p.order_source,
-      machineType: p.machine_type,
-      vendor: p.vendor,
-      poNumber: p.po_number,
-      startDate: p.start_date || new Date().toISOString().split('T')[0],
-      targetCompletionDate: p.target_completion_date || new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
-      priority: p.priority || 'medium',
-      status: p.status || 'Production',
-      projectValue: Number(p.project_value || 0),
-      notes: p.notes,
-      progressPct: Number(p.progress_pct || 0),
-    }));
+    const prjTombstones = getDeletedProjectTombstones();
+    const parsedProjects: ProjectItem[] = (prjData || [])
+      .filter((p: any) => !prjTombstones.has(p.id))
+      .map((p: any) => ({
+        id: p.id,
+        projectNumber: p.project_number,
+        name: p.name,
+        customer: p.customer,
+        orderSource: p.order_source,
+        machineType: p.machine_type,
+        machineName: p.machine_name || p.machine_type,
+        vendor: p.vendor,
+        vendorName: p.vendor_name || p.vendor,
+        poNumber: p.po_number,
+        poNo: p.po_no || p.po_number,
+        startDate: p.start_date || new Date().toISOString().split('T')[0],
+        date: p.date || p.start_date || new Date().toISOString().split('T')[0],
+        targetCompletionDate: p.target_completion_date || new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+        priority: p.priority || 'medium',
+        status: p.status || 'Production',
+        projectValue: Number(p.project_value || 0),
+        notes: p.notes,
+        progressPct: Number(p.progress_pct || 0),
+      }));
 
     // 2. Fetch Requirements
     const { data: reqData, error: reqErr } = await supabase.from('project_material_requirements').select('*').order('timestamp', { ascending: false });
     if (reqErr) throw reqErr;
 
-    const parsedRequirements: ProjectMaterialRequirementItem[] = (reqData || []).map((r: any) => {
-      const notesStr = String(r.notes || '');
-      let tagReceived = false;
-      let tagBy: string | undefined = undefined;
-      let tagAt: string | undefined = undefined;
-      let tagInitials: string | undefined = undefined;
-      if (notesStr.includes('[INWARD_VERIFIED')) {
-        tagReceived = true;
-        const match = notesStr.match(/\[INWARD_VERIFIED:([^:]*):([^:]*):([^\]]*)\]/);
-        if (match) {
-          tagBy = match[1] || undefined;
-          tagAt = match[2] || undefined;
-          tagInitials = match[3] || undefined;
+    const reqTombstones = getDeletedRequirementTombstones();
+    const parsedRequirements: ProjectMaterialRequirementItem[] = (reqData || [])
+      .filter((r: any) => !reqTombstones.has(r.id))
+      .map((r: any) => {
+        const notesStr = String(r.notes || '');
+        let tagReceived = false;
+        let tagBy: string | undefined = undefined;
+        let tagAt: string | undefined = undefined;
+        let tagInitials: string | undefined = undefined;
+        if (notesStr.includes('[INWARD_VERIFIED')) {
+          tagReceived = true;
+          const match = notesStr.match(/\[INWARD_VERIFIED:([^:]*):([^:]*):([^\]]*)\]/);
+          if (match) {
+            tagBy = match[1] || undefined;
+            tagAt = match[2] || undefined;
+            tagInitials = match[3] || undefined;
+          }
         }
-      }
 
-      let resolvedSrNo: string | number = r.sr_no;
-      if (notesStr.includes('[ORIGINAL_SR_NO:')) {
-        const srMatch = notesStr.match(/\[ORIGINAL_SR_NO:([^\]]+)\]/);
-        if (srMatch && srMatch[1]) {
-          resolvedSrNo = srMatch[1];
+        let resolvedSrNo: string | number = r.sr_no;
+        if (notesStr.includes('[ORIGINAL_SR_NO:')) {
+          const srMatch = notesStr.match(/\[ORIGINAL_SR_NO:([^\]]+)\]/);
+          if (srMatch && srMatch[1]) {
+            resolvedSrNo = srMatch[1];
+          }
         }
-      }
 
-      const isReceived = Boolean(r.is_received || r.isReceived || tagReceived);
+        let resolvedMachineName: string | undefined = undefined;
+        const mchMatch = notesStr.match(/\[MACHINE_NAME:([^\]]*)\]/);
+        if (mchMatch && mchMatch[1]) resolvedMachineName = mchMatch[1];
+        else if (r.machine_name) resolvedMachineName = r.machine_name;
+        else if (r.machine_type) resolvedMachineName = r.machine_type;
 
-      return {
-        id: r.id,
-        srNo: resolvedSrNo,
-        description: r.description,
-        materialType: r.material_type,
-        materialGrade: r.material_grade,
-        sizeSpecs: r.size_specs,
-        quantity: Number(r.quantity || 0),
-        unit: r.unit,
-        weightKg: Number(r.weight_kg || 0),
-        projectName: r.project_name,
-        customerName: r.customer_name,
-        poNumber: r.po_number,
-        poDate: r.po_date,
-        machineType: r.machine_type,
-        orderSource: r.order_source,
-        deliveryDate: r.delivery_date,
-        vendor: r.vendor,
-        bomRef: r.bom_ref,
-        lastPurchaseRate: Number(r.last_purchase_rate || 0),
-        lastPurchaseDate: r.last_purchase_date,
-        vendorRating: Number(r.vendor_rating || 5),
-        vendorReliability: Number(r.vendor_reliability || 100),
-        stockStatus: r.stock_status,
-        availableStock: Number(r.available_stock || 0),
-        shortageQty: Number(r.shortage_qty || 0),
-        productionStatus: r.production_status,
-        qcStatus: r.qc_status,
-        dispatchStatus: r.dispatch_status,
-        jobCardNo: r.job_card_no,
-        assignedOperator: r.assigned_operator,
-        assignedMachine: r.assignedMachine,
-        productionStage: r.production_stage,
-        materialCost: Number(r.material_cost || 0),
-        laborCost: Number(r.labor_cost || 0),
-        machineCost: Number(r.machine_cost || 0),
-        outsourcingCost: Number(r.outsourcing_cost || 0),
-        totalCost: Number(r.total_cost || 0),
-        sellingPriceAllocated: Number(r.selling_price_allocated || 0),
-        notes: notesStr.replace(/\[INWARD_VERIFIED:[^\]]*\]/g, '').trim(),
-        orderedBy: r.ordered_by,
-        isReceived,
-        receivedAt: r.received_at || tagAt || r.receivedAt || (isReceived ? (r.timestamp || new Date().toISOString()) : undefined),
-        receivedBy: r.received_by || tagBy || r.receivedBy || (isReceived ? 'Chandramani' : undefined),
-        receivedByInitials: r.received_by_initials || tagInitials || r.receivedByInitials || (isReceived ? 'CP' : undefined),
-        receivedByRole: r.received_by_role || r.receivedByRole || (isReceived ? 'Stores Incharge' : undefined),
-        receivedNotes: r.received_notes || r.receivedNotes || undefined,
-        timestamp: r.timestamp,
-      };
-    });
+        let resolvedPoNo: string | undefined = undefined;
+        const poMatch = notesStr.match(/\[PO_NO:([^\]]*)\]/);
+        if (poMatch && poMatch[1]) resolvedPoNo = poMatch[1];
+        else if (r.po_no) resolvedPoNo = r.po_no;
+        else if (r.po_number) resolvedPoNo = r.po_number;
+
+        let resolvedDate: string | undefined = undefined;
+        const dateMatch = notesStr.match(/\[DATE:([^\]]*)\]/);
+        if (dateMatch && dateMatch[1]) resolvedDate = dateMatch[1];
+        else if (r.date) resolvedDate = r.date;
+        else if (r.po_date) resolvedDate = r.po_date;
+
+        let resolvedVendorName: string | undefined = undefined;
+        const vendorMatch = notesStr.match(/\[VENDOR_NAME:([^\]]*)\]/);
+        if (vendorMatch && vendorMatch[1]) resolvedVendorName = vendorMatch[1];
+        else if (r.vendor_name) resolvedVendorName = r.vendor_name;
+        else if (r.vendor) resolvedVendorName = r.vendor;
+
+        let resolvedOrderedBy: string | undefined = undefined;
+        const ordMatch = notesStr.match(/\[ORDERED_BY:([^\]]*)\]/);
+        if (ordMatch && ordMatch[1]) resolvedOrderedBy = ordMatch[1];
+        else if (r.ordered_by) resolvedOrderedBy = r.ordered_by;
+
+        const isReceived = Boolean(r.is_received || r.isReceived || tagReceived);
+
+        const cleanNotes = notesStr
+          .replace(/\[INWARD_VERIFIED:[^\]]*\]/g, '')
+          .replace(/\[ORIGINAL_SR_NO:[^\]]*\]/g, '')
+          .replace(/\[MACHINE_NAME:[^\]]*\]/g, '')
+          .replace(/\[PO_NO:[^\]]*\]/g, '')
+          .replace(/\[DATE:[^\]]*\]/g, '')
+          .replace(/\[VENDOR_NAME:[^\]]*\]/g, '')
+          .replace(/\[ORDERED_BY:[^\]]*\]/g, '')
+          .trim();
+
+        return {
+          id: r.id,
+          srNo: resolvedSrNo,
+          description: r.description,
+          materialType: r.material_type,
+          materialGrade: r.material_grade,
+          sizeSpecs: r.size_specs,
+          quantity: Number(r.quantity || 0),
+          unit: r.unit,
+          weightKg: Number(r.weight_kg || 0),
+          projectName: r.project_name,
+          customerName: r.customer_name,
+          poNumber: resolvedPoNo || r.po_number,
+          poDate: resolvedDate || r.po_date,
+          machineType: (resolvedMachineName || r.machine_type) as any,
+          machineName: resolvedMachineName || r.machine_type,
+          poNo: resolvedPoNo || r.po_number,
+          date: resolvedDate || r.po_date,
+          vendorName: resolvedVendorName || r.vendor,
+          orderSource: r.order_source,
+          deliveryDate: r.delivery_date,
+          vendor: resolvedVendorName || r.vendor,
+          bomRef: r.bom_ref,
+          lastPurchaseRate: Number(r.last_purchase_rate || 0),
+          lastPurchaseDate: r.last_purchase_date,
+          vendorRating: Number(r.vendor_rating || 5),
+          vendorReliability: Number(r.vendor_reliability || 100),
+          stockStatus: r.stock_status,
+          availableStock: Number(r.available_stock || 0),
+          shortageQty: Number(r.shortage_qty || 0),
+          productionStatus: r.production_status,
+          qcStatus: r.qc_status,
+          dispatchStatus: r.dispatch_status,
+          jobCardNo: r.job_card_no,
+          assignedOperator: r.assigned_operator,
+          assignedMachine: r.assignedMachine,
+          productionStage: r.production_stage,
+          materialCost: Number(r.material_cost || 0),
+          laborCost: Number(r.labor_cost || 0),
+          machineCost: Number(r.machine_cost || 0),
+          outsourcingCost: Number(r.outsourcing_cost || 0),
+          totalCost: Number(r.total_cost || 0),
+          sellingPriceAllocated: Number(r.selling_price_allocated || 0),
+          notes: cleanNotes,
+          orderedBy: resolvedOrderedBy || r.ordered_by || 'Amit',
+          isReceived,
+          receivedAt: r.received_at || tagAt || r.receivedAt || (isReceived ? (r.timestamp || new Date().toISOString()) : undefined),
+          receivedBy: r.received_by || tagBy || r.receivedBy || (isReceived ? 'Chandramani' : undefined),
+          receivedByInitials: r.received_by_initials || tagInitials || r.receivedByInitials || (isReceived ? 'CP' : undefined),
+          receivedByRole: r.received_by_role || r.receivedByRole || (isReceived ? 'Stores Incharge' : undefined),
+          receivedNotes: r.received_notes || r.receivedNotes || undefined,
+          timestamp: r.timestamp,
+        };
+      });
+
 
     // 3. Fetch Materials
     const { data: matData } = await supabase.from('materials').select('*');
-    const parsedMaterials: MaterialItem[] = (matData || []).map((m: any) => ({
+    const matTombstones = getDeletedMaterialTombstones();
+    const parsedMaterials: MaterialItem[] = (matData || [])
+      .filter((m: any) => !matTombstones.has(m.id))
+      .map((m: any) => ({
       id: m.id,
       code: m.code,
       name: m.name,
@@ -675,7 +742,10 @@ export const pullAllDataFromSupabase = async (): Promise<{
 
     // 4. Fetch Vendors
     const { data: vndData } = await supabase.from('vendors').select('*');
-    const parsedVendors: VendorItem[] = (vndData || []).map((v: any) => ({
+    const vndTombstones = getDeletedVendorTombstones();
+    const parsedVendors: VendorItem[] = (vndData || [])
+      .filter((v: any) => !vndTombstones.has(v.id))
+      .map((v: any) => ({
       id: v.id,
       name: v.name,
       contactPerson: v.contact_person || '',
@@ -869,12 +939,31 @@ export const dbUpsertRequirement = async (req: ProjectMaterialRequirementItem): 
     let baseNotes = (req.notes || '')
       .replace(/\[INWARD_VERIFIED:[^\]]*\]/g, '')
       .replace(/\[ORIGINAL_SR_NO:[^\]]*\]/g, '')
+      .replace(/\[MACHINE_NAME:[^\]]*\]/g, '')
+      .replace(/\[PO_NO:[^\]]*\]/g, '')
+      .replace(/\[DATE:[^\]]*\]/g, '')
+      .replace(/\[VENDOR_NAME:[^\]]*\]/g, '')
+      .replace(/\[ORDERED_BY:[^\]]*\]/g, '')
       .trim();
 
     if (req.srNo !== undefined && req.srNo !== null && String(req.srNo).trim() !== '') {
       baseNotes = `${baseNotes} [ORIGINAL_SR_NO:${req.srNo}]`.trim();
     }
-
+    if (req.machineName || req.machineType) {
+      baseNotes = `${baseNotes} [MACHINE_NAME:${req.machineName || req.machineType}]`.trim();
+    }
+    if (req.poNo || req.poNumber) {
+      baseNotes = `${baseNotes} [PO_NO:${req.poNo || req.poNumber}]`.trim();
+    }
+    if (req.date || req.poDate) {
+      baseNotes = `${baseNotes} [DATE:${req.date || req.poDate}]`.trim();
+    }
+    if (req.vendorName || req.vendor) {
+      baseNotes = `${baseNotes} [VENDOR_NAME:${req.vendorName || req.vendor}]`.trim();
+    }
+    if (req.orderedBy) {
+      baseNotes = `${baseNotes} [ORDERED_BY:${req.orderedBy}]`.trim();
+    }
     if (req.isReceived) {
       baseNotes = `${baseNotes} [INWARD_VERIFIED:${req.receivedBy || 'Chandramani'}:${req.receivedAt || new Date().toISOString()}:${req.receivedByInitials || 'CP'}]`.trim();
     }
@@ -891,12 +980,12 @@ export const dbUpsertRequirement = async (req: ProjectMaterialRequirementItem): 
       weight_kg: req.weightKg,
       project_name: req.projectName,
       customer_name: req.customerName,
-      po_number: req.poNumber,
-      po_date: req.poDate,
-      machine_type: req.machineType,
+      po_number: req.poNo || req.poNumber,
+      po_date: req.date || req.poDate,
+      machine_type: req.machineName || req.machineType,
       order_source: req.orderSource,
       delivery_date: req.deliveryDate,
-      vendor: req.vendor,
+      vendor: req.vendorName || req.vendor,
       bom_ref: req.bomRef,
       stock_status: req.stockStatus,
       available_stock: req.availableStock,
@@ -907,7 +996,7 @@ export const dbUpsertRequirement = async (req: ProjectMaterialRequirementItem): 
       job_card_no: req.jobCardNo,
       assigned_operator: req.assignedOperator,
       assigned_machine: req.assignedMachine,
-      production_stage: req.productionStage,
+      productionStage: req.productionStage,
       material_cost: req.materialCost,
       labor_cost: req.laborCost,
       machine_cost: req.machineCost,
@@ -951,14 +1040,21 @@ export const dbUpsertRequirement = async (req: ProjectMaterialRequirementItem): 
   }
 };
 
-export const dbDeleteRequirement = async (reqId: string) => {
+export const dbDeleteRequirement = async (reqId: string): Promise<{ success: boolean; message?: string }> => {
+  addRequirementTombstone(reqId);
   const supabase = getSupabaseClient();
-  if (!supabase) return;
+  if (!supabase) return { success: true };
 
   try {
-    await supabase.from('project_material_requirements').delete().eq('id', reqId);
-  } catch (e) {
+    const { error } = await supabase.from('project_material_requirements').delete().eq('id', reqId);
+    if (error) {
+      console.warn('Supabase requirement delete warning:', error.message);
+      return { success: false, message: error.message };
+    }
+    return { success: true };
+  } catch (e: any) {
     console.warn('Supabase requirement delete failed:', e);
+    return { success: false, message: e?.message };
   }
 };
 
@@ -973,12 +1069,31 @@ export const dbBulkUpsertRequirements = async (
       let baseNotes = (r.notes || '')
         .replace(/\[INWARD_VERIFIED:[^\]]*\]/g, '')
         .replace(/\[ORIGINAL_SR_NO:[^\]]*\]/g, '')
+        .replace(/\[MACHINE_NAME:[^\]]*\]/g, '')
+        .replace(/\[PO_NO:[^\]]*\]/g, '')
+        .replace(/\[DATE:[^\]]*\]/g, '')
+        .replace(/\[VENDOR_NAME:[^\]]*\]/g, '')
+        .replace(/\[ORDERED_BY:[^\]]*\]/g, '')
         .trim();
 
       if (r.srNo !== undefined && r.srNo !== null && String(r.srNo).trim() !== '') {
         baseNotes = `${baseNotes} [ORIGINAL_SR_NO:${r.srNo}]`.trim();
       }
-
+      if (r.machineName || r.machineType) {
+        baseNotes = `${baseNotes} [MACHINE_NAME:${r.machineName || r.machineType}]`.trim();
+      }
+      if (r.poNo || r.poNumber) {
+        baseNotes = `${baseNotes} [PO_NO:${r.poNo || r.poNumber}]`.trim();
+      }
+      if (r.date || r.poDate) {
+        baseNotes = `${baseNotes} [DATE:${r.date || r.poDate}]`.trim();
+      }
+      if (r.vendorName || r.vendor) {
+        baseNotes = `${baseNotes} [VENDOR_NAME:${r.vendorName || r.vendor}]`.trim();
+      }
+      if (r.orderedBy) {
+        baseNotes = `${baseNotes} [ORDERED_BY:${r.orderedBy}]`.trim();
+      }
       if (r.isReceived) {
         baseNotes = `${baseNotes} [INWARD_VERIFIED:${r.receivedBy || 'Chandramani'}:${r.receivedAt || new Date().toISOString()}:${r.receivedByInitials || 'CP'}]`.trim();
       }
@@ -995,9 +1110,10 @@ export const dbBulkUpsertRequirements = async (
         weight_kg: r.weightKg,
         project_name: r.projectName,
         customer_name: r.customerName,
-        po_number: r.poNumber,
-        po_date: r.poDate,
-        machine_type: r.machineType,
+        po_number: r.poNo || r.poNumber,
+        po_date: r.date || r.poDate,
+        machine_type: r.machineName || r.machineType,
+
         order_source: r.orderSource,
         delivery_date: r.deliveryDate,
         vendor: r.vendor,

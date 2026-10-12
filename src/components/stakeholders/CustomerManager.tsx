@@ -255,15 +255,14 @@ export const CustomerManager: React.FC = () => {
 
             <div>
               <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">
-                GSTIN *
+                GSTIN <span className="text-slate-500 font-normal lowercase">(optional)</span>
               </label>
               <input
                 type="text"
-                required
                 value={form.gstin}
                 onChange={(e) => setForm({ ...form, gstin: e.target.value })}
                 className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-slate-100 text-xs font-mono"
-                placeholder="24AABCC1234D1Z2"
+                placeholder="24AABCC1234D1Z2 (Optional)"
               />
             </div>
           </div>
@@ -299,14 +298,14 @@ export const CustomerManager: React.FC = () => {
 
             <div>
               <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">
-                Payment Terms
+                Payment Terms <span className="text-slate-500 font-normal lowercase">(optional)</span>
               </label>
               <input
                 type="text"
                 value={form.paymentTerms}
                 onChange={(e) => setForm({ ...form, paymentTerms: e.target.value })}
                 className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-slate-100 text-xs"
-                placeholder="45 Days"
+                placeholder="e.g. 45 Days (Optional)"
               />
             </div>
           </div>

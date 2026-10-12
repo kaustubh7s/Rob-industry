@@ -19,6 +19,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose }) =
     inwardEntries,
     outwardEntries,
     setActiveTab,
+    setActiveVendorId,
   } = useERP();
 
   useEffect(() => {
@@ -39,6 +40,15 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose }) =
 
   const query = searchTerm.toLowerCase().trim();
 
+  const isVendorQuery = Boolean(
+    query && (
+      'vendors'.startsWith(query) ||
+      'vendor'.startsWith(query) ||
+      query.includes('vendor') ||
+      query.includes('supplier')
+    )
+  );
+
   // Search aggregations
   const matchedProjects = query
     ? projects.filter(p => p.name.toLowerCase().includes(query) || p.projectNumber.toLowerCase().includes(query) || p.customer.toLowerCase().includes(query))
@@ -53,7 +63,15 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose }) =
     : [];
 
   const matchedVendors = query
-    ? vendors.filter(v => v.name.toLowerCase().includes(query) || v.materialSupplied.toLowerCase().includes(query))
+    ? vendors.filter(v =>
+        isVendorQuery ||
+        v.name.toLowerCase().includes(query) ||
+        (v.materialSupplied && v.materialSupplied.toLowerCase().includes(query)) ||
+        (v.contactPerson && v.contactPerson.toLowerCase().includes(query)) ||
+        (v.mobile && v.mobile.toLowerCase().includes(query)) ||
+        (v.gstin && v.gstin.toLowerCase().includes(query)) ||
+        (v.email && v.email.toLowerCase().includes(query))
+      )
     : [];
 
   const matchedCustomers = query
@@ -73,6 +91,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose }) =
     : [];
 
   const totalResults =
+    (isVendorQuery ? 1 : 0) +
     matchedProjects.length +
     matchedOrders.length +
     matchedMaterials.length +
@@ -87,6 +106,28 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose }) =
     onClose();
   };
 
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (isVendorQuery || matchedVendors.length > 0) {
+        if (matchedVendors.length === 1 && setActiveVendorId) {
+          setActiveVendorId(matchedVendors[0].id);
+        }
+        handleNavigate('vendors');
+      } else if (matchedProjects.length > 0) {
+        handleNavigate('projects');
+      } else if (matchedMaterials.length > 0) {
+        handleNavigate('materials');
+      } else if (matchedOrders.length > 0) {
+        handleNavigate('orders');
+      } else if (matchedInward.length > 0) {
+        handleNavigate('inward');
+      } else if (matchedOutward.length > 0) {
+        handleNavigate('outward');
+      }
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-150">
       <div
@@ -98,9 +139,10 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose }) =
           <Search className="w-5 h-5 text-cyan-400 shrink-0" />
           <input
             type="text"
-            placeholder="Search across Projects, POs, Materials, Drawings, Inward, Outward, Vendors... (e.g. FOHA, 80x6, Manav Metal)"
+            placeholder="Search across Vendors, Projects, POs, Materials, Drawings, Inward, Outward... (e.g. vendor, FOHA, Manav Metal)"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            onKeyDown={handleInputKeyDown}
             autoFocus
             className="w-full bg-transparent text-slate-100 placeholder-slate-500 text-sm focus:outline-hidden"
           />
@@ -119,14 +161,43 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose }) =
           {!query && (
             <div className="py-8 text-center text-slate-500">
               <p className="text-sm font-medium">Type to search anything in RSB ERP system</p>
-              <p className="text-xs mt-1 text-slate-600">Supports Project Code, Drawing Ref, Material Spec, Vendor Name, PO Number</p>
+              <p className="text-xs mt-1 text-slate-600">Type &quot;vendor&quot; to open Vendors directory, or search Project Code, Material Spec, PO Number</p>
+            </div>
+          )}
+
+          {/* Quick Direct Navigation Card when searching for vendor */}
+          {isVendorQuery && (
+            <div
+              onClick={() => handleNavigate('vendors')}
+              className="flex items-center justify-between p-3.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/10 to-slate-800/40 hover:from-amber-500/30 border border-amber-500/40 hover:border-amber-400 cursor-pointer shadow-lg transition-all group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 group-hover:scale-105 transition-transform">
+                  <Truck className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-amber-300">Open Vendors Directory</span>
+                    <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      Press ↵ Enter
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 mt-0.5">
+                    Jump directly to Vendors management, supplier directory, ratings & PO records ({vendors.length} vendors)
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 text-slate-950 font-bold text-xs group-hover:bg-amber-400 transition-colors shrink-0">
+                <span>Open Page</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </div>
             </div>
           )}
 
           {query && totalResults === 0 && (
             <div className="py-8 text-center text-slate-400">
               <p className="text-sm font-semibold">No matches found for &ldquo;{searchTerm}&rdquo;</p>
-              <p className="text-xs mt-1 text-slate-500">Try searching for &quot;FOHA&quot;, &quot;SS Flat&quot;, &quot;Manav Metal&quot;, or &quot;36&quot;</p>
+              <p className="text-xs mt-1 text-slate-500">Try searching for &quot;vendor&quot;, &quot;FOHA&quot;, &quot;SS Flat&quot;, &quot;Manav Metal&quot;, or &quot;36&quot;</p>
             </div>
           )}
 
@@ -285,14 +356,22 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose }) =
                 {matchedVendors.map(v => (
                   <div
                     key={v.id}
-                    onClick={() => handleNavigate('vendors')}
-                    className="flex items-center justify-between p-2.5 rounded-lg bg-slate-800/60 hover:bg-slate-800 cursor-pointer border border-slate-700/50"
+                    onClick={() => {
+                      if (setActiveVendorId) setActiveVendorId(v.id);
+                      handleNavigate('vendors');
+                    }}
+                    className="flex items-center justify-between p-2.5 rounded-lg bg-slate-800/60 hover:bg-slate-800 cursor-pointer border border-slate-700/50 hover:border-amber-500/50 transition-all"
                   >
                     <div>
                       <span className="text-xs font-bold text-amber-300">{v.name} (Vendor)</span>
-                      <p className="text-[11px] text-slate-400">{v.contactPerson} &bull; {v.materialSupplied}</p>
+                      <p className="text-[11px] text-slate-400">
+                        {v.contactPerson ? `${v.contactPerson} • ` : ''}{v.materialSupplied || 'Raw Materials'}{v.mobile ? ` • ${v.mobile}` : ''}
+                      </p>
                     </div>
-                    <ArrowRight className="w-4 h-4 text-slate-500" />
+                    <div className="flex items-center gap-1 text-slate-400 hover:text-amber-300 text-xs">
+                      <span className="text-[10px] hidden sm:inline text-amber-400/80 font-medium">Open Vendor</span>
+                      <ArrowRight className="w-4 h-4 text-amber-400" />
+                    </div>
                   </div>
                 ))}
                 {matchedCustomers.map(c => (

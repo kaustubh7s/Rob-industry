@@ -48,11 +48,12 @@ import { ProjectsDirectory } from '../projects/ProjectsDirectory';
 import { ProjectDetailsView } from '../projects/ProjectDetailsView';
 import { MemberAuthorizationManager } from '../admin/MemberAuthorizationManager';
 import { ProcurementBasket } from '../procurement/ProcurementBasket';
-import { getMaterialsForProject } from '../../utils/projectMaterialsHelper';
+import { getMaterialsForProject, isRequirementMatchingProjectName } from '../../utils/projectMaterialsHelper';
 import { MACHINE_BOM_TEMPLATES, MachineBOMTemplate } from '../../data/machineBOMTemplates';
 import { LiveWorldSSRatesModal } from '../rates/LiveWorldSSRatesModal';
 import { ExcelImportPreviewModal } from './ExcelImportPreviewModal';
 import { analyzeExcelFile, SheetAnalysisResult, ParsedImportRow } from '../../utils/excelImportEngine';
+import { dbUpsertRequirement, dbBulkUpsertRequirements, dbDeleteRequirement } from '../../services/supabaseService';
 import * as XLSX from 'xlsx';
 
 export interface EntryRow {
@@ -103,6 +104,8 @@ export const ProjectMaterialEntry: React.FC = () => {
     addProject,
     updateProject,
     projectRequirements,
+    addProjectRequirement,
+    updateProjectRequirement,
     bulkImportProjectRequirements,
     replaceProjectRequirements,
     importMaterialRequirements,
@@ -122,6 +125,9 @@ export const ProjectMaterialEntry: React.FC = () => {
     activeTab,
     setActiveTab,
     resetToDemoData,
+    orders,
+    materials,
+    addMaterial,
   } = useERP();
 
   const isStoreIncharge = currentUser?.role === 'store_incharge';
@@ -342,22 +348,31 @@ export const ProjectMaterialEntry: React.FC = () => {
     );
   }, [customVendors, vendors, projects, projectRequirements]);
 
-  // Seed Initial 10-column table (discard empty/blank drafts)
+  // Seed Initial 10-column table from authoritative state
   const [rows, setRows] = useState<EntryRow[]>(() => {
-    const saved = localStorage.getItem(DRAFT_STORAGE_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const hasRealData = parsed.some((r) => r.description && r.description.trim() !== '' && r.description !== 'New Component');
-          if (hasRealData) return parsed;
-        }
-      } catch (e) {
-        console.error('Failed to parse draft:', e);
+    if (projects.length > 0) {
+      const initialMats = getMaterialsForProject(projects[0], projectRequirements, orders);
+      if (initialMats.length > 0) {
+        return initialMats.map((m, idx) => ({
+          id: m.id,
+          machineName: m.machineName || m.machineType || projects[0].machineName || projects[0].machineType || '',
+          date: formatDate(m.poDate || m.date || projects[0].startDate || getTodayFormatted()),
+          poNo: m.poNumber || m.poNo || projects[0].poNo || projects[0].poNumber || '',
+          srNo: (m.srNo !== undefined && m.srNo !== null && String(m.srNo).trim() !== '') ? m.srNo : idx + 1,
+          materialType: (m.materialType || 'SS Flat') as MaterialType,
+          sizeSpecs: m.sizeSpecs || '',
+          quantity: Number(m.quantity) || 1,
+          unit: m.unit || 'Nos',
+          vendorName: m.vendorName || m.vendor || projects[0].vendorName || projects[0].vendor || '',
+          description: m.description || '',
+          orderedBy: m.orderedBy || 'Amit',
+          projectName: projects[0].name,
+        }));
       }
     }
     return [];
   });
+
 
   const allDescriptionOptions = useMemo(() => {
     return Array.from(
@@ -403,19 +418,97 @@ export const ProjectMaterialEntry: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isUserManuallyEditingRef = useRef<boolean>(false);
+  const cellEditTimerRef = useRef<any>(null);
   const lastSelectedProjectRef = useRef<string>('');
 
-  // Auto-save draft to localStorage permanently (never auto-deleted)
+  const syncRowToDatabaseAndContext = (row: EntryRow, targetPrj?: string) => {
+    const prjName = targetPrj || row.projectName || selectedProjectName || (projects.length > 0 ? projects[0].name : 'Project-1');
+    const existingProject = projects.find((p) => p.name.trim().toLowerCase() === prjName.trim().toLowerCase());
+    const custName = existingProject?.customer || existingProject?.clientName || prjName;
+    const reqItem: ProjectMaterialRequirementItem = {
+      id: row.id,
+      srNo: (row.srNo !== undefined && row.srNo !== null && String(row.srNo).trim() !== '') ? row.srNo : 1,
+      projectName: row.projectName || prjName,
+      customerName: custName,
+      poNumber: row.poNo || poNo,
+      poDate: formatDate(row.date || entryDate),
+      date: formatDate(row.date || entryDate),
+      machineType: (row.machineName || machineName || prjName) as any,
+      machineName: row.machineName || machineName || prjName,
+      poNo: row.poNo || poNo,
+      vendorName: row.vendorName || vendorName,
+      vendor: row.vendorName || vendorName,
+      description: row.description || '',
+      materialType: row.materialType,
+      materialGrade: 'SS 304',
+      sizeSpecs: row.sizeSpecs || '',
+      quantity: Number(row.quantity) || 1,
+      unit: row.unit || 'Nos',
+      orderedBy: row.orderedBy || activeOrderedBy,
+      orderSource: 'Customer PO',
+      productionStatus: 'In Production',
+      stockStatus: 'Available',
+      qcStatus: 'Passed',
+      dispatchStatus: 'Ready',
+      bomRef: '',
+      availableStock: 0,
+      shortageQty: 0,
+      totalCost: 750,
+      materialCost: 500,
+      laborCost: 150,
+      machineCost: 100,
+      outsourcingCost: 0,
+      notes: `RSB Machine Workflow | Ordered by ${row.orderedBy || activeOrderedBy}`,
+    };
+    addProjectRequirement(reqItem);
+    dbUpsertRequirement(reqItem);
+
+    // Also auto-learn / catalog into materials table if not already present
+    const spec = (row.sizeSpecs || '').trim().toLowerCase();
+    const desc = (row.description || '').trim().toLowerCase();
+    const hasMat = (materials || []).some(
+      (m) =>
+        (m.sizeSpecs && m.sizeSpecs.trim().toLowerCase() === spec) ||
+        (m.name && m.name.trim().toLowerCase() === desc)
+    );
+    if (!hasMat && row.description && row.sizeSpecs) {
+      addMaterial({
+        code: `MAT-${(row.materialType || 'SS').toUpperCase().replace(/\s+/g, '-')}-${Date.now().toString().slice(-4)}`,
+        name: `${row.description} (${row.sizeSpecs})`,
+        type: row.materialType,
+        grade: 'SS 304',
+        thickness: 5,
+        sizeSpecs: row.sizeSpecs,
+        unit: row.unit || 'Nos',
+        unitWeightKg: 2.5,
+        currentStock: 0,
+        reservedStock: 0,
+        minStock: 5,
+        reorderLevel: 10,
+        unitCost: 450,
+        vendor: row.vendorName || vendorName || 'Standard Vendor',
+        notes: `Auto-cataloged from Material Entry for ${prjName}`,
+      });
+    }
+  };
+
+  // Auto-save draft to localStorage (clears draft when table is emptied)
   useEffect(() => {
     if (rows.length > 0) {
       localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(rows));
       if (selectedProjectName) {
         localStorage.setItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`, JSON.stringify(rows));
       }
+    } else {
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
+      if (selectedProjectName) {
+        localStorage.removeItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`);
+      }
     }
     const now = new Date();
     setLastAutoSavedTime(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
   }, [rows, selectedProjectName]);
+
 
   // Normalize Sr Numbers (Preserves user-defined manual Sr. No without renumbering or sorting)
   const normalizeSrNumbers = (rowList: EntryRow[]) => {
@@ -441,7 +534,7 @@ export const ProjectMaterialEntry: React.FC = () => {
     if (!currentProject) return;
 
     // Load actual material requirements for this project from live state
-    const projectMats = getMaterialsForProject(currentProject, projectRequirements);
+    const projectMats = getMaterialsForProject(currentProject, projectRequirements, orders);
     const isProjectSwitch = lastSelectedProjectRef.current.trim().toLowerCase() !== selectedProjectName.trim().toLowerCase();
 
     const mappedRows: EntryRow[] = projectMats
@@ -454,38 +547,20 @@ export const ProjectMaterialEntry: React.FC = () => {
           ? m.srNo
           : idx + 1,
         materialType: (m.materialType || 'SS Flat') as MaterialType,
-        sizeSpecs: m.sizeSpecs || 'Custom Specs',
+        sizeSpecs: m.sizeSpecs || '',
         quantity: Number(m.quantity) || 1,
         unit: m.unit || 'Nos',
         vendorName: m.vendor || m.vendorName || currentProject.vendorName || currentProject.vendor || vendorName,
-        description: m.description || 'Component',
+        description: m.description || '',
         orderedBy: m.orderedBy || activeOrderedBy,
         projectName: currentProject.name,
       }));
 
     if (isProjectSwitch) {
-      // Switched to a new project: update reference and prioritize authoritative DB/context rows
+      // Switched to a new project: update reference and set authoritative DB/context rows
       lastSelectedProjectRef.current = selectedProjectName;
       isUserManuallyEditingRef.current = false;
-      if (mappedRows.length > 0) {
-        setRows(mappedRows);
-      } else {
-        const cached = localStorage.getItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`);
-        if (cached) {
-          try {
-            const parsed = JSON.parse(cached);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              setRows(parsed);
-            } else {
-              setRows([]);
-            }
-          } catch {
-            setRows([]);
-          }
-        } else {
-          setRows([]);
-        }
-      }
+      setRows(mappedRows);
 
       // Update header fields to match project
       if (currentProject.machineName || currentProject.machineType) {
@@ -501,32 +576,14 @@ export const ProjectMaterialEntry: React.FC = () => {
         setEntryDate(formatDate(currentProject.date || currentProject.startDate));
       }
     } else {
-      // Still on the same project: only sync if external updates happened and user is not actively editing
-      if (projectMats.length > 0) {
-        setRows((prev) => {
-          if (isUserManuallyEditingRef.current) return prev;
-          const isPlaceholderOnly =
-            prev.length === 0 ||
-            prev.every(
-              (r) =>
-                !r.description ||
-                r.description.trim() === '' ||
-                r.description === 'New Component' ||
-                !r.sizeSpecs ||
-                r.sizeSpecs.trim() === ''
-            );
-          if (isPlaceholderOnly) {
-            return mappedRows;
-          }
-          const prevKey = prev.map((r) => `${r.id}_${r.quantity}_${r.description}_${r.sizeSpecs}_${r.materialType}`).join('|');
-          const nextKey = mappedRows.map((r) => `${r.id}_${r.quantity}_${r.description}_${r.sizeSpecs}_${r.materialType}`).join('|');
-          if (prevKey !== nextKey) {
-            return mappedRows;
-          }
-          return prev;
-        });
-      } else {
-        if (!isUserManuallyEditingRef.current) {
+      // Still on the same project: sync if external updates happened and user is not actively typing in a cell
+      const isActivelyTypingInTable = typeof document !== 'undefined' &&
+        document.activeElement &&
+        (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') &&
+        document.activeElement.closest('table');
+
+      if (!isActivelyTypingInTable) {
+        if (projectMats.length > 0) {
           setRows((prev) => {
             const isPlaceholderOnly =
               prev.length === 0 ||
@@ -538,13 +595,23 @@ export const ProjectMaterialEntry: React.FC = () => {
                   !r.sizeSpecs ||
                   r.sizeSpecs.trim() === ''
               );
-            if (isPlaceholderOnly) return [];
+            if (isPlaceholderOnly) {
+              return mappedRows;
+            }
+            const prevKey = prev.map((r) => `${r.id}_${r.quantity}_${r.description}_${r.sizeSpecs}_${r.materialType}`).join('|');
+            const nextKey = mappedRows.map((r) => `${r.id}_${r.quantity}_${r.description}_${r.sizeSpecs}_${r.materialType}`).join('|');
+            if (prevKey !== nextKey) {
+              return mappedRows;
+            }
             return prev;
           });
+        } else {
+          setRows([]);
         }
       }
     }
-  }, [selectedProjectName, projectRequirements, projects]);
+  }, [selectedProjectName, projectRequirements, projects, orders]);
+
 
   // Find previous similar orders for the selected machine
   const previousSimilarOrders = useMemo(() => {
@@ -606,6 +673,44 @@ export const ProjectMaterialEntry: React.FC = () => {
     return [];
   }, [machineName, projectRequirements]);
 
+  // Open existing project in Entry Sheet preserving true database IDs
+  const handleOpenProjectInEntry = (proj: ProjectItem) => {
+    lastSelectedProjectRef.current = proj.name;
+    setSelectedProjectName(proj.name);
+    if (proj.machineName || proj.machineType) {
+      setMachineName(proj.machineName || proj.machineType || proj.name);
+    }
+    if (proj.vendorName || proj.vendor) {
+      setVendorName(proj.vendorName || proj.vendor || '');
+    }
+    if (proj.poNo || proj.poNumber) {
+      setPoNo(proj.poNo || proj.poNumber || '');
+    }
+    if (proj.date || proj.startDate) {
+      setEntryDate(formatDate(proj.date || proj.startDate));
+    }
+
+    const actualMats = getMaterialsForProject(proj, projectRequirements, orders);
+    const mappedRows: EntryRow[] = actualMats.map((m, idx) => ({
+      id: m.id,
+      machineName: m.machineName || m.machineType || proj.machineName || proj.machineType || machineName,
+      date: formatDate(m.poDate || m.date || proj.startDate || entryDate),
+      poNo: m.poNumber || m.poNo || proj.poNo || proj.poNumber || poNo,
+      srNo: (m.srNo !== undefined && m.srNo !== null && String(m.srNo).trim() !== '') ? m.srNo : idx + 1,
+      materialType: (m.materialType || 'SS Flat') as MaterialType,
+      sizeSpecs: m.sizeSpecs || '',
+      quantity: Number(m.quantity) || 1,
+      unit: m.unit || 'Nos',
+      vendorName: m.vendor || m.vendorName || proj.vendorName || proj.vendor || vendorName,
+      description: m.description || '',
+      orderedBy: m.orderedBy || activeOrderedBy,
+      projectName: proj.name,
+    }));
+    setRows(mappedRows);
+    setActiveViewMode('entry');
+    setActiveTab('entry');
+  };
+
   // Handle Smart Duplicate / Use Previous Order
   const handleUsePreviousOrder = (prevProject: ProjectItem) => {
     const prevMachine = prevProject.machineName || prevProject.machineType || machineName;
@@ -647,67 +752,80 @@ export const ProjectMaterialEntry: React.FC = () => {
 
   // Copy Materials Only
   const handleCopyMaterials = (prevProject: ProjectItem) => {
-    const prevMaterials = getMaterialsForProject(prevProject, projectRequirements);
+    const prevMaterials = getMaterialsForProject(prevProject, projectRequirements, orders);
     if (prevMaterials.length === 0) {
       alert(`No material records found in project ${prevProject.name}`);
       return;
     }
 
+    const targetProject = selectedProjectName || (projects.length > 0 ? projects[0].name : 'Project-1');
+
     const copiedRows: EntryRow[] = prevMaterials.map((m, idx) => ({
-      id: `copy-${Date.now()}-${idx}`,
-      machineName: machineName || prevProject.machineName || prevProject.machineType || prevProject.name,
+      id: `copy-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+      machineName: machineName || m.machineName || m.machineType || prevProject.machineName || prevProject.machineType || 'Machine',
       date: entryDate,
-      poNo: poNo,
+      poNo: poNo || m.poNo || m.poNumber || prevProject.poNo || prevProject.poNumber || '',
       srNo: rows.length + idx + 1,
-      materialType: m.materialType as MaterialType,
-      sizeSpecs: m.sizeSpecs,
-      quantity: m.quantity,
+      materialType: (m.materialType || 'SS Flat') as MaterialType,
+      sizeSpecs: m.sizeSpecs || '',
+      quantity: Number(m.quantity) || 1,
       unit: m.unit || 'Nos',
-      vendorName: vendorName,
-      description: m.description,
+      vendorName: vendorName || m.vendorName || m.vendor || prevProject.vendorName || prevProject.vendor || '',
+      description: m.description || '',
       orderedBy: activeOrderedBy,
-      projectName: prevProject.name,
+      projectName: targetProject,
     }));
 
     setRows((prev) => normalizeSrNumbers([...prev, ...copiedRows]));
     confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 } });
-    setSaveToast(`Copied ${copiedRows.length} materials into Machine "${machineName}"!`);
+    setSaveToast(`Copied ${copiedRows.length} materials into "${targetProject}"!`);
     setTimeout(() => setSaveToast(null), 3500);
   };
 
-  // Duplicate Order (Generates new PO entry and copies all materials)
+  // Duplicate Order (Generates new PO entry and copies all materials with new unique record IDs)
   const handleDuplicateOrder = (prevProject: ProjectItem) => {
     const prevMachine = prevProject.machineName || prevProject.machineType || machineName || prevProject.name;
     const prevVendor = prevProject.vendorName || prevProject.vendor || vendorName;
-    const newPo = `${Number(prevProject.poNo || prevProject.poNumber || 36) + 1}`;
+    const currentPo = String(prevProject.poNo || prevProject.poNumber || 'PO-2026-1');
 
-    setSelectedProjectName(prevProject.name);
+    let newPo = 'PO-2026-1';
+    const match = currentPo.match(/^(.*?)(\d+)$/);
+    if (match) {
+      newPo = `${match[1]}${parseInt(match[2], 10) + 1}`;
+    } else {
+      newPo = `${currentPo}-copy`;
+    }
+
+    const newProjectName = `${prevProject.name} (${newPo})`;
+
+    setSelectedProjectName(newProjectName);
     setMachineName(prevMachine);
     setVendorName(prevVendor);
     setPoNo(newPo);
 
-    const prevMaterials = getMaterialsForProject(prevProject, projectRequirements);
+    const prevMaterials = getMaterialsForProject(prevProject, projectRequirements, orders);
     const newRows: EntryRow[] = prevMaterials.map((m, idx) => ({
-      id: `dup-order-${Date.now()}-${idx}`,
+      id: `dup-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
       machineName: prevMachine,
       date: entryDate,
       poNo: newPo,
-      srNo: idx + 1,
-      materialType: m.materialType as MaterialType,
-      sizeSpecs: m.sizeSpecs,
-      quantity: m.quantity,
+      srNo: (m.srNo !== undefined && m.srNo !== null && String(m.srNo).trim() !== '') ? m.srNo : idx + 1,
+      materialType: (m.materialType || 'SS Flat') as MaterialType,
+      sizeSpecs: m.sizeSpecs || '',
+      quantity: Number(m.quantity) || 1,
       unit: m.unit || 'Nos',
       vendorName: prevVendor,
-      description: m.description,
+      description: m.description || '',
       orderedBy: activeOrderedBy,
-      projectName: prevProject.name,
+      projectName: newProjectName,
     }));
 
     setRows(newRows);
     confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
-    setSaveToast(`Created new Order PO #${newPo} from Machine "${prevMachine}" with ${newRows.length} items!`);
+    setSaveToast(`Created new Order PO #${newPo} for "${newProjectName}" with ${newRows.length} items!`);
     setTimeout(() => setSaveToast(null), 4000);
   };
+
 
   // Add 1-click suggested part
   const handleAddSuggestedPart = (part: { description: string; materialType: MaterialType; sizeSpecs: string; qty: number; unit: string }) => {
@@ -728,8 +846,13 @@ export const ProjectMaterialEntry: React.FC = () => {
       projectName: targetProject,
     };
 
-    setRows((prev) => normalizeSrNumbers([...prev, newRow]));
-    setSaveToast(`Added ${part.description} (${part.sizeSpecs})`);
+    const nextRows = normalizeSrNumbers([...rows, newRow]);
+    setRows(nextRows);
+    localStorage.setItem(`RSB_PROJECT_DRAFT_${targetProject}`, JSON.stringify(nextRows));
+    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextRows));
+    syncRowToDatabaseAndContext(newRow, targetProject);
+
+    setSaveToast(`Added ${part.description} (${part.sizeSpecs}) • Synced to DB`);
     setTimeout(() => setSaveToast(null), 2500);
   };
 
@@ -752,16 +875,21 @@ export const ProjectMaterialEntry: React.FC = () => {
       projectName: targetProject,
     }));
 
-    setRows((prev) => normalizeSrNumbers([...prev, ...newRows]));
+    const nextRows = normalizeSrNumbers([...rows, ...newRows]);
+    setRows(nextRows);
+    localStorage.setItem(`RSB_PROJECT_DRAFT_${targetProject}`, JSON.stringify(nextRows));
+    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextRows));
+    newRows.forEach((r) => syncRowToDatabaseAndContext(r, targetProject));
+
     confetti({ particleCount: 60, spread: 60, origin: { y: 0.65 } });
-    setSaveToast(`Added all ${newRows.length} suggested parts for Machine "${machineName}"!`);
+    setSaveToast(`Added all ${newRows.length} suggested parts for Machine "${machineName}" • Synced to DB!`);
     setTimeout(() => setSaveToast(null), 3000);
   };
 
   // Project Selection Handler
   const handleSelectExistingProject = (pName: string) => {
     setSelectedProjectName(pName);
-    const found = projects.find((p) => p.name === pName);
+    const found = projects.find((p) => p.name.trim().toLowerCase() === pName.trim().toLowerCase());
     if (found) {
       if (found.machineName || found.machineType) setMachineName(found.machineName || found.machineType || found.name);
       if (found.vendorName || found.vendor) setVendorName(found.vendorName || found.vendor || '');
@@ -769,7 +897,7 @@ export const ProjectMaterialEntry: React.FC = () => {
       if (found.date || found.createdDate || found.startDate) setEntryDate(formatDate(found.date || found.createdDate || found.startDate));
 
       // Sync workstation rows with the project's actual material requirements
-      const existingMats = getMaterialsForProject(found, projectRequirements);
+      const existingMats = getMaterialsForProject(found, projectRequirements, orders);
       const mappedRows: EntryRow[] = existingMats
         .map((m, idx) => ({
           id: m.id,
@@ -779,18 +907,19 @@ export const ProjectMaterialEntry: React.FC = () => {
           srNo: (m.srNo !== undefined && m.srNo !== null && String(m.srNo).trim() !== '')
             ? m.srNo
             : idx + 1,
-          materialType: m.materialType as MaterialType,
-          sizeSpecs: m.sizeSpecs,
-          quantity: m.quantity,
+          materialType: (m.materialType || 'SS Flat') as MaterialType,
+          sizeSpecs: m.sizeSpecs || '',
+          quantity: Number(m.quantity) || 1,
           unit: m.unit || 'Nos',
           vendorName: m.vendor || m.vendorName || found.vendor || found.vendorName || '',
-          description: m.description,
+          description: m.description || '',
           orderedBy: m.orderedBy || activeOrderedBy,
           projectName: found.name,
         }));
       setRows(mappedRows);
     }
   };
+
 
   // Direct Project Creation Handler
   const handleCreateProject = (e?: React.FormEvent) => {
@@ -1053,7 +1182,12 @@ export const ProjectMaterialEntry: React.FC = () => {
       learnUnit(quickUnit);
     }
 
-    setRows((prev) => [...prev, newRow]);
+    const nextRows = [...rows, newRow];
+    setRows(nextRows);
+    localStorage.setItem(`RSB_PROJECT_DRAFT_${targetProject}`, JSON.stringify(nextRows));
+    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextRows));
+    syncRowToDatabaseAndContext(newRow, targetProject);
+
     const nextSr = typeof targetSrNo === 'number' ? targetSrNo + 1 : (!isNaN(Number(targetSrNo)) ? Number(targetSrNo) + 1 : rows.length + 2);
     setManualSrNo(String(nextSr));
     setQuickSrNo(String(nextSr));
@@ -1068,7 +1202,7 @@ export const ProjectMaterialEntry: React.FC = () => {
       quickDescInputRef.current?.focus();
     }, 40);
 
-    setSaveToast(`Added row #${targetSrNo}: ${newRow.description}`);
+    setSaveToast(`Added row #${targetSrNo}: ${newRow.description} • Synced to DB`);
     setTimeout(() => setSaveToast(null), 2000);
   };
 
@@ -1086,8 +1220,15 @@ export const ProjectMaterialEntry: React.FC = () => {
     const targetIdx = rows.findIndex((r) => r.id === rowId);
     const updated = [...rows];
     updated.splice(targetIdx + 1, 0, duplicate);
-    setRows(normalizeSrNumbers(updated));
-    setSaveToast(`Duplicated row #${target.srNo}`);
+    const nextRows = normalizeSrNumbers(updated);
+    setRows(nextRows);
+    if (selectedProjectName) {
+      localStorage.setItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`, JSON.stringify(nextRows));
+      localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextRows));
+    }
+    syncRowToDatabaseAndContext(duplicate, selectedProjectName);
+
+    setSaveToast(`Duplicated row #${target.srNo} • Synced to DB`);
     setTimeout(() => setSaveToast(null), 2000);
   };
 
@@ -1097,28 +1238,36 @@ export const ProjectMaterialEntry: React.FC = () => {
     const row = rows.find((r) => r.id === rowId);
     if (row) {
       deleteProjectRequirement(row.id);
-      const matched = projectRequirements.find(
-        (pr) =>
-          pr.id === row.id ||
-          (pr.description === row.description &&
+      // Fallback only if row.id was not found directly in projectRequirements
+      const exactInReqs = projectRequirements.some((pr) => pr.id === row.id);
+      if (!exactInReqs) {
+        const matched = projectRequirements.find(
+          (pr) =>
+            pr.description === row.description &&
             pr.sizeSpecs === row.sizeSpecs &&
-            pr.projectName === (row.projectName || selectedProjectName))
-      );
-      if (matched && matched.id !== row.id) {
-        deleteProjectRequirement(matched.id);
+            isRequirementMatchingProjectName(pr.projectName, row.projectName || selectedProjectName)
+        );
+        if (matched) {
+          deleteProjectRequirement(matched.id);
+        }
       }
     }
     const nextRows = normalizeSrNumbers(rows.filter((r) => r.id !== rowId));
     setRows(nextRows);
 
     if (selectedProjectName) {
-      localStorage.setItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`, JSON.stringify(nextRows));
-      localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextRows));
+      if (nextRows.length === 0) {
+        localStorage.removeItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`);
+        localStorage.removeItem(DRAFT_STORAGE_KEY);
+      } else {
+        localStorage.setItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`, JSON.stringify(nextRows));
+        localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextRows));
+      }
 
       const targetProject = selectedProjectName;
       const itemsToSave = nextRows.map((r, idx) => ({
         id: r.id,
-        srNo: r.srNo || idx + 1,
+        srNo: (r.srNo !== undefined && r.srNo !== null && String(r.srNo).trim() !== '') ? r.srNo : idx + 1,
         projectName: r.projectName || targetProject,
         customerName: targetProject,
         poNumber: r.poNo || poNo,
@@ -1129,13 +1278,13 @@ export const ProjectMaterialEntry: React.FC = () => {
         poNo: r.poNo || poNo,
         vendorName: r.vendorName || vendorName,
         vendor: r.vendorName || vendorName,
-        description: r.description,
+        description: r.description || '',
         materialType: r.materialType,
         materialGrade: 'SS 304',
-        sizeSpecs: r.sizeSpecs,
+        sizeSpecs: r.sizeSpecs || '',
         quantity: Number(r.quantity) || 1,
         unit: r.unit || 'Nos',
-        orderedBy: activeOrderedBy,
+        orderedBy: r.orderedBy || activeOrderedBy,
         orderSource: 'Customer PO',
         productionStatus: 'In Production',
         stockStatus: 'Available',
@@ -1154,9 +1303,10 @@ export const ProjectMaterialEntry: React.FC = () => {
   // Delete Selected Rows in Bulk
   const handleDeleteSelectedRows = () => {
     if (selectedRowIds.length === 0) return;
+    const count = selectedRowIds.length;
     if (
       confirm(
-        `Are you sure you want to delete ${selectedRowIds.length} selected row(s)? This will move them to Trash and delete permanently from DB.`
+        `Are you sure you want to delete ${count} selected row(s)? This will move them to Trash and delete permanently from DB.`
       )
     ) {
       isUserManuallyEditingRef.current = true;
@@ -1164,15 +1314,17 @@ export const ProjectMaterialEntry: React.FC = () => {
         const row = rows.find((r) => r.id === id);
         if (row) {
           deleteProjectRequirement(row.id);
-          const matched = projectRequirements.find(
-            (pr) =>
-              pr.id === id ||
-              (pr.description === row.description &&
+          const exactInReqs = projectRequirements.some((pr) => pr.id === row.id);
+          if (!exactInReqs) {
+            const matched = projectRequirements.find(
+              (pr) =>
+                pr.description === row.description &&
                 pr.sizeSpecs === row.sizeSpecs &&
-                pr.projectName === (row.projectName || selectedProjectName))
-          );
-          if (matched && matched.id !== row.id) {
-            deleteProjectRequirement(matched.id);
+                isRequirementMatchingProjectName(pr.projectName, row.projectName || selectedProjectName)
+            );
+            if (matched) {
+              deleteProjectRequirement(matched.id);
+            }
           }
         }
       });
@@ -1180,13 +1332,18 @@ export const ProjectMaterialEntry: React.FC = () => {
       setRows(nextRows);
 
       if (selectedProjectName) {
-        localStorage.setItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`, JSON.stringify(nextRows));
-        localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextRows));
+        if (nextRows.length === 0) {
+          localStorage.removeItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`);
+          localStorage.removeItem(DRAFT_STORAGE_KEY);
+        } else {
+          localStorage.setItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`, JSON.stringify(nextRows));
+          localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextRows));
+        }
 
         const targetProject = selectedProjectName;
         const itemsToSave = nextRows.map((r, idx) => ({
           id: r.id,
-          srNo: r.srNo || idx + 1,
+          srNo: (r.srNo !== undefined && r.srNo !== null && String(r.srNo).trim() !== '') ? r.srNo : idx + 1,
           projectName: r.projectName || targetProject,
           customerName: targetProject,
           poNumber: r.poNo || poNo,
@@ -1197,13 +1354,13 @@ export const ProjectMaterialEntry: React.FC = () => {
           poNo: r.poNo || poNo,
           vendorName: r.vendorName || vendorName,
           vendor: r.vendorName || vendorName,
-          description: r.description,
+          description: r.description || '',
           materialType: r.materialType,
           materialGrade: 'SS 304',
-          sizeSpecs: r.sizeSpecs,
+          sizeSpecs: r.sizeSpecs || '',
           quantity: Number(r.quantity) || 1,
           unit: r.unit || 'Nos',
-          orderedBy: activeOrderedBy,
+          orderedBy: r.orderedBy || activeOrderedBy,
           orderSource: 'Customer PO',
           productionStatus: 'In Production',
           stockStatus: 'Available',
@@ -1213,7 +1370,7 @@ export const ProjectMaterialEntry: React.FC = () => {
         replaceProjectRequirements(targetProject, itemsToSave);
       }
       setSelectedRowIds([]);
-      setSaveToast(`🗑️ Deleted ${selectedRowIds.length} rows • Moved to Trash & purged from DB`);
+      setSaveToast(`🗑️ Deleted ${count} row(s) • Moved to Trash & purged from DB`);
       setTimeout(() => {
         isUserManuallyEditingRef.current = false;
         setSaveToast(null);
@@ -1225,6 +1382,13 @@ export const ProjectMaterialEntry: React.FC = () => {
   const handleCellChange = (id: string, field: keyof EntryRow, value: any) => {
     if (field === 'orderedBy') return; // Read-only
     isUserManuallyEditingRef.current = true;
+    if (cellEditTimerRef.current) {
+      clearTimeout(cellEditTimerRef.current);
+    }
+    cellEditTimerRef.current = setTimeout(() => {
+      isUserManuallyEditingRef.current = false;
+    }, 1500);
+
     setRows((prev) => {
       const updated = prev.map((r) => {
         if (r.id === id) {
@@ -1234,6 +1398,21 @@ export const ProjectMaterialEntry: React.FC = () => {
       });
       return updated;
     });
+
+    const updatePayload: Partial<ProjectMaterialRequirementItem> = {
+      [field === 'poNo' ? 'poNumber' : field === 'date' ? 'poDate' : field]: value,
+    };
+    if (field === 'poNo') updatePayload.poNo = value;
+    if (field === 'date') updatePayload.date = value;
+    if (field === 'machineName') {
+      updatePayload.machineName = value;
+      updatePayload.machineType = value as any;
+    }
+    if (field === 'vendorName') {
+      updatePayload.vendorName = value;
+      updatePayload.vendor = value;
+    }
+    updateProjectRequirement(id, updatePayload);
   };
 
   // Save Project (Synchronizes all materials and project headers directly to Database & Cloud)
@@ -1261,13 +1440,13 @@ export const ProjectMaterialEntry: React.FC = () => {
         poNo: r.poNo || poNo,
         vendorName: r.vendorName || vendorName,
         vendor: r.vendorName || vendorName,
-        description: r.description,
+        description: r.description || '',
         materialType: r.materialType,
         materialGrade: 'SS 304',
-        sizeSpecs: r.sizeSpecs,
+        sizeSpecs: r.sizeSpecs || '',
         quantity: Number(r.quantity) || 1,
         unit: r.unit || 'Nos',
-        orderedBy: activeOrderedBy,
+        orderedBy: r.orderedBy || activeOrderedBy,
         orderSource: 'Customer PO',
         productionStatus: 'In Production',
         stockStatus: 'Available',
@@ -1277,7 +1456,7 @@ export const ProjectMaterialEntry: React.FC = () => {
         laborCost: 150,
         machineCost: 100,
         outsourcingCost: 0,
-        notes: `RSB Machine Workflow | Ordered by ${activeOrderedBy}`,
+        notes: `RSB Machine Workflow | Ordered by ${r.orderedBy || activeOrderedBy}`,
       }));
 
       // Auto-learn machine, vendor, and customer on order save
@@ -1343,6 +1522,9 @@ export const ProjectMaterialEntry: React.FC = () => {
       if (rows.length > 0) {
         localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(rows));
         localStorage.setItem(`RSB_PROJECT_DRAFT_${targetProject}`, JSON.stringify(rows));
+      } else {
+        localStorage.removeItem(DRAFT_STORAGE_KEY);
+        localStorage.removeItem(`RSB_PROJECT_DRAFT_${targetProject}`);
       }
 
       confetti({
@@ -1522,8 +1704,8 @@ export const ProjectMaterialEntry: React.FC = () => {
               !isStoreIncharge
                 ? (pName) => {
                     const found = projects.find((p) => p.name === pName);
-                    if (found) handleUsePreviousOrder(found);
-                    handleSwitchView('entry');
+                    if (found) handleOpenProjectInEntry(found);
+                    else handleSwitchView('entry');
                   }
                 : undefined
             }
@@ -1547,8 +1729,8 @@ export const ProjectMaterialEntry: React.FC = () => {
             !isStoreIncharge
               ? (pName) => {
                   const found = projects.find((p) => p.name === pName);
-                  if (found) handleUsePreviousOrder(found);
-                  handleSwitchView('entry');
+                  if (found) handleOpenProjectInEntry(found);
+                  else handleSwitchView('entry');
                 }
               : undefined
           }
@@ -1588,8 +1770,8 @@ export const ProjectMaterialEntry: React.FC = () => {
           onBack={() => setActiveViewMode('projects')}
           onOpenInEntrySheet={(pName) => {
             const found = projects.find((p) => p.name === pName);
-            if (found) handleUsePreviousOrder(found);
-            handleSwitchView('entry');
+            if (found) handleOpenProjectInEntry(found);
+            else handleSwitchView('entry');
           }}
           onOpenOrderBasket={(pName) => {
             setBasketProjectFilter(pName);
@@ -2644,7 +2826,13 @@ export const ProjectMaterialEntry: React.FC = () => {
                   orderedBy: activeOrderedBy,
                   projectName: targetProject,
                 };
-                setRows((prev) => normalizeSrNumbers([...prev, emptyRow]));
+                const nextRows = normalizeSrNumbers([...rows, emptyRow]);
+                setRows(nextRows);
+                localStorage.setItem(`RSB_PROJECT_DRAFT_${targetProject}`, JSON.stringify(nextRows));
+                localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextRows));
+                syncRowToDatabaseAndContext(emptyRow, targetProject);
+                setSaveToast('Added empty row • Synced to DB');
+                setTimeout(() => setSaveToast(null), 2000);
               }}
               className="px-3 py-1 rounded-lg bg-white border border-slate-300 hover:border-slate-400 text-slate-800 text-xs font-bold transition-all shadow-2xs cursor-pointer"
             >

@@ -1,4 +1,5 @@
 import { ProjectItem, ProjectMaterialRequirementItem, ManufacturingOrderItem, MaterialType, MachineCategory } from '../types/erp';
+import { getDeletedRequirementTombstones } from './tombstones';
 
 interface StandardPartTemplate {
   description: string;
@@ -79,6 +80,21 @@ const MACHINE_TEMPLATE_COMPONENTS: Record<string, StandardPartTemplate[]> = {
 };
 
 /**
+ * Checks if a requirement's project string matches a target project name
+ * handling exact matches and composite strings (e.g. "Kaustubh (PO-2026-1)")
+ */
+export function isRequirementMatchingProjectName(reqProjectName: string, targetProjectName: string): boolean {
+  if (!reqProjectName || !targetProjectName) return false;
+  const r = reqProjectName.trim().toLowerCase();
+  const t = targetProjectName.trim().toLowerCase();
+  if (r === t) return true;
+  if (r.startsWith(t + ' (') || r.startsWith(t + ' -') || r.startsWith(t + ' [') || r.startsWith(t + ' /')) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Strict and accurate matcher checking if a requirement or order belongs to a project.
  */
 export function isRequirementMatchedToProject(reqProjectName: string, project: ProjectItem): boolean {
@@ -101,12 +117,7 @@ export function isRequirementMatchedToProject(reqProjectName: string, project: P
   }
 
   // 3. Composite name matches e.g. "Kaustubh (PO-2026-50)", "Kaustubh - 20 HD", "Kaustubh [PRJ-2026-011]"
-  if (pName && (
-    r.startsWith(pName + ' (') ||
-    r.startsWith(pName + ' -') ||
-    r.startsWith(pName + ' [') ||
-    r.startsWith(pName + ' /')
-  )) {
+  if (pName && isRequirementMatchingProjectName(reqProjectName, pName)) {
     return true;
   }
 
@@ -118,6 +129,7 @@ export function isRequirementMatchedToProject(reqProjectName: string, project: P
   return false;
 }
 
+
 /**
  * Retrieves all materials strictly belonging to a project.
  * Returns an empty array [] if no materials have been added yet, ensuring real and authentic project state.
@@ -128,41 +140,46 @@ export function getMaterialsForProject(
   orders: ManufacturingOrderItem[] = []
 ): ProjectMaterialRequirementItem[] {
   // 1. Check projectRequirements
-  const matchedReqs = projectRequirements.filter((r) => isRequirementMatchedToProject(r.projectName, project));
+  const tombstones = getDeletedRequirementTombstones();
+  const matchedReqs = projectRequirements
+    .filter((r) => !tombstones.has(r.id))
+    .filter((r) => isRequirementMatchedToProject(r.projectName, project));
 
   // 2. Check manufacturing orders
   const matchedOrders = orders.filter((o) => isRequirementMatchedToProject(o.project, project));
-  const orderReqs = matchedOrders.map((o, idx) => ({
-    id: `ord-mat-${o.id}`,
-    srNo: idx + 1,
-    description: o.drawingRef ? `${o.materialType} Part (${o.drawingRef})` : `${o.materialType} Component`,
-    materialType: o.materialType,
-    materialGrade: 'SS 304',
-    sizeSpecs: o.sizeSpecs,
-    quantity: o.quantity,
-    unit: o.unit || 'Nos',
-    weightKg: 2.5,
-    projectName: project.name,
-    customerName: o.customer || project.customer,
-    poNumber: o.poNumber || project.poNumber,
-    poDate: o.date || project.startDate,
-    machineType: (o.machineType || project.machineType) as MachineCategory,
-    orderSource: o.orderSource || project.orderSource,
-    deliveryDate: o.deliveryDate || project.targetCompletionDate,
-    vendor: o.vendor || project.vendor || 'Manav Metal',
-    bomRef: `BOM-${o.orderNumber}`,
-    stockStatus: o.status === 'Completed' ? 'Available' : 'Partial Available',
-    availableStock: o.currentStock || 15,
-    shortageQty: 0,
-    productionStatus: o.status,
-    qcStatus: 'Passed',
-    dispatchStatus: 'Not Ready',
-    materialCost: 450 * o.quantity,
-    laborCost: 180 * o.quantity,
-    machineCost: 120 * o.quantity,
-    outsourcingCost: 0,
-    totalCost: o.totalAmount || 750 * o.quantity,
-  } as ProjectMaterialRequirementItem));
+  const orderReqs = matchedOrders
+    .map((o, idx) => ({
+      id: `ord-mat-${o.id}`,
+      srNo: idx + 1,
+      description: o.drawingRef ? `${o.materialType} Part (${o.drawingRef})` : `${o.materialType} Component`,
+      materialType: o.materialType,
+      materialGrade: 'SS 304',
+      sizeSpecs: o.sizeSpecs,
+      quantity: o.quantity,
+      unit: o.unit || 'Nos',
+      weightKg: 2.5,
+      projectName: project.name,
+      customerName: o.customer || project.customer,
+      poNumber: o.poNumber || project.poNumber,
+      poDate: o.date || project.startDate,
+      machineType: (o.machineType || project.machineType) as MachineCategory,
+      orderSource: o.orderSource || project.orderSource,
+      deliveryDate: o.deliveryDate || project.targetCompletionDate,
+      vendor: o.vendor || project.vendor || 'Manav Metal',
+      bomRef: `BOM-${o.orderNumber}`,
+      stockStatus: o.status === 'Completed' ? 'Available' : 'Partial Available',
+      availableStock: o.currentStock || 15,
+      shortageQty: 0,
+      productionStatus: o.status,
+      qcStatus: 'Passed',
+      dispatchStatus: 'Not Ready',
+      materialCost: 450 * o.quantity,
+      laborCost: 180 * o.quantity,
+      machineCost: 120 * o.quantity,
+      outsourcingCost: 0,
+      totalCost: o.totalAmount || 750 * o.quantity,
+    } as ProjectMaterialRequirementItem))
+    .filter((o) => !tombstones.has(o.id));
 
   if (matchedReqs.length > 0) {
     // If order items have unique specs not in matchedReqs, merge them

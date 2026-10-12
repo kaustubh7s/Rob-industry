@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   User,
   UserRole,
@@ -75,6 +75,21 @@ import {
   dbDeleteUser,
 } from '../services/supabaseService';
 import { getSupabaseClient } from '../lib/supabaseClient';
+import {
+  getDeletedRequirementTombstones,
+  addRequirementTombstone,
+  addRequirementTombstones,
+  getDeletedProjectTombstones,
+  addProjectTombstone,
+  getDeletedMaterialTombstones,
+  addMaterialTombstone,
+  addMaterialTombstones,
+  getDeletedVendorTombstones,
+  addVendorTombstone,
+  addVendorTombstones,
+  removeVendorTombstone,
+} from '../utils/tombstones';
+import { isRequirementMatchingProjectName } from '../utils/projectMaterialsHelper';
 
 interface ERPContextType {
   // Authentication & Role
@@ -305,6 +320,7 @@ interface ERPContextType {
 const ERPContext = createContext<ERPContextType | undefined>(undefined);
 
 const LOCAL_STORAGE_KEY = 'RSB_ERP_STATE_V6';
+const DRAFT_STORAGE_KEY = 'RSB_PROJECT_MATERIAL_ENTRY_10COL_WORKFLOW_V4';
 const AUTH_SESSION_KEY = 'RSB_ERP_AUTH_USER_ID';
 const LAST_ACTIVITY_KEY = 'RSB_ERP_LAST_ACTIVITY';
 const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes session inactivity timeout
@@ -417,9 +433,22 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e) {}
   };
 
+  const pendingSyncIdsRef = useRef<Set<string>>(new Set());
+
   const [materials, setMaterials] = useState<MaterialItem[]>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_materials');
-    return saved ? JSON.parse(saved) : INITIAL_MATERIALS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          const matTombstones = getDeletedMaterialTombstones();
+          return parsed.filter((m) => !matTombstones.has(m.id));
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return INITIAL_MATERIALS;
   });
 
   const [projectRequirements, setProjectRequirements] = useState<ProjectMaterialRequirementItem[]>(() => {
@@ -427,7 +456,10 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (saved) {
       try {
         const parsed: ProjectMaterialRequirementItem[] = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          const reqTombstones = getDeletedRequirementTombstones();
+          return parsed.filter((r) => !reqTombstones.has(r.id));
+        }
       } catch (e) {
         console.error(e);
       }
@@ -437,7 +469,9 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [vendors, setVendors] = useState<VendorItem[]>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_vendors');
-    return saved ? JSON.parse(saved) : INITIAL_VENDORS;
+    const tombstones = getDeletedVendorTombstones();
+    const initialList = saved ? JSON.parse(saved) : INITIAL_VENDORS;
+    return initialList.filter((v: VendorItem) => !tombstones.has(v.id));
   });
 
   const [customers, setCustomers] = useState<CustomerItem[]>(() => {
@@ -455,8 +489,10 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (saved) {
       try {
         const parsed: ProjectItem[] = JSON.parse(saved);
+        const prjTombstones = getDeletedProjectTombstones();
         return parsed.filter(
           (p) =>
+            !prjTombstones.has(p.id) &&
             !['prj-foha', 'prj-1', 'prj-2', 'prj-cip-skid', 'prj-sun-liquid', 'prj-int-fab', 'prj-pipeline', 'prj-rotary-dist', 'prj-cap-trans', 'prj-sealing-30'].includes(p.id)
         );
       } catch (e) {
@@ -465,6 +501,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     return INITIAL_PROJECTS;
   });
+
 
   const [orders, setOrders] = useState<ManufacturingOrderItem[]>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_orders');
@@ -868,6 +905,10 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           'rsb_custom_descriptions',
           'rsb_custom_sizes',
           'rsb_custom_units',
+          'RSB_ERP_STATE_V6_deleted_requirements',
+          'RSB_ERP_STATE_V6_deleted_projects',
+          'RSB_ERP_STATE_V6_deleted_materials',
+          'RSB_ERP_STATE_V6_deleted_vendors',
         ].forEach((k) => localStorage.removeItem(k));
 
         if (preserveSupabase) localStorage.setItem('RSB_SUPABASE_CONFIG_V1', preserveSupabase);
@@ -878,27 +919,85 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     const safeMergeRequirements = (existing: ProjectMaterialRequirementItem[], remote: ProjectMaterialRequirementItem[]) => {
-      if (!remote || remote.length === 0) return existing;
-      const remoteMap = new Map(remote.map((r) => [r.id, r]));
-      const merged = [...remote];
-      existing.forEach((loc) => {
+      const tombstones = getDeletedRequirementTombstones();
+      const filteredExisting = existing.filter((r) => !tombstones.has(r.id));
+      const filteredRemote = (remote || []).filter((r) => !tombstones.has(r.id));
+      if (filteredRemote.length === 0) {
+        return filteredExisting.filter((loc) => pendingSyncIdsRef.current.has(loc.id));
+      }
+      const remoteMap = new Map(filteredRemote.map((r) => [r.id, r]));
+      const merged = [...filteredRemote];
+      filteredExisting.forEach((loc) => {
         if (!remoteMap.has(loc.id)) {
-          merged.push(loc);
+          if (pendingSyncIdsRef.current.has(loc.id)) {
+            merged.push(loc);
+          } else {
+            // Deleted in database on another system! Register tombstone so it never resurrects
+            addRequirementTombstone(loc.id);
+          }
         }
       });
-      return merged;
+      return merged.filter((r) => !tombstones.has(r.id));
     };
 
     const safeMergeProjects = (existing: ProjectItem[], remote: ProjectItem[]) => {
-      if (!remote || remote.length === 0) return existing;
-      const remoteMap = new Map(remote.map((p) => [p.id, p]));
-      const merged = [...remote];
-      existing.forEach((loc) => {
+      const tombstones = getDeletedProjectTombstones();
+      const filteredExisting = existing.filter((p) => !tombstones.has(p.id));
+      const filteredRemote = (remote || []).filter((p) => !tombstones.has(p.id));
+      if (filteredRemote.length === 0) return filteredExisting;
+      const remoteMap = new Map(filteredRemote.map((p) => [p.id, p]));
+      const merged = [...filteredRemote];
+      filteredExisting.forEach((loc) => {
         if (!remoteMap.has(loc.id)) {
-          merged.push(loc);
+          // If project was in database but is now gone from remote, it was deleted!
+          addProjectTombstone(loc.id);
         }
       });
-      return merged;
+      return merged.filter((p) => !tombstones.has(p.id));
+    };
+
+    const safeMergeMaterials = (existing: MaterialItem[], remote: MaterialItem[]) => {
+      const tombstones = getDeletedMaterialTombstones();
+      const filteredExisting = (existing || []).filter((m) => !tombstones.has(m.id));
+      const filteredRemote = (remote || []).filter((m) => !tombstones.has(m.id));
+      if (filteredRemote.length === 0) {
+        return filteredExisting.filter((loc) => pendingSyncIdsRef.current.has(loc.id));
+      }
+      const remoteMap = new Map(filteredRemote.map((m) => [m.id, m]));
+      const merged = [...filteredRemote];
+      filteredExisting.forEach((loc) => {
+        if (!remoteMap.has(loc.id)) {
+          if (pendingSyncIdsRef.current.has(loc.id)) {
+            merged.push(loc);
+          } else {
+            // Deleted in database on another system or directly in DB! Register tombstone
+            addMaterialTombstone(loc.id);
+          }
+        }
+      });
+      return merged.filter((m) => !tombstones.has(m.id));
+    };
+
+    const safeMergeVendors = (existing: VendorItem[], remote: VendorItem[]) => {
+      const tombstones = getDeletedVendorTombstones();
+      const filteredExisting = (existing || []).filter((v) => !tombstones.has(v.id));
+      const filteredRemote = (remote || []).filter((v) => !tombstones.has(v.id));
+      if (filteredRemote.length === 0) {
+        return filteredExisting.filter((loc) => pendingSyncIdsRef.current.has(loc.id));
+      }
+      const remoteMap = new Map(filteredRemote.map((v) => [v.id, v]));
+      const merged = [...filteredRemote];
+      filteredExisting.forEach((loc) => {
+        if (!remoteMap.has(loc.id)) {
+          if (pendingSyncIdsRef.current.has(loc.id)) {
+            merged.push(loc);
+          } else {
+            // Deleted in database on another system or directly in DB! Register tombstone
+            addVendorTombstone(loc.id);
+          }
+        }
+      });
+      return merged.filter((v) => !tombstones.has(v.id));
     };
 
     const initCloudSync = async () => {
@@ -909,7 +1008,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const pullRes = await pullAllDataFromSupabase();
         if (isMounted && pullRes.success && pullRes.data) {
-          if (pullRes.data.projects && pullRes.data.projects.length > 0) {
+          if (pullRes.data.projects) {
             const remoteProjects = pullRes.data.projects;
             setProjects((prev) => {
               const merged = safeMergeProjects(prev, remoteProjects);
@@ -919,7 +1018,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               return merged;
             });
           }
-          if (pullRes.data.requirements && pullRes.data.requirements.length > 0) {
+          if (pullRes.data.requirements) {
             const remoteReqs = pullRes.data.requirements;
             setProjectRequirements((prev) => {
               const merged = safeMergeRequirements(prev, remoteReqs);
@@ -929,11 +1028,26 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               return merged;
             });
           }
-          if (pullRes.data.materials && pullRes.data.materials.length > 0) {
-            setMaterials(pullRes.data.materials);
+
+          if (pullRes.data.materials !== undefined) {
+            const remoteMats = pullRes.data.materials || [];
+            setMaterials((prev) => {
+              const merged = safeMergeMaterials(prev, remoteMats);
+              try {
+                localStorage.setItem(LOCAL_STORAGE_KEY + '_materials', JSON.stringify(merged));
+              } catch (e) {}
+              return merged;
+            });
           }
-          if (pullRes.data.vendors && pullRes.data.vendors.length > 0) {
-            setVendors(pullRes.data.vendors);
+          if (pullRes.data.vendors !== undefined) {
+            const remoteVendors = pullRes.data.vendors || [];
+            setVendors((prev) => {
+              const merged = safeMergeVendors(prev, remoteVendors);
+              try {
+                localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(merged));
+              } catch (e) {}
+              return merged;
+            });
           }
           if (pullRes.data.customers && pullRes.data.customers.length > 0) {
             setCustomers(pullRes.data.customers);
@@ -1048,7 +1162,14 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               } else if (payload.eventType === 'DELETE') {
                 const oldId = (payload.old as any)?.id;
                 if (oldId) {
-                  setProjectRequirements((prev) => prev.filter((r) => r.id !== oldId));
+                  addRequirementTombstone(oldId);
+                  setProjectRequirements((prev) => {
+                    const next = prev.filter((r) => r.id !== oldId);
+                    try {
+                      localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(next));
+                    } catch (e) {}
+                    return next;
+                  });
                 }
               }
             }
@@ -1090,7 +1211,122 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               } else if (payload.eventType === 'DELETE') {
                 const oldId = (payload.old as any)?.id;
                 if (oldId) {
-                  setProjects((prev) => prev.filter((p) => p.id !== oldId));
+                  addProjectTombstone(oldId);
+                  setProjects((prev) => {
+                    const next = prev.filter((p) => p.id !== oldId);
+                    try {
+                      localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(next));
+                    } catch (e) {}
+                    return next;
+                  });
+                }
+              }
+            }
+          )
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'materials' },
+            async (payload) => {
+              if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+                const m = payload.new as any;
+                if (!m || !m.id) return;
+                const formattedMat: MaterialItem = {
+                  id: m.id,
+                  code: m.code,
+                  name: m.name,
+                  type: m.type,
+                  grade: m.grade || 'SS 304',
+                  thickness: Number(m.thickness || 0),
+                  sizeSpecs: m.size_specs,
+                  unit: m.unit || 'Nos',
+                  unitWeightKg: Number(m.unit_weight_kg || 0),
+                  currentStock: Number(m.current_stock || 0),
+                  reservedStock: Number(m.reserved_stock || 0),
+                  minStock: Number(m.min_stock || 0),
+                  reorderLevel: Number(m.reorder_level || 0),
+                  unitCost: Number(m.unit_cost || 0),
+                  vendor: m.vendor || '',
+                  notes: m.notes || '',
+                };
+                setMaterials((prev) => {
+                  const existingIdx = prev.findIndex((item) => item.id === formattedMat.id);
+                  if (existingIdx >= 0) {
+                    const copy = [...prev];
+                    copy[existingIdx] = formattedMat;
+                    return copy;
+                  }
+                  return [formattedMat, ...prev];
+                });
+              } else if (payload.eventType === 'DELETE') {
+                const oldId = (payload.old as any)?.id;
+                if (oldId) {
+                  addMaterialTombstone(oldId);
+                  setMaterials((prev) => {
+                    const next = prev.filter((m) => m.id !== oldId);
+                    try {
+                      localStorage.setItem(LOCAL_STORAGE_KEY + '_materials', JSON.stringify(next));
+                    } catch (e) {}
+                    return next;
+                  });
+                }
+              }
+            }
+          )
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'vendors' },
+            async (payload) => {
+              if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+                const v = payload.new as any;
+                if (!v || !v.id) return;
+                const tombstones = getDeletedVendorTombstones();
+                if (tombstones.has(v.id)) return;
+                const formattedVnd: VendorItem = {
+                  id: v.id,
+                  name: v.name,
+                  contactPerson: v.contact_person || v.contactPerson || '',
+                  mobile: v.mobile || '',
+                  email: v.email || '',
+                  gstin: v.gstin || '',
+                  address: v.address || '',
+                  materialSupplied: v.material_supplied || v.materialSupplied || '',
+                  rating: Number(v.rating || 5.0),
+                  paymentTerms: v.payment_terms || v.paymentTerms || '30 Days Net',
+                  totalOrders: Number(v.total_orders || 0),
+                  totalPurchaseValue: Number(v.total_purchase_value || 0),
+                  onTimeDeliveries: Number(v.on_time_deliveries || 0),
+                  delayedDeliveries: Number(v.delayed_deliveries || 0),
+                  averageDeliveryDays: Number(v.average_delivery_days || 3),
+                  rejectionRate: Number(v.rejection_rate || 0),
+                  qualityRating: Number(v.quality_rating || 99),
+                  costCompetitiveness: Number(v.cost_competitiveness || 9),
+                  reliabilityScore: Number(v.reliability_score || 98),
+                };
+                setVendors((prev) => {
+                  const existingIdx = prev.findIndex((item) => item.id === formattedVnd.id);
+                  let next: VendorItem[];
+                  if (existingIdx >= 0) {
+                    next = [...prev];
+                    next[existingIdx] = { ...next[existingIdx], ...formattedVnd };
+                  } else {
+                    next = [formattedVnd, ...prev];
+                  }
+                  try {
+                    localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(next));
+                  } catch (e) {}
+                  return next;
+                });
+              } else if (payload.eventType === 'DELETE') {
+                const oldId = (payload.old as any)?.id;
+                if (oldId) {
+                  addVendorTombstone(oldId);
+                  setVendors((prev) => {
+                    const next = prev.filter((v) => v.id !== oldId);
+                    try {
+                      localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(next));
+                    } catch (e) {}
+                    return next;
+                  });
                 }
               }
             }
@@ -1113,6 +1349,52 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       broadcast.onmessage = async (event) => {
         if (event.data?.type === 'FACTORY_RESET') {
           applyGlobalFactoryReset();
+        } else if (event.data?.type === 'REQUIREMENT_DELETED' && event.data?.requirementId) {
+          const delId = event.data.requirementId;
+          addRequirementTombstone(delId);
+          setProjectRequirements((prev) => {
+            const next = prev.filter((r) => r.id !== delId);
+            try {
+              localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(next));
+            } catch (e) {}
+            return next;
+          });
+        } else if (event.data?.type === 'MATERIAL_DELETED' && event.data?.materialId) {
+          const delMatId = event.data.materialId;
+          addMaterialTombstone(delMatId);
+          setMaterials((prev) => {
+            const next = prev.filter((m) => m.id !== delMatId);
+            try {
+              localStorage.setItem(LOCAL_STORAGE_KEY + '_materials', JSON.stringify(next));
+            } catch (e) {}
+            return next;
+          });
+        } else if (event.data?.type === 'VENDOR_DELETED' && event.data?.vendorId) {
+          const delVndId = event.data.vendorId;
+          addVendorTombstone(delVndId);
+          setVendors((prev) => {
+            const next = prev.filter((v) => v.id !== delVndId);
+            try {
+              localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(next));
+            } catch (e) {}
+            return next;
+          });
+        } else if (event.data?.type === 'VENDOR_UPSERTED' && event.data?.vendor) {
+          const newVnd = event.data.vendor;
+          setVendors((prev) => {
+            const existingIdx = prev.findIndex((v) => v.id === newVnd.id);
+            let next: VendorItem[];
+            if (existingIdx >= 0) {
+              next = [...prev];
+              next[existingIdx] = newVnd;
+            } else {
+              next = [newVnd, ...prev];
+            }
+            try {
+              localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(next));
+            } catch (e) {}
+            return next;
+          });
         } else if (event.data?.type === 'SYNC_ALL' || event.data?.type === 'PROJECTS_UPDATED') {
           const pullRes = await pullAllDataFromSupabase();
           if (pullRes.success && pullRes.data) {
@@ -1136,6 +1418,16 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 return merged;
               });
             }
+            if (pullRes.data.vendors !== undefined) {
+              const remoteVendors = pullRes.data.vendors || [];
+              setVendors((prev) => {
+                const merged = safeMergeVendors(prev, remoteVendors);
+                try {
+                  localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(merged));
+                } catch (e) {}
+                return merged;
+              });
+            }
           }
         }
       };
@@ -1147,7 +1439,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const pullRes = await pullAllDataFromSupabase();
         if (pullRes.success && pullRes.data) {
-          if (pullRes.data.projects && pullRes.data.projects.length > 0) {
+          if (pullRes.data.projects) {
             const remoteProjects = pullRes.data.projects;
             setProjects((prev) => {
               const merged = safeMergeProjects(prev, remoteProjects);
@@ -1157,12 +1449,32 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               return merged;
             });
           }
-          if (pullRes.data.requirements && pullRes.data.requirements.length > 0) {
+          if (pullRes.data.requirements) {
             const remoteReqs = pullRes.data.requirements;
             setProjectRequirements((prev) => {
               const merged = safeMergeRequirements(prev, remoteReqs);
               try {
                 localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(merged));
+              } catch (e) {}
+              return merged;
+            });
+          }
+          if (pullRes.data.materials !== undefined) {
+            const remoteMats = pullRes.data.materials || [];
+            setMaterials((prev) => {
+              const merged = safeMergeMaterials(prev, remoteMats);
+              try {
+                localStorage.setItem(LOCAL_STORAGE_KEY + '_materials', JSON.stringify(merged));
+              } catch (e) {}
+              return merged;
+            });
+          }
+          if (pullRes.data.vendors !== undefined) {
+            const remoteVendors = pullRes.data.vendors || [];
+            setVendors((prev) => {
+              const merged = safeMergeVendors(prev, remoteVendors);
+              try {
+                localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(merged));
               } catch (e) {}
               return merged;
             });
@@ -1175,9 +1487,62 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     window.addEventListener('focus', handleWindowFocus);
 
+    // Continuous 3.5-second background polling heartbeat for multi-device sync
+    const pollInterval = setInterval(async () => {
+      if (!isMounted) return;
+      try {
+        const pullRes = await pullAllDataFromSupabase();
+        if (pullRes.success && pullRes.data) {
+          if (pullRes.data.projects) {
+            const remoteProjects = pullRes.data.projects;
+            setProjects((prev) => {
+              const merged = safeMergeProjects(prev, remoteProjects);
+              try {
+                localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(merged));
+              } catch (e) {}
+              return merged;
+            });
+          }
+          if (pullRes.data.requirements) {
+            const remoteReqs = pullRes.data.requirements;
+            setProjectRequirements((prev) => {
+              const merged = safeMergeRequirements(prev, remoteReqs);
+              try {
+                localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(merged));
+              } catch (e) {}
+              return merged;
+            });
+          }
+          if (pullRes.data.materials !== undefined) {
+            const remoteMats = pullRes.data.materials || [];
+            setMaterials((prev) => {
+              const merged = safeMergeMaterials(prev, remoteMats);
+              try {
+                localStorage.setItem(LOCAL_STORAGE_KEY + '_materials', JSON.stringify(merged));
+              } catch (e) {}
+              return merged;
+            });
+          }
+          if (pullRes.data.vendors !== undefined) {
+            const remoteVendors = pullRes.data.vendors || [];
+            setVendors((prev) => {
+              const merged = safeMergeVendors(prev, remoteVendors);
+              try {
+                localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(merged));
+              } catch (e) {}
+              return merged;
+            });
+          }
+        }
+      } catch (err) {
+        // silent
+      }
+    }, 3500);
+
     return () => {
       isMounted = false;
       window.removeEventListener('focus', handleWindowFocus);
+      clearInterval(pollInterval);
       if (broadcast) broadcast.close();
       if (activeChannel) {
         try {
@@ -1576,6 +1941,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteProjectRequirement = (id: string) => {
+    addRequirementTombstone(id);
     const reqToDelete = projectRequirements.find((r) => r.id === id);
     if (reqToDelete) {
       const trashEntry: TrashItem = {
@@ -1601,13 +1967,77 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setProjects((prev) => prev.map((p) => (p.id === updatedPrj.id ? updatedPrj : p)));
           dbUpsertProject(updatedPrj);
         }
+
+        // Clean matching draft items from localStorage
+        try {
+          const draftKey = `RSB_PROJECT_DRAFT_${reqToDelete.projectName}`;
+          const cached = localStorage.getItem(draftKey);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed)) {
+              const cleaned = parsed.filter((row: any) => row.id !== id);
+              if (cleaned.length > 0) {
+                localStorage.setItem(draftKey, JSON.stringify(cleaned));
+              } else {
+                localStorage.removeItem(draftKey);
+              }
+            }
+          }
+        } catch (e) {}
       }
     }
 
-    setProjectRequirements((prev) => prev.filter((r) => r.id !== id));
+    // Clean from global draft
+    try {
+      const globalDraft = localStorage.getItem(DRAFT_STORAGE_KEY);
+      if (globalDraft) {
+        const parsed = JSON.parse(globalDraft);
+        if (Array.isArray(parsed)) {
+          const cleaned = parsed.filter((row: any) => row.id !== id);
+          if (cleaned.length > 0) {
+            localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(cleaned));
+          } else {
+            localStorage.removeItem(DRAFT_STORAGE_KEY);
+          }
+        }
+      }
+    } catch (e) {}
+
+    // Check if order-backed material item
+    if (id.startsWith('ord-mat-')) {
+      const rawOrderId = id.replace('ord-mat-', '');
+      setOrders((prev) => {
+        const next = prev.filter((o) => o.id !== rawOrderId);
+        try {
+          localStorage.setItem(LOCAL_STORAGE_KEY + '_orders', JSON.stringify(next));
+        } catch (e) {}
+        return next;
+      });
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        supabase.from('manufacturing_orders').delete().eq('id', rawOrderId).then(() => {});
+      }
+    }
+
+    setProjectRequirements((prev) => {
+      const nextReqs = prev.filter((r) => r.id !== id);
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(nextReqs));
+      } catch (e) {}
+      return nextReqs;
+    });
+
     dbDeleteRequirement(id);
+
+    try {
+      const bc = new BroadcastChannel('rsb_erp_live_sync');
+      bc.postMessage({ type: 'REQUIREMENT_DELETED', requirementId: id });
+      bc.close();
+    } catch (e) {}
+
     logAudit('Requirement Deleted', 'Project Material Requirement', `Deleted Requirement ID ${id} (Moved to Trash)`);
   };
+
 
   // Dedicated Material Inward / Receiving Verification Toggle
   const toggleMaterialReceived = (reqId: string, customNotes?: string) => {
@@ -1803,7 +2233,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     
     // Find existing requirements in state for this project so we can preserve inward verification, custom flags, IDs if matched
     const currentProjectReqs = projectRequirements.filter(
-      (r) => (r.projectName || '').trim().toLowerCase() === projectName.trim().toLowerCase()
+      (r) => isRequirementMatchingProjectName(r.projectName, projectName)
     );
 
     // 1. Map active rows preserving exact Sr. No. and custom metadata
@@ -1906,34 +2336,50 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     });
 
-    // 2. Safely purge specifically removed rows from DB (rather than blanket project purge)
+    // 2. Safely purge specifically removed rows from DB (with durable tombstones)
     const activeIds = new Set(mapped.map((m) => m.id));
     const removedReqs = currentProjectReqs.filter((r) => !activeIds.has(r.id));
-    removedReqs.forEach((r) => dbDeleteRequirement(r.id));
+    if (removedReqs.length > 0) {
+      addRequirementTombstones(removedReqs.map((r) => r.id));
+      removedReqs.forEach((r) => dbDeleteRequirement(r.id));
+    }
 
-    // 3. Update React state & LocalStorage
+    // 3. Clear draft keys if items is empty
+    if (items.length === 0) {
+      try {
+        localStorage.removeItem(`RSB_PROJECT_DRAFT_${projectName}`);
+      } catch (e) {}
+    }
+
+    // 4. Update React state & LocalStorage
+    const tombstones = getDeletedRequirementTombstones();
+    const removedIdSet = new Set(removedReqs.map((r) => r.id));
     setProjectRequirements((prev) => {
-      const nextReqs = [
-        ...prev.filter((r) => (r.projectName || '').trim().toLowerCase() !== projectName.trim().toLowerCase()),
-        ...mapped,
-      ];
+      const remaining = prev.filter(
+        (r) =>
+          !removedIdSet.has(r.id) &&
+          !tombstones.has(r.id) &&
+          !isRequirementMatchingProjectName(r.projectName, projectName)
+      );
+      const nextReqs = [...remaining, ...mapped].filter((r) => !tombstones.has(r.id));
       try {
         localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(nextReqs));
       } catch (e) {}
       return nextReqs;
     });
 
-    // 4. Authoritatively upsert active rows
+    // 5. Authoritatively upsert active rows
     if (mapped.length > 0) {
       dbBulkUpsertRequirements(mapped);
     }
 
-    // 5. Broadcast to other open tabs
+    // 6. Broadcast to other open tabs
     try {
       const bc = new BroadcastChannel('rsb_erp_live_sync');
       bc.postMessage({ type: 'PROJECTS_UPDATED', projectName });
       bc.close();
     } catch (e) {}
+
 
     // Update project metrics (materialsCount & totalQuantity) and sync to Supabase
     const existingProject = projects.find((p) => p.name.trim().toLowerCase() === projectName.trim().toLowerCase());
@@ -2508,8 +2954,20 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteMaterial = (id: string) => {
-    setMaterials((prev) => prev.filter((m) => m.id !== id));
+    addMaterialTombstone(id);
+    setMaterials((prev) => {
+      const next = prev.filter((m) => m.id !== id);
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY + '_materials', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
     dbDeleteMaterial(id);
+    try {
+      const bc = new BroadcastChannel('rsb_erp_live_sync');
+      bc.postMessage({ type: 'MATERIAL_DELETED', materialId: id });
+      bc.close();
+    } catch (e) {}
     logAudit('Material Deleted', 'Materials Master', `Deleted material ID ${id}`);
   };
 
@@ -2920,15 +3378,17 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteProject = (id: string, cascadeRequirements: boolean = true) => {
+    addProjectTombstone(id);
     const projectToDelete = projects.find((p) => p.id === id);
-    if (projectToDelete) {
-      const pNameLower = (projectToDelete.name || '').trim().toLowerCase();
-      const pNumLower = (projectToDelete.projectNumber || '').trim().toLowerCase();
+    let linkedReqIds: string[] = [];
 
-      const deletedReqs = projectRequirements.filter((r) => {
-        const rProjLower = (r.projectName || '').trim().toLowerCase();
-        return rProjLower === pNameLower || rProjLower === pNumLower;
-      });
+    if (projectToDelete) {
+      const deletedReqs = projectRequirements.filter((r) =>
+        isRequirementMatchingProjectName(r.projectName, projectToDelete.name) ||
+        (projectToDelete.projectNumber && r.projectName.includes(projectToDelete.projectNumber))
+      );
+      linkedReqIds = deletedReqs.map((r) => r.id);
+      addRequirementTombstones(linkedReqIds);
 
       // Move Project to Trash Bin
       const trashEntry: TrashItem = {
@@ -2943,24 +3403,48 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setTrashItems((prev) => [trashEntry, ...prev]);
 
       // Always remove linked requirements when deleting project to prevent orphan ghost materials
-      setProjectRequirements((prev) =>
-        prev.filter((r) => {
-          const rProjLower = (r.projectName || '').trim().toLowerCase();
-          return rProjLower !== pNameLower && rProjLower !== pNumLower;
-        })
-      );
+      setProjectRequirements((prev) => {
+        const nextReqs = prev.filter((r) => !linkedReqIds.includes(r.id));
+        try {
+          localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(nextReqs));
+        } catch (e) {}
+        return nextReqs;
+      });
+
+      // Clear draft keys for this project
+      try {
+        localStorage.removeItem(`RSB_PROJECT_DRAFT_${projectToDelete.name}`);
+        if (projectToDelete.projectNumber) {
+          localStorage.removeItem(`RSB_PROJECT_DRAFT_${projectToDelete.projectNumber}`);
+        }
+      } catch (e) {}
     }
 
-    setProjects((prev) => prev.filter((p) => p.id !== id));
+    setProjects((prev) => {
+      const nextProjects = prev.filter((p) => p.id !== id);
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(nextProjects));
+      } catch (e) {}
+      return nextProjects;
+    });
 
     // INSTANT DB DELETE
     dbDeleteProject(id);
     if (projectToDelete) {
       dbDeleteRequirementsByProject(projectToDelete.name);
+      linkedReqIds.forEach((reqId) => dbDeleteRequirement(reqId));
     }
+
+    try {
+      const bc = new BroadcastChannel('rsb_erp_live_sync');
+      bc.postMessage({ type: 'PROJECT_DELETED', projectId: id });
+      bc.close();
+    } catch (e) {}
+
     logAudit('Project Deleted', 'Projects', `Deleted project ${projectToDelete?.name || id} (Moved to Trash)`);
     addNotification('Project Moved to Trash', `Deleted project ${projectToDelete?.name || id}. Restore anytime from Trash Bin.`, 'warning', 'projects');
   };
+
 
   // Trash Bin Operations
   const restoreFromTrash = (trashId: string) => {
@@ -3000,28 +3484,62 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...vendor,
       id: 'vnd-' + (vendors.length + 1) + '-' + Date.now().toString().slice(-4),
     };
-    setVendors((prev) => [newVendor, ...prev]);
+    removeVendorTombstone(newVendor.id);
+    setVendors((prev) => {
+      const next = [newVendor, ...prev.filter((v) => v.id !== newVendor.id)];
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
     dbUpsertVendor(newVendor);
+    try {
+      const bc = new BroadcastChannel('rsb_erp_live_sync');
+      bc.postMessage({ type: 'VENDOR_UPSERTED', vendor: newVendor });
+      bc.close();
+    } catch (e) {}
     logAudit('Vendor Created', 'Vendor Management', `Added vendor ${newVendor.name}`);
   };
 
   const updateVendor = (id: string, updates: Partial<VendorItem>) => {
-    setVendors((prev) =>
-      prev.map((v) => {
+    removeVendorTombstone(id);
+    setVendors((prev) => {
+      const next = prev.map((v) => {
         if (v.id === id) {
           const merged = { ...v, ...updates };
           dbUpsertVendor(merged);
           return merged;
         }
         return v;
-      })
-    );
+      });
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+    try {
+      const bc = new BroadcastChannel('rsb_erp_live_sync');
+      bc.postMessage({ type: 'SYNC_ALL' });
+      bc.close();
+    } catch (e) {}
     logAudit('Vendor Updated', 'Vendor Management', `Updated vendor ID ${id}`);
   };
 
   const deleteVendor = (id: string) => {
-    setVendors((prev) => prev.filter((v) => v.id !== id));
+    addVendorTombstone(id);
+    setVendors((prev) => {
+      const next = prev.filter((v) => v.id !== id);
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
     dbDeleteVendor(id);
+    try {
+      const bc = new BroadcastChannel('rsb_erp_live_sync');
+      bc.postMessage({ type: 'VENDOR_DELETED', vendorId: id });
+      bc.close();
+    } catch (e) {}
     logAudit('Vendor Deleted', 'Vendor Management', `Deleted vendor ID ${id}`);
   };
 

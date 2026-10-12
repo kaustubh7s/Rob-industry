@@ -279,10 +279,11 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={onOpenSearch}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white text-xs transition-colors cursor-pointer"
-            title="Search orders, PO, stock, materials (⌘K)"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700 hover:border-slate-600 text-slate-300 hover:text-white text-xs transition-colors cursor-pointer"
+            title="Search Vendors, Projects, POs, Materials (⌘K)"
           >
             <Search className="w-3.5 h-3.5 text-slate-400" />
+            <span className="hidden xl:inline text-[11px] text-slate-400 font-normal">Search vendors, POs...</span>
             <kbd className="hidden md:inline-block px-1.5 py-0.2 rounded bg-slate-900 text-[9px] font-mono text-slate-400 border border-slate-700">
               ⌘K
             </kbd>
