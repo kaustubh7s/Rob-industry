@@ -937,7 +937,20 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         }
       });
-      return merged.filter((r) => !tombstones.has(r.id));
+
+      // Deduplicate by ID and composite content signature
+      const seenIds = new Set<string>();
+      const seenSignatures = new Set<string>();
+      const deduped: ProjectMaterialRequirementItem[] = [];
+      for (const item of merged) {
+        if (tombstones.has(item.id) || seenIds.has(item.id)) continue;
+        const sig = `${(item.projectName || '').trim().toLowerCase()}::${item.srNo || 0}::${(item.description || '').trim().toLowerCase()}::${(item.sizeSpecs || '').trim().toLowerCase()}::${item.quantity}::${item.materialType}`;
+        if (seenSignatures.has(sig)) continue;
+        seenIds.add(item.id);
+        seenSignatures.add(sig);
+        deduped.push(item);
+      }
+      return deduped;
     };
 
     const safeMergeProjects = (existing: ProjectItem[], remote: ProjectItem[]) => {
@@ -1156,6 +1169,18 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     const copy = [...prev];
                     copy[existingIdx] = formatted;
                     return copy;
+                  }
+                  const isDup = prev.some(
+                    (r) =>
+                      r.projectName.trim().toLowerCase() === formatted.projectName.trim().toLowerCase() &&
+                      r.description.trim().toLowerCase() === formatted.description.trim().toLowerCase() &&
+                      r.sizeSpecs.trim().toLowerCase() === formatted.sizeSpecs.trim().toLowerCase() &&
+                      r.materialType === formatted.materialType &&
+                      Number(r.quantity) === Number(formatted.quantity) &&
+                      String(r.srNo) === String(formatted.srNo)
+                  );
+                  if (isDup) {
+                    return prev;
                   }
                   return [formatted, ...prev];
                 });
@@ -1854,9 +1879,11 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ? (req as any).srNo
       : projectRequirements.length + 1;
 
+    const finalId = (req as any).id || ('pmr-' + Date.now() + '-' + Math.floor(Math.random() * 1000));
+
     const newReq: ProjectMaterialRequirementItem = {
       ...req,
-      id: 'pmr-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+      id: finalId,
       srNo: itemSrNo,
       machineName: mchName,
       date: formattedDate,
@@ -1874,7 +1901,29 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       totalCost: (req.materialCost || 0) + (req.laborCost || 0) + (req.machineCost || 0) + (req.outsourcingCost || 0),
     };
 
-    setProjectRequirements((prev) => [...prev, newReq]);
+    setProjectRequirements((prev) => {
+      // 1. If an item with the same ID already exists, update it
+      const existingIdx = prev.findIndex((r) => r.id === newReq.id);
+      if (existingIdx >= 0) {
+        const copy = [...prev];
+        copy[existingIdx] = newReq;
+        return copy;
+      }
+      // 2. Prevent duplicate item for the same project with identical specs
+      const isDuplicateContent = prev.some(
+        (r) =>
+          r.projectName.trim().toLowerCase() === newReq.projectName.trim().toLowerCase() &&
+          r.description.trim().toLowerCase() === newReq.description.trim().toLowerCase() &&
+          r.sizeSpecs.trim().toLowerCase() === newReq.sizeSpecs.trim().toLowerCase() &&
+          r.materialType === newReq.materialType &&
+          Number(r.quantity) === Number(newReq.quantity) &&
+          String(r.srNo) === String(newReq.srNo)
+      );
+      if (isDuplicateContent) {
+        return prev;
+      }
+      return [...prev, newReq];
+    });
 
     if (newReq.customerName) {
       learnCustomer(newReq.customerName);

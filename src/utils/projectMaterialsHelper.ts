@@ -141,9 +141,27 @@ export function getMaterialsForProject(
 ): ProjectMaterialRequirementItem[] {
   // 1. Check projectRequirements
   const tombstones = getDeletedRequirementTombstones();
-  const matchedReqs = projectRequirements
+  const rawMatchedReqs = projectRequirements
     .filter((r) => !tombstones.has(r.id))
     .filter((r) => isRequirementMatchedToProject(r.projectName, project));
+
+  // Deduplicate matched requirements by ID and by content signature
+  const seenReqIds = new Set<string>();
+  const seenContentSignatures = new Set<string>();
+  const matchedReqs: ProjectMaterialRequirementItem[] = [];
+
+  for (const r of rawMatchedReqs) {
+    if (seenReqIds.has(r.id)) continue;
+    seenReqIds.add(r.id);
+
+    // Composite signature: project + srNo + description + sizeSpecs + qty + poNo
+    const sig = `${(r.projectName || '').trim().toLowerCase()}::${r.srNo || 0}::${(r.description || '').trim().toLowerCase()}::${(r.sizeSpecs || '').trim().toLowerCase()}::${r.quantity}::${(r.poNumber || r.poNo || '').trim().toLowerCase()}`;
+    if (seenContentSignatures.has(sig)) {
+      continue;
+    }
+    seenContentSignatures.add(sig);
+    matchedReqs.push(r);
+  }
 
   // 2. Check manufacturing orders
   const matchedOrders = orders.filter((o) => isRequirementMatchedToProject(o.project, project));

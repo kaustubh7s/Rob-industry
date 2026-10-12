@@ -461,7 +461,6 @@ export const ProjectMaterialEntry: React.FC = () => {
       notes: `RSB Machine Workflow | Ordered by ${row.orderedBy || activeOrderedBy}`,
     };
     addProjectRequirement(reqItem);
-    dbUpsertRequirement(reqItem);
 
     // Also auto-learn / catalog into materials table if not already present
     const spec = (row.sizeSpecs || '').trim().toLowerCase();
