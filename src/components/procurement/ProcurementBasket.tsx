@@ -108,12 +108,17 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
       ? initialProjectFilter
       : ''
   );
+  const [selectedMachineFolder, setSelectedMachineFolder] = useState<string>('ALL');
 
   React.useEffect(() => {
     if (initialProjectFilter && initialProjectFilter !== 'ALL') {
       setFilterProject(initialProjectFilter);
     }
   }, [initialProjectFilter]);
+
+  React.useEffect(() => {
+    setSelectedMachineFolder('ALL');
+  }, [filterProject]);
 
   const [filterMaterialType, setFilterMaterialType] = useState('ALL');
   const [filterVendorStatus, setFilterVendorStatus] = useState<'ALL' | 'UNASSIGNED' | 'ASSIGNED'>('ALL');
@@ -514,7 +519,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
       }
 
       // Filter Project
-      if (filterProject !== 'ALL' && item.projectName !== filterProject) {
+      if (filterProject && filterProject !== 'ALL' && item.projectName?.trim().toLowerCase() !== filterProject.trim().toLowerCase()) {
         return false;
       }
 
@@ -606,17 +611,42 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
       unassignedCount: number;
     }>();
 
-    filteredItems.forEach((item) => {
-      const pName = item.projectName || 'General Project';
-      if (!projectMap.has(pName)) {
-        const foundProj = projects.find(
-          (p) =>
-            p.name.trim().toLowerCase() === pName.trim().toLowerCase() ||
-            p.projectNumber.trim().toLowerCase() === pName.trim().toLowerCase()
-        );
-        projectMap.set(pName, {
+    activeRequirements.forEach((item) => {
+      // Search filter
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matches =
+          item.projectName?.toLowerCase().includes(q) ||
+          item.description?.toLowerCase().includes(q) ||
+          item.sizeSpecs?.toLowerCase().includes(q) ||
+          item.materialType?.toLowerCase().includes(q) ||
+          (item.vendor || item.vendorName || '').toLowerCase().includes(q) ||
+          (item.machineName || item.machineType || '').toLowerCase().includes(q);
+        if (!matches) return;
+      }
+
+      // Material Type filter
+      if (filterMaterialType !== 'ALL' && item.materialType !== filterMaterialType) {
+        return;
+      }
+
+      // Vendor Status filter
+      const isAssigned = item.vendor && item.vendor !== 'Unassigned' && item.vendor !== 'Standard Vendor' && item.vendor.trim() !== '';
+      if (filterVendorStatus === 'UNASSIGNED' && isAssigned) return;
+      if (filterVendorStatus === 'ASSIGNED' && !isAssigned) return;
+
+      const rawPName = (item.projectName || 'General Project').trim();
+      const foundProj = projects.find(
+        (p) =>
+          p.name.trim().toLowerCase() === rawPName.toLowerCase() ||
+          p.projectNumber.trim().toLowerCase() === rawPName.toLowerCase()
+      );
+      const canonicalPName = foundProj ? foundProj.name : rawPName;
+
+      if (!projectMap.has(canonicalPName)) {
+        projectMap.set(canonicalPName, {
           project: foundProj,
-          projectName: pName,
+          projectName: canonicalPName,
           machineGroups: new Map(),
           totalItems: 0,
           assignedCount: 0,
@@ -624,8 +654,8 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
         });
       }
 
-      const pEntry = projectMap.get(pName)!;
-      const mName = item.machineName || item.machineType || 'Machine Assembly';
+      const pEntry = projectMap.get(canonicalPName)!;
+      const mName = (item.machineName || item.machineType || 'Machine Assembly').trim();
 
       if (!pEntry.machineGroups.has(mName)) {
         pEntry.machineGroups.set(mName, []);
@@ -633,13 +663,12 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
       pEntry.machineGroups.get(mName)!.push(item);
       pEntry.totalItems++;
 
-      const isAssigned = item.vendor && item.vendor !== 'Unassigned' && item.vendor !== 'Standard Vendor' && item.vendor.trim() !== '';
       if (isAssigned) pEntry.assignedCount++;
       else pEntry.unassignedCount++;
     });
 
     return Array.from(projectMap.values());
-  }, [filteredItems, projects]);
+  }, [activeRequirements, projects, searchQuery, filterMaterialType, filterVendorStatus]);
 
   // Grouping by Vendor
   const vendorGroups = useMemo(() => {
@@ -1741,13 +1770,16 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                       {projectMachineFolders.map((p) => {
                         const allItems: ProjectMaterialRequirementItem[] = [];
                         p.machineGroups.forEach((items) => allItems.push(...items));
-                        const assignedCount = allItems.filter((i) => i.vendor && i.vendor !== 'Unassigned').length;
+                        const assignedCount = allItems.filter((i) => i.vendor && i.vendor !== 'Unassigned' && i.vendor !== 'Standard Vendor' && i.vendor.trim() !== '').length;
                         const unassignedCount = allItems.length - assignedCount;
 
                         return (
                           <div
                             key={p.projectName}
-                            onClick={() => setFilterProject(p.projectName)}
+                            onClick={() => {
+                              setFilterProject(p.projectName);
+                              setSelectedMachineFolder('ALL');
+                            }}
                             className="p-4 rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 hover:to-white hover:border-indigo-500/60 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
                           >
                             <div className="space-y-2">
@@ -1756,18 +1788,19 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                                   {p.project?.projectNumber || 'PRJ'}
                                 </span>
                                 <span className="text-[11px] font-black text-slate-900 bg-slate-100 px-2 py-0.5 rounded-md">
-                                  {allItems.length} Items
+                                  {allItems.length} Materials
                                 </span>
                               </div>
 
-                              <h4 className="text-sm font-black text-slate-900 group-hover:text-indigo-600 transition-colors">
-                                {p.projectName}
+                              <h4 className="text-base font-black text-slate-900 group-hover:text-indigo-600 transition-colors flex items-center gap-2">
+                                <Folder className="w-4 h-4 text-amber-500 fill-amber-500/20 shrink-0" />
+                                <span>{p.projectName}</span>
                               </h4>
 
-                              <div className="text-[11px] text-slate-500">
-                                Machines:{' '}
+                              <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
+                                <Cpu className="w-3.5 h-3.5 text-indigo-500" />
                                 <span className="font-semibold text-slate-700">
-                                  {Array.from(p.machineGroups.keys()).join(', ') || 'General'}
+                                  {p.machineGroups.size} Machine {p.machineGroups.size === 1 ? 'Folder' : 'Folders'}
                                 </span>
                               </div>
                             </div>
@@ -1780,11 +1813,11 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                                     : 'bg-amber-50 text-amber-700 border border-amber-200'
                                 }`}
                               >
-                                {unassignedCount === 0 ? `✓ All Assigned (${assignedCount})` : `⚠️ ${unassignedCount} Needs Vendor`}
+                                {unassignedCount === 0 ? `✓ All Ready (${assignedCount})` : `⚠️ ${unassignedCount} Needs Vendor`}
                               </span>
 
                               <span className="text-xs font-bold text-indigo-600 group-hover:translate-x-1 transition-transform inline-flex items-center gap-1">
-                                <span>Open Order Basket</span>
+                                <span>Open Project</span>
                                 <span>→</span>
                               </span>
                             </div>
@@ -1797,7 +1830,9 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
               );
             }
 
-            const currentPFolder = projectMachineFolders.find((p) => p.projectName === filterProject);
+            const currentPFolder = projectMachineFolders.find(
+              (p) => p.projectName.trim().toLowerCase() === filterProject.trim().toLowerCase()
+            );
 
             if (!currentPFolder) {
               return (
@@ -1806,7 +1841,10 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                   <h3 className="text-base font-bold text-slate-800">Project "{filterProject}" has no pending materials</h3>
                   <button
                     type="button"
-                    onClick={() => setFilterProject('')}
+                    onClick={() => {
+                      setFilterProject('');
+                      setSelectedMachineFolder('ALL');
+                    }}
                     className="mt-4 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer inline-flex items-center gap-1.5"
                   >
                     <ArrowLeft className="w-4 h-4" />
@@ -1820,6 +1858,10 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
             const allPItems: ProjectMaterialRequirementItem[] = [];
             pFolder.machineGroups.forEach((items) => allPItems.push(...items));
             const isAllPSelected = allPItems.length > 0 && allPItems.every((i) => selectedIds.includes(i.id));
+            const machineEntries = Array.from(pFolder.machineGroups.entries());
+            const displayedMachineEntries = machineEntries.filter(
+              ([mName]) => selectedMachineFolder === 'ALL' || selectedMachineFolder === mName
+            );
 
             return (
               <div className="space-y-4">
@@ -1828,7 +1870,10 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                   <div className="flex items-center gap-2 flex-wrap">
                     <button
                       type="button"
-                      onClick={() => setFilterProject('')}
+                      onClick={() => {
+                        setFilterProject('');
+                        setSelectedMachineFolder('ALL');
+                      }}
                       className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
                       title="Back to all projects list in basket"
                     >
@@ -1847,7 +1892,10 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                     <select
                       data-tour="tour-basket-project-select"
                       value={pFolder.projectName}
-                      onChange={(e) => setFilterProject(e.target.value)}
+                      onChange={(e) => {
+                        setFilterProject(e.target.value);
+                        setSelectedMachineFolder('ALL');
+                      }}
                       className="bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500 cursor-pointer"
                     >
                       <option value="">-- Choose a Project --</option>
@@ -1866,219 +1914,355 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                   className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden transition-all"
                 >
                   {/* Project Folder Header Bar */}
-                        <div className="p-3.5 sm:p-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex flex-wrap items-center justify-between gap-3">
-                          <div className="flex items-center gap-3">
-                            <div className="flex items-center gap-2">
-                              <Folder className="w-5 h-5 text-amber-400 fill-amber-400/20 shrink-0" />
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <h3 className="text-sm font-black text-white tracking-wide">
-                                    {pFolder.projectName}
-                                  </h3>
-                                  {pFolder.project?.projectNumber && (
-                                    <span className="px-2 py-0.5 rounded-md bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 text-[10px] font-mono font-bold">
-                                      {pFolder.project.projectNumber}
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-[11px] text-slate-300 font-medium">
-                                  📁 {pFolder.totalItems} Total Materials • ✓ {pFolder.assignedCount} Allocated •{' '}
-                                  {pFolder.unassignedCount > 0 ? (
-                                    <span className="text-amber-300 font-bold">⚠️ {pFolder.unassignedCount} Needs Vendor</span>
-                                  ) : (
-                                    <span className="text-emerald-300 font-bold">All Assigned</span>
-                                  )}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Project Level Quick Actions */}
+                  <div className="p-3.5 sm:p-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        <Folder className="w-5 h-5 text-amber-400 fill-amber-400/20 shrink-0" />
+                        <div>
                           <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleSelectProjectItems(allPItems)}
-                              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
-                                isAllPSelected
-                                  ? 'bg-amber-500 text-slate-950 border-amber-400 font-black'
-                                  : 'bg-white/10 hover:bg-white/20 text-white border-white/20'
-                              }`}
-                            >
-                              <Check className="w-3.5 h-3.5" />
-                              <span>{isAllPSelected ? 'Deselect Project' : 'Select All In Project'}</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              data-tour="tour-basket-generate-po"
-                              onClick={() => handleOpenPOModal(undefined, allPItems)}
-                              className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
-                            >
-                              <FileText className="w-3.5 h-3.5" />
-                              <span>Generate PO</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveProjectItems(allPItems, pFolder.projectName)}
-                              className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-600 text-rose-200 hover:text-white border border-rose-500/40 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
-                              title={`Remove all materials in project ${pFolder.projectName} from basket`}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              <span>Remove Project</span>
-                            </button>
+                            <h3 className="text-base font-black text-white tracking-wide">
+                              {pFolder.projectName}
+                            </h3>
+                            {pFolder.project?.projectNumber && (
+                              <span className="px-2 py-0.5 rounded-md bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 text-[10px] font-mono font-bold">
+                                {pFolder.project.projectNumber}
+                              </span>
+                            )}
                           </div>
-                        </div>
-
-                        {/* Machine Sections Inside Project */}
-                        <div className="p-3 sm:p-4 space-y-4 bg-slate-50/50">
-                          {Array.from(pFolder.machineGroups.entries()).map(([machineName, mItems]) => {
-                            const allMachineSelected = mItems.length > 0 && mItems.every((i) => selectedIds.includes(i.id));
-
-                            return (
-                              <div
-                                key={machineName}
-                                className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden"
-                              >
-                                {/* Machine Sub-Header */}
-                                <div className="px-3.5 py-2.5 bg-slate-100 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
-                                  <div className="flex items-center gap-2">
-                                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                                      <input
-                                        type="checkbox"
-                                        checked={allMachineSelected}
-                                        onChange={() => handleSelectProjectItems(mItems)}
-                                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-3.5 h-3.5"
-                                      />
-                                      <Cpu className="w-4 h-4 text-indigo-600" />
-                                      <span className="text-xs font-black text-slate-800 uppercase tracking-wide">
-                                        MACHINE: {machineName}
-                                      </span>
-                                    </label>
-                                  </div>
-
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-[11px] font-bold text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">
-                                      {mItems.length} Parts
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleRemoveMachineItems(mItems, machineName)}
-                                      className="px-2 py-0.5 rounded-md bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer"
-                                      title={`Remove machine ${machineName} materials from basket`}
-                                    >
-                                      <Trash2 className="w-3 h-3 text-rose-500" />
-                                      <span>Remove Machine</span>
-                                    </button>
-                                  </div>
-                                </div>
-
-                                {/* Machine Materials Table */}
-                                <div className="overflow-x-auto">
-                                  <table className="w-full text-left text-xs border-collapse">
-                                    <thead>
-                                      <tr className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
-                                        <th className="py-2.5 px-3 w-10 text-center">#</th>
-                                        <th className="py-2.5 px-3">Material Description</th>
-                                        <th className="py-2.5 px-3">Type</th>
-                                        <th className="py-2.5 px-3 font-mono">Size Specification</th>
-                                        <th className="py-2.5 px-3 text-center">Qty</th>
-                                        <th className="py-2.5 px-3">Assigned Vendor</th>
-                                        <th className="py-2.5 px-3 text-center w-14">Action</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                      {mItems.map((item) => {
-                                        const isSelected = selectedIds.includes(item.id);
-                                        const isAssigned =
-                                          item.vendor &&
-                                          item.vendor !== 'Unassigned' &&
-                                          item.vendor !== 'Standard Vendor' &&
-                                          item.vendor.trim() !== '';
-
-                                        return (
-                                          <tr
-                                            key={item.id}
-                                            className={`transition-all hover:bg-indigo-50/40 ${
-                                              isSelected ? 'bg-indigo-50/80' : 'bg-white'
-                                            }`}
-                                          >
-                                            {/* Checkbox */}
-                                            <td className="py-2 px-3 text-center">
-                                              <input
-                                                type="checkbox"
-                                                checked={isSelected}
-                                                onChange={() => handleToggleSelectRow(item.id)}
-                                                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                              />
-                                            </td>
-
-                                            {/* Description */}
-                                            <td className="py-2 px-3 font-bold text-slate-800">
-                                              {item.description}
-                                            </td>
-
-                                            {/* Material Type */}
-                                            <td className="py-2 px-3">
-                                              <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[10px] font-bold border border-slate-200">
-                                                {item.materialType}
-                                              </span>
-                                            </td>
-
-                                            {/* Size Specs */}
-                                            <td className="py-2 px-3 font-mono font-bold text-blue-700">
-                                              {item.sizeSpecs}
-                                            </td>
-
-                                            {/* Qty & Unit */}
-                                            <td className="py-2 px-3 text-center">
-                                              <span className="font-black text-slate-900">{item.quantity}</span>{' '}
-                                              <span className="text-[10px] text-slate-500 font-semibold">{item.unit || 'Nos'}</span>
-                                            </td>
-
-                                            {/* Assigned Vendor */}
-                                            <td className="py-2 px-3">
-                                              {isAssigned ? (
-                                                <div className="flex items-center gap-1.5">
-                                                  <span className="font-bold text-slate-900">{item.vendor}</span>
-                                                </div>
-                                              ) : (
-                                                <span className="text-amber-600 font-bold text-[11px] bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md inline-block">
-                                                  ⚠️ Unassigned
-                                                </span>
-                                              )}
-                                            </td>
-
-                                            {/* Row Action */}
-                                            <td className="py-2 px-3 text-center">
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  updateProjectRequirement(item.id, { poStatus: 'Issued', poNumberAssigned: 'MANUAL-ORDERED' });
-                                                  showToast(`"${item.description}" removed from basket.`);
-                                                }}
-                                                className="p-1 rounded-md hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
-                                                title="Remove from Order Basket (Marks as ordered/fulfilled, project remains intact)"
-                                              >
-                                                <X className="w-3.5 h-3.5" />
-                                              </button>
-                                            </td>
-                                          </tr>
-                                        );
-                                      })}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              </div>
-                            );
-                          })}
+                          <p className="text-[11px] text-slate-300 font-medium">
+                            📁 {pFolder.totalItems} Total Materials across {machineEntries.length} Machine Folders • ✓ {pFolder.assignedCount} Allocated •{' '}
+                            {pFolder.unassignedCount > 0 ? (
+                              <span className="text-amber-300 font-bold">⚠️ {pFolder.unassignedCount} Needs Vendor</span>
+                            ) : (
+                              <span className="text-emerald-300 font-bold">All Assigned</span>
+                            )}
+                          </p>
                         </div>
                       </div>
                     </div>
-                  );
-                })()}
+
+                    {/* Project Level Quick Actions */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectProjectItems(allPItems)}
+                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                          isAllPSelected
+                            ? 'bg-amber-500 text-slate-950 border-amber-400 font-black'
+                            : 'bg-white/10 hover:bg-white/20 text-white border-white/20'
+                        }`}
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>{isAllPSelected ? 'Deselect Project' : 'Select All In Project'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        data-tour="tour-basket-generate-po"
+                        onClick={() => handleOpenPOModal(undefined, allPItems)}
+                        className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>Generate PO</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveProjectItems(allPItems, pFolder.projectName)}
+                        className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-600 text-rose-200 hover:text-white border border-rose-500/40 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                        title={`Remove all materials in project ${pFolder.projectName} from basket`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Remove Project</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Dedicated Machine Sub-Folders Navigation System */}
+                  <div className="bg-slate-100/90 border-b border-slate-200 px-3.5 sm:px-4 py-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Cpu className="w-4 h-4 text-indigo-600" />
+                        <span className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                          Machine Folders Under Project "{pFolder.projectName}"
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-indigo-100 text-indigo-800 border border-indigo-200">
+                          {machineEntries.length} {machineEntries.length === 1 ? 'Folder' : 'Folders'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Click a folder below to manage each machine's materials separately.
+                      </p>
+                    </div>
+
+                    {/* Machine Folder Tabs / Selector */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedMachineFolder('ALL')}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                          selectedMachineFolder === 'ALL'
+                            ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        <Layers className="w-3.5 h-3.5 text-blue-400" />
+                        <span>All Machines ({allPItems.length})</span>
+                      </button>
+
+                      {machineEntries.map(([mName, mItems]) => {
+                        const isSelected = selectedMachineFolder === mName;
+                        const mAssigned = mItems.filter((i) => i.vendor && i.vendor !== 'Unassigned' && i.vendor !== 'Standard Vendor' && i.vendor.trim() !== '').length;
+                        const mNeedsVendor = mItems.length - mAssigned;
+
+                        return (
+                          <button
+                            key={mName}
+                            type="button"
+                            onClick={() => setSelectedMachineFolder(mName)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                              isSelected
+                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs font-black'
+                                : 'bg-white text-slate-700 border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/40'
+                            }`}
+                          >
+                            <Folder className={`w-3.5 h-3.5 ${isSelected ? 'text-amber-300 fill-amber-300/30' : 'text-amber-500 fill-amber-500/20'}`} />
+                            <span>Machine: <strong>{mName}</strong></span>
+                            <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-black ${
+                              isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-800'
+                            }`}>
+                              {mItems.length}
+                            </span>
+                            {mNeedsVendor > 0 ? (
+                              <span className="w-2 h-2 rounded-full bg-amber-400" title={`${mNeedsVendor} items need vendor`} />
+                            ) : (
+                              <span className="w-2 h-2 rounded-full bg-emerald-400" title="All assigned" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Active Machine Folder Breadcrumb Indicator */}
+                  {selectedMachineFolder !== 'ALL' && (
+                    <div className="bg-indigo-50/70 border-b border-indigo-100 px-4 py-2.5 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2 text-indigo-900">
+                        <Folder className="w-4 h-4 text-indigo-600 fill-indigo-600/20 shrink-0" />
+                        <span>Viewing Machine Folder: <strong className="font-black text-indigo-950 uppercase">{selectedMachineFolder}</strong> ({displayedMachineEntries[0]?.[1]?.length || 0} materials)</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedMachineFolder('ALL')}
+                        className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-indigo-700 border border-indigo-200 text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                      >
+                        ← Show All Machine Folders
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Machine Sections Inside Project */}
+                  <div className="p-3 sm:p-4 space-y-4 bg-slate-50/50">
+                    {displayedMachineEntries.map(([machineName, mItems]) => {
+                      const allMachineSelected = mItems.length > 0 && mItems.every((i) => selectedIds.includes(i.id));
+                      const mAssignedCount = mItems.filter((i) => i.vendor && i.vendor !== 'Unassigned' && i.vendor !== 'Standard Vendor' && i.vendor.trim() !== '').length;
+                      const mUnassignedCount = mItems.length - mAssignedCount;
+
+                      return (
+                        <div
+                          key={machineName}
+                          className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden"
+                        >
+                          {/* Machine Sub-Header */}
+                          <div className="px-4 py-3 bg-gradient-to-r from-slate-100 via-indigo-50/30 to-slate-100 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center shadow-2xs">
+                                <Folder className="w-4 h-4 text-amber-300 fill-amber-300/20" />
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                                    <input
+                                      type="checkbox"
+                                      checked={allMachineSelected}
+                                      onChange={() => handleSelectProjectItems(mItems)}
+                                      className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-3.5 h-3.5"
+                                    />
+                                    <span className="text-xs font-black text-slate-900 uppercase tracking-wide">
+                                      MACHINE FOLDER: <strong className="text-indigo-700">{machineName}</strong>
+                                    </span>
+                                  </label>
+                                  <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-800 text-[11px] font-bold">
+                                    {mItems.length} Materials
+                                  </span>
+                                </div>
+                                <p className="text-[10px] text-slate-500 font-medium">
+                                  Project: <strong className="text-slate-800">{pFolder.projectName}</strong> • ✓ {mAssignedCount} Vendor Allocated • {mUnassignedCount > 0 ? <span className="text-amber-600 font-bold">⚠️ {mUnassignedCount} Needs Vendor</span> : <span className="text-emerald-600 font-bold">✓ Ready for PO</span>}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleSelectProjectItems(mItems)}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                                  allMachineSelected
+                                    ? 'bg-amber-500 text-slate-950 border-amber-400 font-black'
+                                    : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+                                }`}
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                                <span>{allMachineSelected ? 'Deselect Machine' : 'Select All'}</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPOModal(undefined, mItems)}
+                                className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
+                                title={`Generate Purchase Order for all materials in machine "${machineName}"`}
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                                <span>Generate PO ({mItems.length})</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveMachineItems(mItems, machineName)}
+                                className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                                title={`Remove machine ${machineName} materials from basket`}
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                <span>Remove Machine</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Machine Materials Table */}
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs border-collapse">
+                              <thead>
+                                <tr className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
+                                  <th className="py-2.5 px-3 w-10 text-center">#</th>
+                                  <th className="py-2.5 px-3">Material Description</th>
+                                  <th className="py-2.5 px-3">Type</th>
+                                  <th className="py-2.5 px-3 font-mono">Size Specification</th>
+                                  <th className="py-2.5 px-3 text-center">Qty</th>
+                                  <th className="py-2.5 px-3">Ordered By</th>
+                                  <th className="py-2.5 px-3">Assigned Vendor</th>
+                                  <th className="py-2.5 px-3 text-center w-14">Action</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {mItems.map((item) => {
+                                  const isSelected = selectedIds.includes(item.id);
+                                  const isAssigned =
+                                    item.vendor &&
+                                    item.vendor !== 'Unassigned' &&
+                                    item.vendor !== 'Standard Vendor' &&
+                                    item.vendor.trim() !== '';
+
+                                  return (
+                                    <tr
+                                      key={item.id}
+                                      className={`transition-all hover:bg-indigo-50/40 ${
+                                        isSelected ? 'bg-indigo-50/80' : 'bg-white'
+                                      }`}
+                                    >
+                                      {/* Checkbox */}
+                                      <td className="py-2 px-3 text-center">
+                                        <input
+                                          type="checkbox"
+                                          checked={isSelected}
+                                          onChange={() => handleToggleSelectRow(item.id)}
+                                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                        />
+                                      </td>
+
+                                      {/* Description */}
+                                      <td className="py-2 px-3 font-bold text-slate-800">
+                                        {item.description}
+                                      </td>
+
+                                      {/* Material Type */}
+                                      <td className="py-2 px-3">
+                                        <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[10px] font-bold border border-slate-200">
+                                          {item.materialType}
+                                        </span>
+                                      </td>
+
+                                      {/* Size Specs */}
+                                      <td className="py-2 px-3 font-mono font-bold text-blue-700">
+                                        {item.sizeSpecs}
+                                      </td>
+
+                                      {/* Qty & Unit */}
+                                      <td className="py-2 px-3 text-center">
+                                        <span className="font-black text-slate-900">{item.quantity}</span>{' '}
+                                        <span className="text-[10px] text-slate-500 font-semibold">{item.unit || 'Nos'}</span>
+                                      </td>
+
+                                      {/* Ordered By */}
+                                      <td className="py-2 px-3 text-slate-600 font-medium">
+                                        {item.orderedBy || 'Kaustubh'}
+                                      </td>
+
+                                      {/* Assigned Vendor with Quick Selection */}
+                                      <td className="py-2 px-3">
+                                        <select
+                                          value={isAssigned ? item.vendor : ''}
+                                          onChange={(e) => {
+                                            const newV = e.target.value;
+                                            if (newV) {
+                                              updateProjectRequirement(item.id, { vendor: newV, vendorName: newV });
+                                              showToast(`Assigned "${newV}" to ${item.description}`);
+                                            }
+                                          }}
+                                          className={`text-xs rounded-lg px-2 py-1 font-bold focus:outline-none focus:border-indigo-500 cursor-pointer border ${
+                                            isAssigned
+                                              ? 'bg-slate-50 border-slate-200 text-slate-900'
+                                              : 'bg-amber-50 border-amber-300 text-amber-800'
+                                          }`}
+                                        >
+                                          <option value="">⚠️ Select Vendor</option>
+                                          {allVendorsList.map((v) => (
+                                            <option key={v} value={v}>
+                                              {v}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </td>
+
+                                      {/* Row Action */}
+                                      <td className="py-2 px-3 text-center">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            updateProjectRequirement(item.id, { poStatus: 'Issued', poNumberAssigned: 'MANUAL-ORDERED' });
+                                            showToast(`"${item.description}" removed from basket.`);
+                                          }}
+                                          className="p-1 rounded-md hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                                          title="Remove from Order Basket (Marks as ordered/fulfilled, project remains intact)"
+                                        >
+                                          <X className="w-3.5 h-3.5" />
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
-            )}
+            );
+          })()}
+        </div>
+      )}
 
       {/* ======================== 4B. GROUP BY VENDOR VIEW ============================ */}
       {viewMode === 'vendorGroups' && (
