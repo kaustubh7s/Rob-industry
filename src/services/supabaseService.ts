@@ -329,20 +329,73 @@ ALTER TABLE public.workbooks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.workbook_activity_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.deleted_workbook_items ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Allow public full access for projects" ON public.projects FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public full access for requirements" ON public.project_material_requirements FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public full access for materials" ON public.materials FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public full access for orders" ON public.manufacturing_orders FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public full access for job_cards" ON public.job_cards FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public full access for inward" ON public.inward_entries FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public full access for outward" ON public.outward_entries FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public full access for vendors" ON public.vendors FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public full access for customers" ON public.customers FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public full access for users" ON public.erp_users FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public full access for workbook_directories" ON public.workbook_directories FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public full access for workbooks" ON public.workbooks FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public full access for workbook_activity_logs" ON public.workbook_activity_logs FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public full access for deleted_workbook_items" ON public.deleted_workbook_items FOR ALL USING (true) WITH CHECK (true);
+-- Read policies (SELECT using true is permitted by Supabase Linter)
+CREATE POLICY "projects_select" ON public.projects FOR SELECT USING (true);
+CREATE POLICY "projects_insert" ON public.projects FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "projects_update" ON public.projects FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "projects_delete" ON public.projects FOR DELETE TO authenticated USING (true);
+
+CREATE POLICY "requirements_select" ON public.project_material_requirements FOR SELECT USING (true);
+CREATE POLICY "requirements_insert" ON public.project_material_requirements FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "requirements_update" ON public.project_material_requirements FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "requirements_delete" ON public.project_material_requirements FOR DELETE TO authenticated USING (true);
+
+CREATE POLICY "materials_select" ON public.materials FOR SELECT USING (true);
+CREATE POLICY "materials_insert" ON public.materials FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "materials_update" ON public.materials FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "materials_delete" ON public.materials FOR DELETE TO authenticated USING (true);
+
+CREATE POLICY "manufacturing_orders_select" ON public.manufacturing_orders FOR SELECT USING (true);
+CREATE POLICY "manufacturing_orders_insert" ON public.manufacturing_orders FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "manufacturing_orders_update" ON public.manufacturing_orders FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "manufacturing_orders_delete" ON public.manufacturing_orders FOR DELETE TO authenticated USING (true);
+
+CREATE POLICY "job_cards_select" ON public.job_cards FOR SELECT USING (true);
+CREATE POLICY "job_cards_insert" ON public.job_cards FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "job_cards_update" ON public.job_cards FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "job_cards_delete" ON public.job_cards FOR DELETE TO authenticated USING (true);
+
+CREATE POLICY "inward_entries_select" ON public.inward_entries FOR SELECT USING (true);
+CREATE POLICY "inward_entries_insert" ON public.inward_entries FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "inward_entries_update" ON public.inward_entries FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "inward_entries_delete" ON public.inward_entries FOR DELETE TO authenticated USING (true);
+
+CREATE POLICY "outward_entries_select" ON public.outward_entries FOR SELECT USING (true);
+CREATE POLICY "outward_entries_insert" ON public.outward_entries FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "outward_entries_update" ON public.outward_entries FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "outward_entries_delete" ON public.outward_entries FOR DELETE TO authenticated USING (true);
+
+CREATE POLICY "vendors_select" ON public.vendors FOR SELECT USING (true);
+CREATE POLICY "vendors_insert" ON public.vendors FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "vendors_update" ON public.vendors FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "vendors_delete" ON public.vendors FOR DELETE TO authenticated USING (true);
+
+CREATE POLICY "customers_select" ON public.customers FOR SELECT USING (true);
+CREATE POLICY "customers_insert" ON public.customers FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "customers_update" ON public.customers FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "customers_delete" ON public.customers FOR DELETE TO authenticated USING (true);
+
+CREATE POLICY "erp_users_select" ON public.erp_users FOR SELECT USING (true);
+CREATE POLICY "erp_users_insert" ON public.erp_users FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "erp_users_update" ON public.erp_users FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "erp_users_delete" ON public.erp_users FOR DELETE TO authenticated USING (true);
+
+CREATE POLICY "workbook_directories_select" ON public.workbook_directories FOR SELECT USING (true);
+CREATE POLICY "workbook_directories_insert" ON public.workbook_directories FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "workbook_directories_update" ON public.workbook_directories FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "workbook_directories_delete" ON public.workbook_directories FOR DELETE TO authenticated USING (true);
+
+CREATE POLICY "workbooks_select" ON public.workbooks FOR SELECT USING (true);
+CREATE POLICY "workbooks_insert" ON public.workbooks FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "workbooks_update" ON public.workbooks FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "workbooks_delete" ON public.workbooks FOR DELETE TO authenticated USING (true);
+
+CREATE POLICY "workbook_activity_logs_select" ON public.workbook_activity_logs FOR SELECT USING (true);
+CREATE POLICY "workbook_activity_logs_insert" ON public.workbook_activity_logs FOR INSERT TO authenticated WITH CHECK (true);
+
+CREATE POLICY "deleted_workbook_items_select" ON public.deleted_workbook_items FOR SELECT USING (true);
+CREATE POLICY "deleted_workbook_items_insert" ON public.deleted_workbook_items FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "deleted_workbook_items_delete" ON public.deleted_workbook_items FOR DELETE TO authenticated USING (true);
 `;
 
 // Push all local factory state to Supabase

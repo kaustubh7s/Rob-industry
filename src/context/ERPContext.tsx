@@ -1152,6 +1152,18 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const client = getSupabaseClient();
       if (!client) return;
 
+      // Ensure Supabase Auth session is active on startup
+      if (currentUser?.email && currentUser?.password) {
+        client.auth.getSession().then(({ data }) => {
+          if (!data.session && currentUser.email && currentUser.password) {
+            client.auth.signInWithPassword({
+              email: currentUser.email,
+              password: currentUser.password,
+            }).catch(() => {});
+          }
+        }).catch(() => {});
+      }
+
       // 1. Pull latest projects and requirements from cloud on startup
       try {
         const pullRes = await pullAllDataFromSupabase();
@@ -1955,6 +1967,16 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         sessionStorage.setItem(LAST_ACTIVITY_KEY, now);
         localStorage.setItem(LAST_ACTIVITY_KEY, now);
       } catch {}
+      // Sync Supabase Auth session for authenticated RLS permissions
+      try {
+        const sbClient = getSupabaseClient();
+        if (sbClient && targetUser.email && targetUser.password) {
+          sbClient.auth.signInWithPassword({
+            email: targetUser.email,
+            password: targetUser.password,
+          }).catch(() => {});
+        }
+      } catch (e) {}
       if (targetUser.vendorId) {
         setActiveVendorId(targetUser.vendorId);
       }
@@ -1983,6 +2005,10 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const logout = useCallback(() => {
     setIsAuthenticated(false);
     try {
+      const sbClient = getSupabaseClient();
+      if (sbClient) {
+        sbClient.auth.signOut().catch(() => {});
+      }
       sessionStorage.removeItem(AUTH_SESSION_KEY);
       localStorage.removeItem(AUTH_SESSION_KEY);
       sessionStorage.removeItem(LAST_ACTIVITY_KEY);
