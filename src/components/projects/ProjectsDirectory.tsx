@@ -1125,15 +1125,10 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
               </div>
             </div>
 
-            <label className="flex items-center gap-2 p-2.5 bg-slate-100 rounded-xl text-xs text-slate-700 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={cascadeDeleteReqs}
-                onChange={(e) => setCascadeDeleteReqs(e.target.checked)}
-                className="w-4 h-4 text-rose-600 rounded border-slate-300 focus:ring-rose-500"
-              />
-              <span className="font-medium">Also delete all linked material requirements for this project</span>
-            </label>
+            <div className="flex items-center gap-2 p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800">
+              <Trash2 className="w-4 h-4 text-rose-600 shrink-0" />
+              <span className="font-semibold">All linked materials, requirements, and orders for this project will be permanently deleted from the Master Matrix and Database.</span>
+            </div>
 
             <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
               <button
@@ -1146,13 +1141,13 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  deleteProject(projectToDelete.id, cascadeDeleteReqs);
+                  deleteProject(projectToDelete.id, true);
                   setProjectToDelete(null);
                 }}
                 className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md cursor-pointer transition active:scale-95 flex items-center gap-1.5"
               >
                 <Trash2 className="w-4 h-4" />
-                <span>Permanently Delete Project</span>
+                <span>Permanently Delete Project & Materials</span>
               </button>
             </div>
           </div>

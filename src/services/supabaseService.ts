@@ -21,6 +21,7 @@ import {
 import {
   getDeletedRequirementTombstones,
   addRequirementTombstone,
+  addRequirementTombstones,
   removeRequirementTombstone,
   getDeletedProjectTombstones,
   addProjectTombstone,
@@ -928,14 +929,55 @@ export const dbDeleteProject = async (projectId: string) => {
   }
 };
 
-export const dbDeleteRequirementsByProject = async (projectName: string) => {
+export const dbDeleteRequirementsByProject = async (
+  projectName: string,
+  extraProjectNames: string[] = [],
+  knownReqIds: string[] = []
+): Promise<{ success: boolean }> => {
   const supabase = getSupabaseClient();
-  if (!supabase || !projectName) return;
+  if (!supabase || !projectName) return { success: false };
 
   try {
-    await supabase.from('project_material_requirements').delete().ilike('project_name', projectName);
+    const targets = Array.from(new Set([
+      projectName,
+      projectName.trim(),
+      projectName.trim().toLowerCase(),
+      ...extraProjectNames,
+      ...extraProjectNames.map((n) => (n ? n.trim() : '')),
+      ...extraProjectNames.map((n) => (n ? n.trim().toLowerCase() : '')),
+    ])).filter(Boolean);
+
+    // 1. Delete known requirement IDs directly
+    if (knownReqIds.length > 0) {
+      addRequirementTombstones(knownReqIds);
+      await supabase.from('project_material_requirements').delete().in('id', knownReqIds);
+    }
+
+    // 2. Query and delete all rows matching project_name in Supabase
+    for (const target of targets) {
+      const { data: matched } = await supabase
+        .from('project_material_requirements')
+        .select('id')
+        .ilike('project_name', target);
+
+      if (matched && matched.length > 0) {
+        const ids = matched.map((m: any) => m.id);
+        addRequirementTombstones(ids);
+        await supabase.from('project_material_requirements').delete().in('id', ids);
+      } else {
+        await supabase.from('project_material_requirements').delete().ilike('project_name', target);
+      }
+    }
+
+    // 3. Also purge any manufacturing orders associated with this project
+    for (const target of targets) {
+      await supabase.from('manufacturing_orders').delete().ilike('project', target);
+    }
+
+    return { success: true };
   } catch (e) {
     console.warn('Supabase delete requirements by project failed:', e);
+    return { success: false };
   }
 };
 

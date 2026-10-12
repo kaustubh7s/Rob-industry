@@ -525,12 +525,17 @@ export const ProjectMaterialEntry: React.FC = () => {
     }));
   };
 
-  // Sync selectedProjectName when projects list updates if currently unselected
+  // Sync selectedProjectName when projects list updates: ensure selected project still exists
   useEffect(() => {
-    if (!selectedProjectName && projects.length > 0) {
-      setSelectedProjectName(projects[0].name);
+    if (projects.length > 0) {
+      const exists = projects.some((p) => p.name.trim().toLowerCase() === (selectedProjectName || '').trim().toLowerCase());
+      if (!exists) {
+        setSelectedProjectName(projects[0].name);
+      }
+    } else {
+      setSelectedProjectName('');
     }
-  }, [projects]);
+  }, [projects, selectedProjectName]);
 
   // REAL-TIME LIVE WORKSTATION SYNC: Synchronize master file rows (ALL projects) & update active project workflow header
   useEffect(() => {

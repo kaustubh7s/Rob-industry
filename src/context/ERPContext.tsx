@@ -90,7 +90,7 @@ import {
   addVendorTombstones,
   removeVendorTombstone,
 } from '../utils/tombstones';
-import { isRequirementMatchingProjectName } from '../utils/projectMaterialsHelper';
+import { isRequirementMatchingProjectName, isRequirementMatchedToProject } from '../utils/projectMaterialsHelper';
 
 interface ERPContextType {
   // Authentication & Role
@@ -1227,7 +1227,8 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   return [formattedPrj, ...prev];
                 });
               } else if (payload.eventType === 'DELETE') {
-                const oldId = (payload.old as any)?.id;
+                const oldPrj = payload.old as any;
+                const oldId = oldPrj?.id;
                 if (oldId) {
                   addProjectTombstone(oldId);
                   setProjects((prev) => {
@@ -1237,6 +1238,16 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     } catch (e) {}
                     return next;
                   });
+                  // Cascade purge any requirements for this project
+                  if (oldPrj?.name) {
+                    setProjectRequirements((prev) => {
+                      const next = prev.filter((r) => !isRequirementMatchingProjectName(r.projectName, oldPrj.name));
+                      try {
+                        localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(next));
+                      } catch (e) {}
+                      return next;
+                    });
+                  }
                 }
               }
             }
@@ -1367,6 +1378,41 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       broadcast.onmessage = async (event) => {
         if (event.data?.type === 'FACTORY_RESET') {
           applyGlobalFactoryReset();
+        } else if (event.data?.type === 'PROJECT_DELETED' && event.data?.projectId) {
+          const delPrjId = event.data.projectId;
+          const delPrjName = event.data.projectName;
+          const delReqIds: string[] = event.data.deletedReqIds || [];
+          addProjectTombstone(delPrjId);
+          if (delReqIds.length > 0) {
+            addRequirementTombstones(delReqIds);
+          }
+          setProjects((prev) => {
+            const next = prev.filter((p) => p.id !== delPrjId);
+            try {
+              localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(next));
+            } catch (e) {}
+            return next;
+          });
+          setProjectRequirements((prev) => {
+            const next = prev.filter(
+              (r) =>
+                !delReqIds.includes(r.id) &&
+                (!delPrjName || !isRequirementMatchingProjectName(r.projectName, delPrjName))
+            );
+            try {
+              localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(next));
+            } catch (e) {}
+            return next;
+          });
+          if (delPrjName) {
+            setOrders((prev) => {
+              const next = prev.filter((o) => o.project.trim().toLowerCase() !== delPrjName.trim().toLowerCase());
+              try {
+                localStorage.setItem(LOCAL_STORAGE_KEY + '_orders', JSON.stringify(next));
+              } catch (e) {}
+              return next;
+            });
+          }
         } else if (event.data?.type === 'REQUIREMENT_DELETED' && event.data?.requirementId) {
           const delId = event.data.requirementId;
           addRequirementTombstone(delId);
@@ -3412,9 +3458,12 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let linkedReqIds: string[] = [];
 
     if (projectToDelete) {
-      const deletedReqs = projectRequirements.filter((r) =>
-        isRequirementMatchingProjectName(r.projectName, projectToDelete.name) ||
-        (projectToDelete.projectNumber && r.projectName.includes(projectToDelete.projectNumber))
+      // Find all linked requirements matching this project by name, number, id, or machine
+      const deletedReqs = projectRequirements.filter(
+        (r) =>
+          isRequirementMatchedToProject(r.projectName, projectToDelete) ||
+          isRequirementMatchingProjectName(r.projectName, projectToDelete.name) ||
+          (projectToDelete.projectNumber && r.projectName.toLowerCase().includes(projectToDelete.projectNumber.toLowerCase()))
       );
       linkedReqIds = deletedReqs.map((r) => r.id);
       addRequirementTombstones(linkedReqIds);
@@ -3425,30 +3474,82 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         type: 'project',
         deletedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toISOString().split('T')[0],
         deletedBy: currentUser?.name || 'Amit',
-        title: `Project: ${projectToDelete.name} (${projectToDelete.projectNumber})`,
+        title: `Project: ${projectToDelete.name} (${projectToDelete.projectNumber || 'No No.'})`,
         subtitle: `Machine: ${projectToDelete.machineType || projectToDelete.machineName || 'Machine'} • Vendor: ${projectToDelete.vendor || 'Unassigned'} • ${deletedReqs.length} Material Items`,
         projectData: projectToDelete,
       };
       setTrashItems((prev) => [trashEntry, ...prev]);
 
-      // Always remove linked requirements when deleting project to prevent orphan ghost materials
+      // 1. Remove all linked requirements from local state and localStorage
       setProjectRequirements((prev) => {
-        const nextReqs = prev.filter((r) => !linkedReqIds.includes(r.id));
+        const nextReqs = prev.filter(
+          (r) =>
+            !linkedReqIds.includes(r.id) &&
+            !isRequirementMatchedToProject(r.projectName, projectToDelete) &&
+            !isRequirementMatchingProjectName(r.projectName, projectToDelete.name)
+        );
         try {
           localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(nextReqs));
         } catch (e) {}
         return nextReqs;
       });
 
-      // Clear draft keys for this project
+      // 2. Remove manufacturing orders linked to this project
+      setOrders((prev) => {
+        const nextOrders = prev.filter(
+          (o) =>
+            o.project.trim().toLowerCase() !== projectToDelete.name.trim().toLowerCase() &&
+            (!projectToDelete.projectNumber || !o.project.toLowerCase().includes(projectToDelete.projectNumber.toLowerCase()))
+        );
+        try {
+          localStorage.setItem(LOCAL_STORAGE_KEY + '_orders', JSON.stringify(nextOrders));
+        } catch (e) {}
+        return nextOrders;
+      });
+
+      // 3. Remove BOMs linked to this project
+      setBoms((prev) => {
+        const nextBoms = prev.filter(
+          (b) =>
+            !b.projectName ||
+            b.projectName.trim().toLowerCase() !== projectToDelete.name.trim().toLowerCase()
+        );
+        try {
+          localStorage.setItem(LOCAL_STORAGE_KEY + '_boms', JSON.stringify(nextBoms));
+        } catch (e) {}
+        return nextBoms;
+      });
+
+      // 4. Clear all draft keys from localStorage
       try {
         localStorage.removeItem(`RSB_PROJECT_DRAFT_${projectToDelete.name}`);
+        localStorage.removeItem(`RSB_PROJECT_DRAFT_${projectToDelete.name.trim()}`);
+        localStorage.removeItem(`RSB_PROJECT_DRAFT_${projectToDelete.id}`);
         if (projectToDelete.projectNumber) {
           localStorage.removeItem(`RSB_PROJECT_DRAFT_${projectToDelete.projectNumber}`);
+        }
+
+        const globalDraft = localStorage.getItem(DRAFT_STORAGE_KEY);
+        if (globalDraft) {
+          const parsed = JSON.parse(globalDraft);
+          if (Array.isArray(parsed)) {
+            const cleaned = parsed.filter(
+              (row: any) =>
+                !linkedReqIds.includes(row.id) &&
+                !isRequirementMatchedToProject(row.projectName, projectToDelete) &&
+                !isRequirementMatchingProjectName(row.projectName, projectToDelete.name)
+            );
+            if (cleaned.length > 0) {
+              localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(cleaned));
+            } else {
+              localStorage.removeItem(DRAFT_STORAGE_KEY);
+            }
+          }
         }
       } catch (e) {}
     }
 
+    // 5. Remove project from state & localStorage
     setProjects((prev) => {
       const nextProjects = prev.filter((p) => p.id !== id);
       try {
@@ -3457,21 +3558,28 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return nextProjects;
     });
 
-    // INSTANT DB DELETE
+    // 6. Delete from Supabase Database (Project table & linked requirements & orders)
     dbDeleteProject(id);
     if (projectToDelete) {
-      dbDeleteRequirementsByProject(projectToDelete.name);
+      const extraNames = [projectToDelete.projectNumber, projectToDelete.id].filter(Boolean) as string[];
+      dbDeleteRequirementsByProject(projectToDelete.name, extraNames, linkedReqIds);
       linkedReqIds.forEach((reqId) => dbDeleteRequirement(reqId));
     }
 
+    // 7. Broadcast to all open tabs and windows
     try {
       const bc = new BroadcastChannel('rsb_erp_live_sync');
-      bc.postMessage({ type: 'PROJECT_DELETED', projectId: id });
+      bc.postMessage({
+        type: 'PROJECT_DELETED',
+        projectId: id,
+        projectName: projectToDelete?.name,
+        deletedReqIds: linkedReqIds,
+      });
       bc.close();
     } catch (e) {}
 
-    logAudit('Project Deleted', 'Projects', `Deleted project ${projectToDelete?.name || id} (Moved to Trash)`);
-    addNotification('Project Moved to Trash', `Deleted project ${projectToDelete?.name || id}. Restore anytime from Trash Bin.`, 'warning', 'projects');
+    logAudit('Project Deleted', 'Projects', `Deleted project ${projectToDelete?.name || id} and purged all linked materials`);
+    addNotification('Project & Materials Deleted', `Permanently deleted project ${projectToDelete?.name || id} and all its linked materials.`, 'warning', 'projects');
   };
 
 
