@@ -137,6 +137,14 @@ export const ProjectMaterialEntry: React.FC = () => {
     currentUser?.name?.toLowerCase() === 'kaustubh' ||
     currentUser?.role === 'kaustubh';
 
+  const canDeleteMasterRecords = Boolean(
+    currentUser?.permissions?.canDeleteRecords ||
+    currentUser?.role === 'admin' ||
+    currentUser?.role === 'super_admin' ||
+    currentUser?.role === 'kaustubh' ||
+    isKaustubhAdmin
+  );
+
   // Mode View State: 'entry' | 'projects' | 'procurement' | 'details' | 'members'
   const [activeViewMode, setActiveViewMode] = useState<'entry' | 'projects' | 'procurement' | 'details' | 'members'>(() => {
     if (currentUser?.role === 'store_incharge') return 'projects';
@@ -1177,30 +1185,42 @@ export const ProjectMaterialEntry: React.FC = () => {
     setTimeout(() => setSaveToast(null), 2000);
   };
 
-  // Delete Row
+  // Delete Row (Strict Admin-Only with Confirmation: never auto-deletes)
   const handleDeleteRow = (rowId: string) => {
-    isUserManuallyEditingRef.current = true;
-    const row = rows.find((r) => r.id === rowId);
-    if (row) {
-      deleteProjectRequirement(row.id);
+    if (!canDeleteMasterRecords) {
+      alert('🔒 Master Material Matrix Protection: Only an Administrator can delete records from the Master Register. Regular users cannot delete materials.');
+      return;
     }
+    const row = rows.find((r) => r.id === rowId);
+    if (!row) return;
+
+    if (!confirm(`⚠️ ADMIN CONFIRMATION REQUIRED:\nAre you sure you want to permanently delete this material?\n\n• Part: ${row.description || 'Item'} (${row.sizeSpecs || 'No spec'})\n• Machine: ${row.machineName || 'N/A'}\n• Project: ${row.projectName || 'N/A'}\n• Qty: ${row.quantity} ${row.unit}\n\nThis will remove it from the Master Matrix and DB.`)) {
+      return;
+    }
+
+    isUserManuallyEditingRef.current = true;
+    deleteProjectRequirement(row.id);
     const nextRows = normalizeSrNumbers(rows.filter((r) => r.id !== rowId));
     setRows(nextRows);
     localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextRows));
-    setSaveToast('Deleted row • Synced to DB');
+    setSaveToast('🗑️ Deleted row by Admin • Synced to DB');
     setTimeout(() => {
       isUserManuallyEditingRef.current = false;
       setSaveToast(null);
     }, 1500);
   };
 
-  // Delete Selected Rows in Bulk
+  // Delete Selected Rows in Bulk (Strict Admin-Only with Confirmation)
   const handleDeleteSelectedRows = () => {
     if (selectedRowIds.length === 0) return;
+    if (!canDeleteMasterRecords) {
+      alert('🔒 Master Material Matrix Protection: Only an Administrator can delete records from the Master Register. Regular users cannot delete materials.');
+      return;
+    }
     const count = selectedRowIds.length;
     if (
       confirm(
-        `Are you sure you want to delete ${count} selected row(s)? This will move them to Trash and delete permanently from DB.`
+        `⚠️ ADMIN CONFIRMATION REQUIRED:\nAre you sure you want to delete ${count} selected material row(s)?\n\nThis will permanently purge them from the Master Matrix and Database.`
       )
     ) {
       isUserManuallyEditingRef.current = true;
@@ -1214,7 +1234,7 @@ export const ProjectMaterialEntry: React.FC = () => {
       setRows(nextRows);
       localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextRows));
       setSelectedRowIds([]);
-      setSaveToast(`🗑️ Deleted ${count} row(s) • Moved to Trash & purged from DB`);
+      setSaveToast(`🗑️ Deleted ${count} row(s) by Admin • Purged from DB`);
       setTimeout(() => {
         isUserManuallyEditingRef.current = false;
         setSaveToast(null);
@@ -2425,6 +2445,10 @@ export const ProjectMaterialEntry: React.FC = () => {
             <span className="text-xs font-black uppercase tracking-wider">
               Master Material Specification Matrix • All Projects ({filteredRows.length} Items)
             </span>
+            <span className="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/90 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+              <ShieldCheck className="w-3 h-3 text-emerald-400" />
+              Permanent Storage • 1500+ Scale
+            </span>
           </div>
           <div className="flex items-center gap-3 text-[11px] text-slate-400 font-mono">
             {selectedProjectName && (
@@ -2634,10 +2658,14 @@ export const ProjectMaterialEntry: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => handleDeleteRow(row.id)}
-                            className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                            title="Delete Row"
+                            className={`p-1 rounded transition-colors ${
+                              canDeleteMasterRecords
+                                ? 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'
+                                : 'text-slate-300 opacity-60 hover:text-slate-400 cursor-not-allowed'
+                            }`}
+                            title={canDeleteMasterRecords ? 'Delete Row (Admin Only • Requires Confirmation)' : 'Protected (Admin Only)'}
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            {canDeleteMasterRecords ? <Trash2 className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
                           </button>
                         </div>
                       </td>

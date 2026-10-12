@@ -40,6 +40,18 @@ export function addRequirementTombstones(ids: string[]): void {
   }
 }
 
+export function removeRequirementTombstone(id: string): void {
+  if (!id) return;
+  try {
+    const current = getDeletedRequirementTombstones();
+    if (current.delete(id)) {
+      localStorage.setItem(REQUIREMENT_TOMBSTONES_KEY, JSON.stringify(Array.from(current)));
+    }
+  } catch (e) {
+    console.error('Failed to remove requirement tombstone:', e);
+  }
+}
+
 export function getDeletedProjectTombstones(): Set<string> {
   try {
     const raw = localStorage.getItem(PROJECT_TOMBSTONES_KEY);
@@ -59,6 +71,18 @@ export function addProjectTombstone(id: string): void {
     localStorage.setItem(PROJECT_TOMBSTONES_KEY, JSON.stringify(Array.from(current)));
   } catch (e) {
     console.error('Failed to save project tombstone:', e);
+  }
+}
+
+export function removeProjectTombstone(id: string): void {
+  if (!id) return;
+  try {
+    const current = getDeletedProjectTombstones();
+    if (current.delete(id)) {
+      localStorage.setItem(PROJECT_TOMBSTONES_KEY, JSON.stringify(Array.from(current)));
+    }
+  } catch (e) {
+    console.error('Failed to remove project tombstone:', e);
   }
 }
 

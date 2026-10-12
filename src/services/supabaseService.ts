@@ -21,6 +21,7 @@ import {
 import {
   getDeletedRequirementTombstones,
   addRequirementTombstone,
+  removeRequirementTombstone,
   getDeletedProjectTombstones,
   addProjectTombstone,
   getDeletedMaterialTombstones,
@@ -592,9 +593,16 @@ export const pullAllDataFromSupabase = async (): Promise<{
     const { data: reqData, error: reqErr } = await supabase.from('project_material_requirements').select('*').order('timestamp', { ascending: false });
     if (reqErr) throw reqErr;
 
+    // Database is authoritative ground truth: any active row in Supabase clears stale tombstones
     const reqTombstones = getDeletedRequirementTombstones();
+    (reqData || []).forEach((r: any) => {
+      if (reqTombstones.has(r.id)) {
+        removeRequirementTombstone(r.id);
+        reqTombstones.delete(r.id);
+      }
+    });
+
     const parsedRequirements: ProjectMaterialRequirementItem[] = (reqData || [])
-      .filter((r: any) => !reqTombstones.has(r.id))
       .map((r: any) => {
         const notesStr = String(r.notes || '');
         let tagReceived = false;

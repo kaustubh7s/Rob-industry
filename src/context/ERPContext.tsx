@@ -79,6 +79,7 @@ import {
   getDeletedRequirementTombstones,
   addRequirementTombstone,
   addRequirementTombstones,
+  removeRequirementTombstone,
   getDeletedProjectTombstones,
   addProjectTombstone,
   getDeletedMaterialTombstones,
@@ -920,34 +921,37 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const safeMergeRequirements = (existing: ProjectMaterialRequirementItem[], remote: ProjectMaterialRequirementItem[]) => {
       const tombstones = getDeletedRequirementTombstones();
-      const filteredExisting = existing.filter((r) => !tombstones.has(r.id));
+
+      // Clear tombstones for any items active in remote database
+      (remote || []).forEach((r) => {
+        if (tombstones.has(r.id)) {
+          removeRequirementTombstone(r.id);
+          tombstones.delete(r.id);
+        }
+      });
+
+      const filteredExisting = (existing || []).filter((r) => !tombstones.has(r.id));
       const filteredRemote = (remote || []).filter((r) => !tombstones.has(r.id));
       if (filteredRemote.length === 0) {
-        return filteredExisting.filter((loc) => pendingSyncIdsRef.current.has(loc.id));
+        return filteredExisting;
       }
       const remoteMap = new Map(filteredRemote.map((r) => [r.id, r]));
       const merged = [...filteredRemote];
       filteredExisting.forEach((loc) => {
         if (!remoteMap.has(loc.id)) {
-          if (pendingSyncIdsRef.current.has(loc.id)) {
-            merged.push(loc);
-          } else {
-            // Deleted in database on another system! Register tombstone so it never resurrects
-            addRequirementTombstone(loc.id);
-          }
+          // Never auto-tombstone local materials! Master items are permanently preserved unless explicitly deleted by an admin.
+          merged.push(loc);
         }
       });
 
-      // Deduplicate by ID and composite content signature
+      // Deduplicate strictly by primary key ID!
+      // NEVER deduplicate by content/specs: master holds 1500+ items,
+      // and duplicate specs across machines/drawings are valid and expected.
       const seenIds = new Set<string>();
-      const seenSignatures = new Set<string>();
       const deduped: ProjectMaterialRequirementItem[] = [];
       for (const item of merged) {
-        if (tombstones.has(item.id) || seenIds.has(item.id)) continue;
-        const sig = `${(item.projectName || '').trim().toLowerCase()}::${item.srNo || 0}::${(item.description || '').trim().toLowerCase()}::${(item.sizeSpecs || '').trim().toLowerCase()}::${item.quantity}::${item.materialType}`;
-        if (seenSignatures.has(sig)) continue;
+        if (!item || !item.id || seenIds.has(item.id)) continue;
         seenIds.add(item.id);
-        seenSignatures.add(sig);
         deduped.push(item);
       }
       return deduped;
@@ -1163,24 +1167,13 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   receivedNotes: updatedReq.received_notes || updatedReq.receivedNotes,
                 };
 
+                removeRequirementTombstone(formatted.id);
                 setProjectRequirements((prev) => {
                   const existingIdx = prev.findIndex((r) => r.id === formatted.id);
                   if (existingIdx >= 0) {
                     const copy = [...prev];
                     copy[existingIdx] = formatted;
                     return copy;
-                  }
-                  const isDup = prev.some(
-                    (r) =>
-                      r.projectName.trim().toLowerCase() === formatted.projectName.trim().toLowerCase() &&
-                      r.description.trim().toLowerCase() === formatted.description.trim().toLowerCase() &&
-                      r.sizeSpecs.trim().toLowerCase() === formatted.sizeSpecs.trim().toLowerCase() &&
-                      r.materialType === formatted.materialType &&
-                      Number(r.quantity) === Number(formatted.quantity) &&
-                      String(r.srNo) === String(formatted.srNo)
-                  );
-                  if (isDup) {
-                    return prev;
                   }
                   return [formatted, ...prev];
                 });
@@ -1908,19 +1901,6 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const copy = [...prev];
         copy[existingIdx] = newReq;
         return copy;
-      }
-      // 2. Prevent duplicate item for the same project with identical specs
-      const isDuplicateContent = prev.some(
-        (r) =>
-          r.projectName.trim().toLowerCase() === newReq.projectName.trim().toLowerCase() &&
-          r.description.trim().toLowerCase() === newReq.description.trim().toLowerCase() &&
-          r.sizeSpecs.trim().toLowerCase() === newReq.sizeSpecs.trim().toLowerCase() &&
-          r.materialType === newReq.materialType &&
-          Number(r.quantity) === Number(newReq.quantity) &&
-          String(r.srNo) === String(newReq.srNo)
-      );
-      if (isDuplicateContent) {
-        return prev;
       }
       return [...prev, newReq];
     });
