@@ -528,6 +528,17 @@ export const ProjectMaterialEntry: React.FC = () => {
   // Sync selectedProjectName when projects list updates: ensure selected project still exists
   useEffect(() => {
     if (projects.length > 0) {
+      try {
+        const saved = localStorage.getItem('RSB_ACTIVE_SELECTED_PROJECT');
+        const savedProject = saved && projects.find((p) => p.name.trim().toLowerCase() === saved.trim().toLowerCase());
+        if (savedProject) {
+          if (selectedProjectName.trim().toLowerCase() !== savedProject.name.trim().toLowerCase()) {
+            setSelectedProjectName(savedProject.name);
+          }
+          return;
+        }
+      } catch (e) {}
+
       const exists = projects.some((p) => p.name.trim().toLowerCase() === (selectedProjectName || '').trim().toLowerCase());
       if (!exists) {
         setSelectedProjectName(projects[0].name);
@@ -867,6 +878,9 @@ export const ProjectMaterialEntry: React.FC = () => {
   // Project Selection Handler (Configures 3-step order workflow without filtering Master File)
   const handleSelectExistingProject = (pName: string) => {
     setSelectedProjectName(pName);
+    try {
+      localStorage.setItem('RSB_ACTIVE_SELECTED_PROJECT', pName);
+    } catch (e) {}
     const found = projects.find((p) => p.name.trim().toLowerCase() === pName.trim().toLowerCase());
     if (found) {
       if (found.machineName || found.machineType) setMachineName(found.machineName || found.machineType || found.name);
@@ -928,6 +942,9 @@ export const ProjectMaterialEntry: React.FC = () => {
 
     addProject(newPrj);
     setSelectedProjectName(newPrj.name);
+    try {
+      localStorage.setItem('RSB_ACTIVE_SELECTED_PROJECT', newPrj.name);
+    } catch (e) {}
     setMachineName('');
     setRows([]);
     setVendorName('');

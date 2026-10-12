@@ -25,6 +25,7 @@ import {
   removeRequirementTombstone,
   getDeletedProjectTombstones,
   addProjectTombstone,
+  removeProjectTombstone,
   getDeletedMaterialTombstones,
   addMaterialTombstone,
   getDeletedVendorTombstones,
@@ -565,10 +566,16 @@ export const pullAllDataFromSupabase = async (): Promise<{
     const { data: prjData, error: prjErr } = await supabase.from('projects').select('*').order('created_at', { ascending: false });
     if (prjErr) throw prjErr;
 
+    // Database is authoritative ground truth: any active project in Supabase clears stale tombstones
     const prjTombstones = getDeletedProjectTombstones();
-    const parsedProjects: ProjectItem[] = (prjData || [])
-      .filter((p: any) => !prjTombstones.has(p.id))
-      .map((p: any) => ({
+    (prjData || []).forEach((p: any) => {
+      if (prjTombstones.has(p.id)) {
+        removeProjectTombstone(p.id);
+        prjTombstones.delete(p.id);
+      }
+    });
+
+    const parsedProjects: ProjectItem[] = (prjData || []).map((p: any) => ({
         id: p.id,
         projectNumber: p.project_number,
         name: p.name,

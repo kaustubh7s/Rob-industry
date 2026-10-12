@@ -82,6 +82,7 @@ import {
   removeRequirementTombstone,
   getDeletedProjectTombstones,
   addProjectTombstone,
+  removeProjectTombstone,
   getDeletedMaterialTombstones,
   addMaterialTombstone,
   addMaterialTombstones,
@@ -959,18 +960,36 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const safeMergeProjects = (existing: ProjectItem[], remote: ProjectItem[]) => {
       const tombstones = getDeletedProjectTombstones();
-      const filteredExisting = existing.filter((p) => !tombstones.has(p.id));
+
+      // Clear tombstones for any projects active in remote database
+      (remote || []).forEach((p) => {
+        if (tombstones.has(p.id)) {
+          removeProjectTombstone(p.id);
+          tombstones.delete(p.id);
+        }
+      });
+
+      const filteredExisting = (existing || []).filter((p) => !tombstones.has(p.id));
       const filteredRemote = (remote || []).filter((p) => !tombstones.has(p.id));
       if (filteredRemote.length === 0) return filteredExisting;
       const remoteMap = new Map(filteredRemote.map((p) => [p.id, p]));
       const merged = [...filteredRemote];
       filteredExisting.forEach((loc) => {
         if (!remoteMap.has(loc.id)) {
-          // If project was in database but is now gone from remote, it was deleted!
-          addProjectTombstone(loc.id);
+          // Keep local project, never auto-tombstone!
+          merged.push(loc);
         }
       });
-      return merged.filter((p) => !tombstones.has(p.id));
+
+      // Deduplicate strictly by ID
+      const seenIds = new Set<string>();
+      const deduped: ProjectItem[] = [];
+      for (const p of merged) {
+        if (!p || !p.id || seenIds.has(p.id)) continue;
+        seenIds.add(p.id);
+        deduped.push(p);
+      }
+      return deduped;
     };
 
     const safeMergeMaterials = (existing: MaterialItem[], remote: MaterialItem[]) => {
@@ -1217,6 +1236,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   progressPct: Number(updatedPrj.progress_pct || 0),
                 };
 
+                removeProjectTombstone(formattedPrj.id);
                 setProjects((prev) => {
                   const existingIdx = prev.findIndex((p) => p.id === formattedPrj.id);
                   if (existingIdx >= 0) {
