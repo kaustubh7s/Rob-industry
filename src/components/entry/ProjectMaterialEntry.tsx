@@ -51,6 +51,7 @@ import { ProcurementBasket } from '../procurement/ProcurementBasket';
 import { getMaterialsForProject, isRequirementMatchingProjectName } from '../../utils/projectMaterialsHelper';
 import { MACHINE_BOM_TEMPLATES, MachineBOMTemplate } from '../../data/machineBOMTemplates';
 import { LiveWorldSSRatesModal } from '../rates/LiveWorldSSRatesModal';
+import { getDeletedRequirementTombstones } from '../../utils/tombstones';
 import { ExcelImportPreviewModal } from './ExcelImportPreviewModal';
 import { analyzeExcelFile, SheetAnalysisResult, ParsedImportRow } from '../../utils/excelImportEngine';
 import { dbUpsertRequirement, dbBulkUpsertRequirements, dbDeleteRequirement } from '../../services/supabaseService';
@@ -358,7 +359,8 @@ export const ProjectMaterialEntry: React.FC = () => {
 
   // Seed Initial 10-column table with ALL materials across all projects (Master File / Register)
   const [rows, setRows] = useState<EntryRow[]>(() => {
-    const allMats = (projectRequirements || []).filter((m) => Boolean(m && m.id));
+    const tombstones = getDeletedRequirementTombstones();
+    const allMats = (projectRequirements || []).filter((m) => Boolean(m && m.id && !tombstones.has(m.id)));
     if (allMats.length > 0) {
       return allMats.map((m, idx) => ({
         id: m.id,
@@ -589,7 +591,8 @@ export const ProjectMaterialEntry: React.FC = () => {
 
     if (isActivelyTypingInTable) return;
 
-    const allMats = (projectRequirements || []).filter((m) => Boolean(m && m.id));
+    const tombstones = getDeletedRequirementTombstones();
+    const allMats = (projectRequirements || []).filter((m) => Boolean(m && m.id && !tombstones.has(m.id)));
     const mappedMasterRows: EntryRow[] = allMats.map((m, idx) => ({
       id: m.id,
       machineName: m.machineName || m.machineType || '',
@@ -609,18 +612,20 @@ export const ProjectMaterialEntry: React.FC = () => {
     }));
 
     setRows((prev) => {
-      if (prev.length === 0) return mappedMasterRows;
+      const nonTombstonedPrev = prev.filter((r) => !tombstones.has(r.id));
+      if (nonTombstonedPrev.length === 0 && mappedMasterRows.length === 0) return [];
+      if (nonTombstonedPrev.length === 0) return mappedMasterRows;
 
       // Keep unpersisted newly-added empty rows that user is actively filling
-      const localEmptyRows = prev.filter((r) => r.id.startsWith('empty-') && !allMats.some((m) => m.id === r.id));
+      const localEmptyRows = nonTombstonedPrev.filter((r) => r.id.startsWith('empty-') && !allMats.some((m) => m.id === r.id));
 
-      const prevSignature = prev.map((r) => `${r.id}_${r.projectName}_${r.quantity}_${r.description}_${r.sizeSpecs}_${r.materialType}_${r.machineName}_${r.srNo}`).join('|');
+      const prevSignature = nonTombstonedPrev.map((r) => `${r.id}_${r.projectName}_${r.quantity}_${r.description}_${r.sizeSpecs}_${r.materialType}_${r.machineName}_${r.srNo}`).join('|');
       const nextSignature = [...mappedMasterRows, ...localEmptyRows].map((r) => `${r.id}_${r.projectName}_${r.quantity}_${r.description}_${r.sizeSpecs}_${r.materialType}_${r.machineName}_${r.srNo}`).join('|');
 
       if (prevSignature !== nextSignature) {
         return [...mappedMasterRows, ...localEmptyRows];
       }
-      return prev;
+      return nonTombstonedPrev;
     });
   }, [projectRequirements, selectedProjectName, projects, activeOrderedBy]);
 
