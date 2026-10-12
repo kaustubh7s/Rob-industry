@@ -1862,7 +1862,7 @@ export const ProjectMaterialEntry: React.FC = () => {
           {/* Full-Width Styled Project Dropdown */}
           <div className="relative">
             <select
-              value={selectedProjectName}
+              value={selectedProjectName || '__NEW__'}
               onChange={(e) => {
                 if (e.target.value === '__NEW__') {
                   setIsAddProjectModalOpen(true);
@@ -1872,17 +1872,11 @@ export const ProjectMaterialEntry: React.FC = () => {
               }}
               className="w-full bg-slate-900 border-2 border-indigo-500/50 hover:border-indigo-400 focus:border-blue-400 rounded-xl px-4 py-3 text-sm sm:text-base font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-400/40 shadow-lg transition-all cursor-pointer appearance-none pr-10"
             >
-              {projects.length === 0 ? (
-                <option value="" disabled className="bg-slate-900 text-slate-400 py-2 text-sm font-semibold">
-                  No active projects — Click "+ New Project" to create
+              {projects.map((p) => (
+                <option key={p.id} value={p.name} className="bg-slate-900 text-white py-2 text-sm font-semibold">
+                  📁 {p.name} (PO: {p.poNo || p.poNumber || 'N/A'})
                 </option>
-              ) : (
-                projects.map((p) => (
-                  <option key={p.id} value={p.name} className="bg-slate-900 text-white py-2 text-sm font-semibold">
-                    📁 {p.name} (PO: {p.poNo || p.poNumber || 'N/A'})
-                  </option>
-                ))
-              )}
+              ))}
               <option value="__NEW__" className="bg-indigo-950 text-amber-300 font-bold py-2">
                 + Create New Machine Project...
               </option>
