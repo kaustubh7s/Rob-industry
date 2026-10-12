@@ -348,27 +348,25 @@ export const ProjectMaterialEntry: React.FC = () => {
     );
   }, [customVendors, vendors, projects, projectRequirements]);
 
-  // Seed Initial 10-column table from authoritative state
+  // Seed Initial 10-column table with ALL materials across all projects (Master File / Register)
   const [rows, setRows] = useState<EntryRow[]>(() => {
-    if (projects.length > 0) {
-      const initialMats = getMaterialsForProject(projects[0], projectRequirements, orders);
-      if (initialMats.length > 0) {
-        return initialMats.map((m, idx) => ({
-          id: m.id,
-          machineName: m.machineName || m.machineType || projects[0].machineName || projects[0].machineType || '',
-          date: formatDate(m.poDate || m.date || projects[0].startDate || getTodayFormatted()),
-          poNo: m.poNumber || m.poNo || projects[0].poNo || projects[0].poNumber || '',
-          srNo: (m.srNo !== undefined && m.srNo !== null && String(m.srNo).trim() !== '') ? m.srNo : idx + 1,
-          materialType: (m.materialType || 'SS Flat') as MaterialType,
-          sizeSpecs: m.sizeSpecs || '',
-          quantity: Number(m.quantity) || 1,
-          unit: m.unit || 'Nos',
-          vendorName: m.vendorName || m.vendor || projects[0].vendorName || projects[0].vendor || '',
-          description: m.description || '',
-          orderedBy: m.orderedBy || 'Amit',
-          projectName: projects[0].name,
-        }));
-      }
+    const allMats = (projectRequirements || []).filter((m) => Boolean(m && m.id));
+    if (allMats.length > 0) {
+      return allMats.map((m, idx) => ({
+        id: m.id,
+        machineName: m.machineName || m.machineType || '',
+        date: formatDate(m.poDate || m.date || getTodayFormatted()),
+        poNo: m.poNumber || m.poNo || '',
+        srNo: (m.srNo !== undefined && m.srNo !== null && String(m.srNo).trim() !== '') ? m.srNo : idx + 1,
+        materialType: (m.materialType || 'SS Flat') as MaterialType,
+        sizeSpecs: m.sizeSpecs || '',
+        quantity: Number(m.quantity) || 1,
+        unit: m.unit || 'Nos',
+        vendorName: m.vendorName || m.vendor || '',
+        description: m.description || '',
+        orderedBy: m.orderedBy || 'Amit',
+        projectName: m.projectName || '',
+      }));
     }
     return [];
   });
@@ -526,90 +524,73 @@ export const ProjectMaterialEntry: React.FC = () => {
     }
   }, [projects]);
 
-  // REAL-TIME LIVE WORKSTATION SYNC: Automatically synchronize rows & order header with live Supabase DB & other workstations
+  // REAL-TIME LIVE WORKSTATION SYNC: Synchronize master file rows (ALL projects) & update active project workflow header
   useEffect(() => {
-    if (!selectedProjectName) return;
-    const currentProject = projects.find((p) => p.name.trim().toLowerCase() === selectedProjectName.trim().toLowerCase());
-    if (!currentProject) return;
-
-    // Load actual material requirements for this project from live state
-    const projectMats = getMaterialsForProject(currentProject, projectRequirements, orders);
-    const isProjectSwitch = lastSelectedProjectRef.current.trim().toLowerCase() !== selectedProjectName.trim().toLowerCase();
-
-    const mappedRows: EntryRow[] = projectMats
-      .map((m, idx) => ({
-        id: m.id,
-        machineName: m.machineName || m.machineType || currentProject.machineName || currentProject.machineType || machineName,
-        date: formatDate(m.poDate || m.date || currentProject.startDate || entryDate),
-        poNo: m.poNumber || m.poNo || currentProject.poNo || currentProject.poNumber || poNo,
-        srNo: (m.srNo !== undefined && m.srNo !== null && String(m.srNo).trim() !== '')
-          ? m.srNo
-          : idx + 1,
-        materialType: (m.materialType || 'SS Flat') as MaterialType,
-        sizeSpecs: m.sizeSpecs || '',
-        quantity: Number(m.quantity) || 1,
-        unit: m.unit || 'Nos',
-        vendorName: m.vendor || m.vendorName || currentProject.vendorName || currentProject.vendor || vendorName,
-        description: m.description || '',
-        orderedBy: m.orderedBy || activeOrderedBy,
-        projectName: currentProject.name,
-      }));
-
-    if (isProjectSwitch) {
-      // Switched to a new project: update reference and set authoritative DB/context rows
-      lastSelectedProjectRef.current = selectedProjectName;
-      isUserManuallyEditingRef.current = false;
-      setRows(mappedRows);
-
-      // Update header fields to match project
-      if (currentProject.machineName || currentProject.machineType) {
-        setMachineName(currentProject.machineName || currentProject.machineType || currentProject.name);
-      }
-      if (currentProject.vendorName || currentProject.vendor) {
-        setVendorName(currentProject.vendorName || currentProject.vendor || '');
-      }
-      if (currentProject.poNo || currentProject.poNumber) {
-        setPoNo(currentProject.poNo || currentProject.poNumber || '');
-      }
-      if (currentProject.date || currentProject.startDate) {
-        setEntryDate(formatDate(currentProject.date || currentProject.startDate));
-      }
-    } else {
-      // Still on the same project: sync if external updates happened and user is not actively typing in a cell
-      const isActivelyTypingInTable = typeof document !== 'undefined' &&
-        document.activeElement &&
-        (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') &&
-        document.activeElement.closest('table');
-
-      if (!isActivelyTypingInTable) {
-        if (projectMats.length > 0) {
-          setRows((prev) => {
-            const isPlaceholderOnly =
-              prev.length === 0 ||
-              prev.every(
-                (r) =>
-                  !r.description ||
-                  r.description.trim() === '' ||
-                  r.description === 'New Component' ||
-                  !r.sizeSpecs ||
-                  r.sizeSpecs.trim() === ''
-              );
-            if (isPlaceholderOnly) {
-              return mappedRows;
-            }
-            const prevKey = prev.map((r) => `${r.id}_${r.quantity}_${r.description}_${r.sizeSpecs}_${r.materialType}`).join('|');
-            const nextKey = mappedRows.map((r) => `${r.id}_${r.quantity}_${r.description}_${r.sizeSpecs}_${r.materialType}`).join('|');
-            if (prevKey !== nextKey) {
-              return mappedRows;
-            }
-            return prev;
-          });
-        } else {
-          setRows([]);
+    // 1. If project selection changed, configure the 3-step order workflow header fields for adding items to that project
+    if (selectedProjectName) {
+      const isProjectSwitch = lastSelectedProjectRef.current.trim().toLowerCase() !== selectedProjectName.trim().toLowerCase();
+      if (isProjectSwitch) {
+        lastSelectedProjectRef.current = selectedProjectName;
+        const currentProject = projects.find((p) => p.name.trim().toLowerCase() === selectedProjectName.trim().toLowerCase());
+        if (currentProject) {
+          if (currentProject.machineName || currentProject.machineType) {
+            setMachineName(currentProject.machineName || currentProject.machineType || currentProject.name);
+          }
+          if (currentProject.vendorName || currentProject.vendor) {
+            setVendorName(currentProject.vendorName || currentProject.vendor || '');
+          }
+          if (currentProject.poNo || currentProject.poNumber) {
+            setPoNo(currentProject.poNo || currentProject.poNumber || '');
+          }
+          if (currentProject.date || currentProject.startDate) {
+            setEntryDate(formatDate(currentProject.date || currentProject.startDate));
+          }
         }
       }
     }
-  }, [selectedProjectName, projectRequirements, projects, orders]);
+
+    // 2. Synchronize Master File rows (ALL materials across ALL projects without filtering)
+    const isActivelyTypingInTable = typeof document !== 'undefined' &&
+      document.activeElement &&
+      (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') &&
+      document.activeElement.closest('table');
+
+    if (isActivelyTypingInTable) return;
+
+    const allMats = (projectRequirements || []).filter((m) => Boolean(m && m.id));
+    const mappedMasterRows: EntryRow[] = allMats.map((m, idx) => ({
+      id: m.id,
+      machineName: m.machineName || m.machineType || '',
+      date: formatDate(m.poDate || m.date || getTodayFormatted()),
+      poNo: m.poNumber || m.poNo || '',
+      srNo: (m.srNo !== undefined && m.srNo !== null && String(m.srNo).trim() !== '')
+        ? m.srNo
+        : idx + 1,
+      materialType: (m.materialType || 'SS Flat') as MaterialType,
+      sizeSpecs: m.sizeSpecs || '',
+      quantity: Number(m.quantity) || 1,
+      unit: m.unit || 'Nos',
+      vendorName: m.vendor || m.vendorName || '',
+      description: m.description || '',
+      orderedBy: m.orderedBy || activeOrderedBy,
+      projectName: m.projectName || '',
+    }));
+
+    setRows((prev) => {
+      if (prev.length === 0) return mappedMasterRows;
+
+      // Keep unpersisted newly-added empty rows that user is actively filling
+      const localEmptyRows = prev.filter((r) => r.id.startsWith('empty-') && !allMats.some((m) => m.id === r.id));
+
+      const prevSignature = prev.map((r) => `${r.id}_${r.projectName}_${r.quantity}_${r.description}_${r.sizeSpecs}_${r.materialType}_${r.machineName}_${r.srNo}`).join('|');
+      const nextSignature = [...mappedMasterRows, ...localEmptyRows].map((r) => `${r.id}_${r.projectName}_${r.quantity}_${r.description}_${r.sizeSpecs}_${r.materialType}_${r.machineName}_${r.srNo}`).join('|');
+
+      if (prevSignature !== nextSignature) {
+        return [...mappedMasterRows, ...localEmptyRows];
+      }
+      return prev;
+    });
+  }, [projectRequirements, selectedProjectName, projects, activeOrderedBy]);
 
 
   // Find previous similar orders for the selected machine
@@ -672,7 +653,7 @@ export const ProjectMaterialEntry: React.FC = () => {
     return [];
   }, [machineName, projectRequirements]);
 
-  // Open existing project in Entry Sheet preserving true database IDs
+  // Open existing project in Entry Sheet (Configures active project for rapid entry while keeping Master Table intact)
   const handleOpenProjectInEntry = (proj: ProjectItem) => {
     lastSelectedProjectRef.current = proj.name;
     setSelectedProjectName(proj.name);
@@ -689,25 +670,10 @@ export const ProjectMaterialEntry: React.FC = () => {
       setEntryDate(formatDate(proj.date || proj.startDate));
     }
 
-    const actualMats = getMaterialsForProject(proj, projectRequirements, orders);
-    const mappedRows: EntryRow[] = actualMats.map((m, idx) => ({
-      id: m.id,
-      machineName: m.machineName || m.machineType || proj.machineName || proj.machineType || machineName,
-      date: formatDate(m.poDate || m.date || proj.startDate || entryDate),
-      poNo: m.poNumber || m.poNo || proj.poNo || proj.poNumber || poNo,
-      srNo: (m.srNo !== undefined && m.srNo !== null && String(m.srNo).trim() !== '') ? m.srNo : idx + 1,
-      materialType: (m.materialType || 'SS Flat') as MaterialType,
-      sizeSpecs: m.sizeSpecs || '',
-      quantity: Number(m.quantity) || 1,
-      unit: m.unit || 'Nos',
-      vendorName: m.vendor || m.vendorName || proj.vendorName || proj.vendor || vendorName,
-      description: m.description || '',
-      orderedBy: m.orderedBy || activeOrderedBy,
-      projectName: proj.name,
-    }));
-    setRows(mappedRows);
     setActiveViewMode('entry');
     setActiveTab('entry');
+    setSaveToast(`Active project: "${proj.name}". Showing Master Material Specification Matrix.`);
+    setTimeout(() => setSaveToast(null), 2500);
   };
 
   // Handle Smart Duplicate / Use Previous Order
@@ -885,7 +851,7 @@ export const ProjectMaterialEntry: React.FC = () => {
     setTimeout(() => setSaveToast(null), 3000);
   };
 
-  // Project Selection Handler
+  // Project Selection Handler (Configures 3-step order workflow without filtering Master File)
   const handleSelectExistingProject = (pName: string) => {
     setSelectedProjectName(pName);
     const found = projects.find((p) => p.name.trim().toLowerCase() === pName.trim().toLowerCase());
@@ -894,29 +860,9 @@ export const ProjectMaterialEntry: React.FC = () => {
       if (found.vendorName || found.vendor) setVendorName(found.vendorName || found.vendor || '');
       if (found.poNo || found.poNumber) setPoNo(found.poNo || found.poNumber || '');
       if (found.date || found.createdDate || found.startDate) setEntryDate(formatDate(found.date || found.createdDate || found.startDate));
-
-      // Sync workstation rows with the project's actual material requirements
-      const existingMats = getMaterialsForProject(found, projectRequirements, orders);
-      const mappedRows: EntryRow[] = existingMats
-        .map((m, idx) => ({
-          id: m.id,
-          machineName: m.machineName || m.machineType || found.machineType || found.name,
-          date: formatDate(m.poDate || m.date || found.startDate || entryDate),
-          poNo: m.poNumber || m.poNo || found.poNumber || found.poNo || '',
-          srNo: (m.srNo !== undefined && m.srNo !== null && String(m.srNo).trim() !== '')
-            ? m.srNo
-            : idx + 1,
-          materialType: (m.materialType || 'SS Flat') as MaterialType,
-          sizeSpecs: m.sizeSpecs || '',
-          quantity: Number(m.quantity) || 1,
-          unit: m.unit || 'Nos',
-          vendorName: m.vendor || m.vendorName || found.vendor || found.vendorName || '',
-          description: m.description || '',
-          orderedBy: m.orderedBy || activeOrderedBy,
-          projectName: found.name,
-        }));
-      setRows(mappedRows);
     }
+    setSaveToast(`Configured workflow for project "${pName}". Ready to add materials.`);
+    setTimeout(() => setSaveToast(null), 2500);
   };
 
 
@@ -1237,62 +1183,11 @@ export const ProjectMaterialEntry: React.FC = () => {
     const row = rows.find((r) => r.id === rowId);
     if (row) {
       deleteProjectRequirement(row.id);
-      // Fallback only if row.id was not found directly in projectRequirements
-      const exactInReqs = projectRequirements.some((pr) => pr.id === row.id);
-      if (!exactInReqs) {
-        const matched = projectRequirements.find(
-          (pr) =>
-            pr.description === row.description &&
-            pr.sizeSpecs === row.sizeSpecs &&
-            isRequirementMatchingProjectName(pr.projectName, row.projectName || selectedProjectName)
-        );
-        if (matched) {
-          deleteProjectRequirement(matched.id);
-        }
-      }
     }
     const nextRows = normalizeSrNumbers(rows.filter((r) => r.id !== rowId));
     setRows(nextRows);
-
-    if (selectedProjectName) {
-      if (nextRows.length === 0) {
-        localStorage.removeItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`);
-        localStorage.removeItem(DRAFT_STORAGE_KEY);
-      } else {
-        localStorage.setItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`, JSON.stringify(nextRows));
-        localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextRows));
-      }
-
-      const targetProject = selectedProjectName;
-      const itemsToSave = nextRows.map((r, idx) => ({
-        id: r.id,
-        srNo: (r.srNo !== undefined && r.srNo !== null && String(r.srNo).trim() !== '') ? r.srNo : idx + 1,
-        projectName: r.projectName || targetProject,
-        customerName: targetProject,
-        poNumber: r.poNo || poNo,
-        poDate: r.date || entryDate,
-        date: r.date || entryDate,
-        machineType: (r.machineName || machineName || targetProject) as any,
-        machineName: r.machineName || machineName || targetProject,
-        poNo: r.poNo || poNo,
-        vendorName: r.vendorName || vendorName,
-        vendor: r.vendorName || vendorName,
-        description: r.description || '',
-        materialType: r.materialType,
-        materialGrade: 'SS 304',
-        sizeSpecs: r.sizeSpecs || '',
-        quantity: Number(r.quantity) || 1,
-        unit: r.unit || 'Nos',
-        orderedBy: r.orderedBy || activeOrderedBy,
-        orderSource: 'Customer PO',
-        productionStatus: 'In Production',
-        stockStatus: 'Available',
-        qcStatus: 'Passed',
-        dispatchStatus: 'Ready',
-      }));
-      replaceProjectRequirements(targetProject, itemsToSave);
-    }
-    setSaveToast('Deleted row');
+    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextRows));
+    setSaveToast('Deleted row • Synced to DB');
     setTimeout(() => {
       isUserManuallyEditingRef.current = false;
       setSaveToast(null);
@@ -1313,61 +1208,11 @@ export const ProjectMaterialEntry: React.FC = () => {
         const row = rows.find((r) => r.id === id);
         if (row) {
           deleteProjectRequirement(row.id);
-          const exactInReqs = projectRequirements.some((pr) => pr.id === row.id);
-          if (!exactInReqs) {
-            const matched = projectRequirements.find(
-              (pr) =>
-                pr.description === row.description &&
-                pr.sizeSpecs === row.sizeSpecs &&
-                isRequirementMatchingProjectName(pr.projectName, row.projectName || selectedProjectName)
-            );
-            if (matched) {
-              deleteProjectRequirement(matched.id);
-            }
-          }
         }
       });
       const nextRows = normalizeSrNumbers(rows.filter((r) => !selectedRowIds.includes(r.id)));
       setRows(nextRows);
-
-      if (selectedProjectName) {
-        if (nextRows.length === 0) {
-          localStorage.removeItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`);
-          localStorage.removeItem(DRAFT_STORAGE_KEY);
-        } else {
-          localStorage.setItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`, JSON.stringify(nextRows));
-          localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextRows));
-        }
-
-        const targetProject = selectedProjectName;
-        const itemsToSave = nextRows.map((r, idx) => ({
-          id: r.id,
-          srNo: (r.srNo !== undefined && r.srNo !== null && String(r.srNo).trim() !== '') ? r.srNo : idx + 1,
-          projectName: r.projectName || targetProject,
-          customerName: targetProject,
-          poNumber: r.poNo || poNo,
-          poDate: r.date || entryDate,
-          date: r.date || entryDate,
-          machineType: (r.machineName || machineName || targetProject) as any,
-          machineName: r.machineName || machineName || targetProject,
-          poNo: r.poNo || poNo,
-          vendorName: r.vendorName || vendorName,
-          vendor: r.vendorName || vendorName,
-          description: r.description || '',
-          materialType: r.materialType,
-          materialGrade: 'SS 304',
-          sizeSpecs: r.sizeSpecs || '',
-          quantity: Number(r.quantity) || 1,
-          unit: r.unit || 'Nos',
-          orderedBy: r.orderedBy || activeOrderedBy,
-          orderSource: 'Customer PO',
-          productionStatus: 'In Production',
-          stockStatus: 'Available',
-          qcStatus: 'Passed',
-          dispatchStatus: 'Ready',
-        }));
-        replaceProjectRequirements(targetProject, itemsToSave);
-      }
+      localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextRows));
       setSelectedRowIds([]);
       setSaveToast(`🗑️ Deleted ${count} row(s) • Moved to Trash & purged from DB`);
       setTimeout(() => {
@@ -1476,8 +1321,10 @@ export const ProjectMaterialEntry: React.FC = () => {
         learnCustomer(custName);
       }
 
-      // Replace and update requirements in state and database
-      replaceProjectRequirements(targetProject, itemsToSave);
+      // Sync each material row directly to database and context preserving its specific project
+      rows.forEach((r) => {
+        syncRowToDatabaseAndContext(r, r.projectName || targetProject);
+      });
 
       // Update project header in state and database (or auto-create if new)
       if (existingProject) {
@@ -1640,11 +1487,12 @@ export const ProjectMaterialEntry: React.FC = () => {
     setTimeout(() => setSaveToast(null), 3500);
   };
 
-  // Filtered rows for table
+  // Filtered rows for table (Searches across all projects)
   const filteredRows = useMemo(() => {
     return rows.filter((r) => {
       const matchSearch =
         searchTerm === '' ||
+        (r.projectName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         r.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
         r.sizeSpecs.toLowerCase().includes(searchTerm.toLowerCase()) ||
         r.machineName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -1944,7 +1792,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                   Select Project
                 </label>
                 <span className="text-[11px] font-medium text-slate-400 block">
-                  Auto-configures 3-step order workflow & synchronizes material list
+                  Auto-configures 3-step order workflow to add new materials to this project (Master Matrix shows all projects)
                 </span>
               </div>
             </div>
@@ -2571,16 +2419,21 @@ export const ProjectMaterialEntry: React.FC = () => {
       {/* | Machine Name | Date | PO No | Sr No | Material Type | Size Specification | Qty | Vendor Name | Description | Ordered By | */}
       {/* ========================================================================= */}
       <div data-tour="tour-material-grid" className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
-        <div className="p-3.5 bg-slate-900 text-white flex items-center justify-between">
+        <div className="p-3.5 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Boxes className="w-4 h-4 text-blue-400" />
             <span className="text-xs font-black uppercase tracking-wider">
-              Material Specification Matrix ({filteredRows.length} Items)
+              Master Material Specification Matrix • All Projects ({filteredRows.length} Items)
             </span>
           </div>
-          <span className="text-[11px] text-slate-400 font-mono">
-            Auto-saved {lastAutoSavedTime}
-          </span>
+          <div className="flex items-center gap-3 text-[11px] text-slate-400 font-mono">
+            {selectedProjectName && (
+              <span className="text-amber-300 font-bold">
+                Adding To: {selectedProjectName}
+              </span>
+            )}
+            <span>Auto-saved {lastAutoSavedTime}</span>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -2799,7 +2652,7 @@ export const ProjectMaterialEntry: React.FC = () => {
         {/* Footer Summary */}
         <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-600 gap-2">
           <div>
-            Showing <strong className="text-slate-900">{filteredRows.length}</strong> items • Total Quantity:{' '}
+            Showing <strong className="text-slate-900">{filteredRows.length}</strong> items across all projects • Total Quantity:{' '}
             <strong className="text-slate-900 font-mono">
               {filteredRows.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0)}
             </strong>{' '}
