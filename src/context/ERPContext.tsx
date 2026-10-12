@@ -922,6 +922,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const safeMergeRequirements = (existing: ProjectMaterialRequirementItem[], remote: ProjectMaterialRequirementItem[]) => {
       const tombstones = getDeletedRequirementTombstones();
+      const projectTombstones = getDeletedProjectTombstones();
 
       // Clear tombstones for any items active in remote database
       (remote || []).forEach((r) => {
@@ -931,8 +932,16 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       });
 
-      const filteredExisting = (existing || []).filter((r) => !tombstones.has(r.id));
-      const filteredRemote = (remote || []).filter((r) => !tombstones.has(r.id));
+      const isBelongingToDeletedProject = (r: ProjectMaterialRequirementItem) => {
+        if (!r) return false;
+        if (r.projectName && (projectTombstones.has(r.projectName) || projectTombstones.has(r.projectName.trim().toLowerCase()))) {
+          return true;
+        }
+        return false;
+      };
+
+      const filteredExisting = (existing || []).filter((r) => !tombstones.has(r.id) && !isBelongingToDeletedProject(r));
+      const filteredRemote = (remote || []).filter((r) => !tombstones.has(r.id) && !isBelongingToDeletedProject(r));
       if (filteredRemote.length === 0) {
         return filteredExisting;
       }
@@ -967,19 +976,122 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           removeProjectTombstone(p.id);
           tombstones.delete(p.id);
         }
+        if (p.name && (tombstones.has(p.name) || tombstones.has(p.name.trim().toLowerCase()))) {
+          removeProjectTombstone(p.name);
+          tombstones.delete(p.name);
+          tombstones.delete(p.name.trim().toLowerCase());
+        }
       });
 
-      const filteredExisting = (existing || []).filter((p) => !tombstones.has(p.id));
-      const filteredRemote = (remote || []).filter((p) => !tombstones.has(p.id));
-      if (filteredRemote.length === 0) return filteredExisting;
+      const purgeProjectLocally = (p: ProjectItem) => {
+        addProjectTombstone(p.id);
+        if (p.name) addProjectTombstone(p.name);
+        try {
+          const activeSaved = localStorage.getItem('RSB_ACTIVE_SELECTED_PROJECT');
+          if (
+            activeSaved &&
+            (activeSaved.trim().toLowerCase() === p.name.trim().toLowerCase() ||
+             activeSaved === p.id ||
+             (p.projectNumber && activeSaved.trim().toLowerCase() === p.projectNumber.trim().toLowerCase()))
+          ) {
+            localStorage.removeItem('RSB_ACTIVE_SELECTED_PROJECT');
+          }
+          localStorage.removeItem(`RSB_PROJECT_DRAFT_${p.name}`);
+          localStorage.removeItem(`RSB_PROJECT_DRAFT_${p.name.trim()}`);
+          localStorage.removeItem(`RSB_PROJECT_DRAFT_${p.id}`);
+          if (p.projectNumber) {
+            localStorage.removeItem(`RSB_PROJECT_DRAFT_${p.projectNumber}`);
+          }
+        } catch (e) {}
+      };
+
+      const filteredExisting = (existing || []).filter(
+        (p) => !tombstones.has(p.id) && (!p.name || (!tombstones.has(p.name) && !tombstones.has(p.name.trim().toLowerCase())))
+      );
+      const filteredRemote = (remote || []).filter(
+        (p) => !tombstones.has(p.id) && (!p.name || (!tombstones.has(p.name) && !tombstones.has(p.name.trim().toLowerCase())))
+      );
+
+      const deletedProjects: ProjectItem[] = [];
+
+      if (filteredRemote.length === 0) {
+        filteredExisting.forEach((loc) => {
+          if (!pendingSyncIdsRef.current.has(loc.id)) {
+            purgeProjectLocally(loc);
+            deletedProjects.push(loc);
+          }
+        });
+
+        if (deletedProjects.length > 0) {
+          setTimeout(() => {
+            setProjectRequirements((prev) => {
+              const reqIdsToTombstone: string[] = [];
+              const next = prev.filter((r) => {
+                const belongsToDeleted = deletedProjects.some((dp) =>
+                  isRequirementMatchedToProject(r.projectName, dp) ||
+                  isRequirementMatchingProjectName(r.projectName, dp.name) ||
+                  (dp.projectNumber && r.projectName.toLowerCase().includes(dp.projectNumber.toLowerCase()))
+                );
+                if (belongsToDeleted) {
+                  reqIdsToTombstone.push(r.id);
+                  return false;
+                }
+                return true;
+              });
+              if (reqIdsToTombstone.length > 0) {
+                addRequirementTombstones(reqIdsToTombstone);
+              }
+              try {
+                localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(next));
+              } catch (e) {}
+              return next;
+            });
+          }, 0);
+        }
+
+        return filteredExisting.filter((loc) => pendingSyncIdsRef.current.has(loc.id));
+      }
+
       const remoteMap = new Map(filteredRemote.map((p) => [p.id, p]));
       const merged = [...filteredRemote];
       filteredExisting.forEach((loc) => {
         if (!remoteMap.has(loc.id)) {
-          // Keep local project, never auto-tombstone!
-          merged.push(loc);
+          if (pendingSyncIdsRef.current.has(loc.id)) {
+            merged.push(loc);
+          } else {
+            // Deleted in database on another system or directly in DB! Register tombstone and purge
+            purgeProjectLocally(loc);
+            deletedProjects.push(loc);
+          }
         }
       });
+
+      if (deletedProjects.length > 0) {
+        setTimeout(() => {
+          setProjectRequirements((prev) => {
+            const reqIdsToTombstone: string[] = [];
+            const next = prev.filter((r) => {
+              const belongsToDeleted = deletedProjects.some((dp) =>
+                isRequirementMatchedToProject(r.projectName, dp) ||
+                isRequirementMatchingProjectName(r.projectName, dp.name) ||
+                (dp.projectNumber && r.projectName.toLowerCase().includes(dp.projectNumber.toLowerCase()))
+              );
+              if (belongsToDeleted) {
+                reqIdsToTombstone.push(r.id);
+                return false;
+              }
+              return true;
+            });
+            if (reqIdsToTombstone.length > 0) {
+              addRequirementTombstones(reqIdsToTombstone);
+            }
+            try {
+              localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(next));
+            } catch (e) {}
+            return next;
+          });
+        }, 0);
+      }
 
       // Deduplicate strictly by ID
       const seenIds = new Set<string>();
@@ -1251,7 +1363,13 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 const oldId = oldPrj?.id;
                 if (oldId) {
                   addProjectTombstone(oldId);
+                  let deletedPrjName = oldPrj?.name;
                   setProjects((prev) => {
+                    const target = prev.find((p) => p.id === oldId);
+                    if (target?.name) {
+                      deletedPrjName = target.name;
+                      addProjectTombstone(target.name);
+                    }
                     const next = prev.filter((p) => p.id !== oldId);
                     try {
                       localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(next));
@@ -1259,15 +1377,41 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     return next;
                   });
                   // Cascade purge any requirements for this project
-                  if (oldPrj?.name) {
-                    setProjectRequirements((prev) => {
-                      const next = prev.filter((r) => !isRequirementMatchingProjectName(r.projectName, oldPrj.name));
-                      try {
-                        localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(next));
-                      } catch (e) {}
-                      return next;
+                  setProjectRequirements((prev) => {
+                    const toTombstone: string[] = [];
+                    const next = prev.filter((r) => {
+                      const matches =
+                        (deletedPrjName && isRequirementMatchingProjectName(r.projectName, deletedPrjName)) ||
+                        r.projectName === oldId;
+                      if (matches) {
+                        toTombstone.push(r.id);
+                        return false;
+                      }
+                      return true;
                     });
-                  }
+                    if (toTombstone.length > 0) {
+                      addRequirementTombstones(toTombstone);
+                    }
+                    try {
+                      localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(next));
+                    } catch (e) {}
+                    return next;
+                  });
+                  try {
+                    const activeSaved = localStorage.getItem('RSB_ACTIVE_SELECTED_PROJECT');
+                    if (
+                      activeSaved &&
+                      (activeSaved === oldId ||
+                        (deletedPrjName && activeSaved.trim().toLowerCase() === deletedPrjName.trim().toLowerCase()))
+                    ) {
+                      localStorage.removeItem('RSB_ACTIVE_SELECTED_PROJECT');
+                    }
+                    if (deletedPrjName) {
+                      localStorage.removeItem(`RSB_PROJECT_DRAFT_${deletedPrjName}`);
+                      localStorage.removeItem(`RSB_PROJECT_DRAFT_${deletedPrjName.trim()}`);
+                    }
+                    localStorage.removeItem(`RSB_PROJECT_DRAFT_${oldId}`);
+                  } catch (e) {}
                 }
               }
             }
@@ -3450,7 +3594,16 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       'info',
       'projects'
     );
-    dbUpsertProject(newPrj);
+    pendingSyncIdsRef.current.add(newPrj.id);
+    dbUpsertProject(newPrj).then(() => {
+      setTimeout(() => {
+        pendingSyncIdsRef.current.delete(newPrj.id);
+      }, 5000);
+    }).catch(() => {
+      setTimeout(() => {
+        pendingSyncIdsRef.current.delete(newPrj.id);
+      }, 10000);
+    });
     try {
       const bc = new BroadcastChannel('rsb_erp_live_sync');
       bc.postMessage({ type: 'PROJECTS_UPDATED', projectName: newPrj.name });
@@ -3478,6 +3631,9 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let linkedReqIds: string[] = [];
 
     if (projectToDelete) {
+      addProjectTombstone(projectToDelete.name);
+      if (projectToDelete.projectNumber) addProjectTombstone(projectToDelete.projectNumber);
+
       // Find all linked requirements matching this project by name, number, id, or machine
       const deletedReqs = projectRequirements.filter(
         (r) =>
@@ -3540,8 +3696,17 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return nextBoms;
       });
 
-      // 4. Clear all draft keys from localStorage
+      // 4. Clear all draft keys & active project from localStorage
       try {
+        const activeSaved = localStorage.getItem('RSB_ACTIVE_SELECTED_PROJECT');
+        if (
+          activeSaved &&
+          (activeSaved.trim().toLowerCase() === projectToDelete.name.trim().toLowerCase() ||
+           activeSaved === projectToDelete.id ||
+           (projectToDelete.projectNumber && activeSaved.trim().toLowerCase() === projectToDelete.projectNumber.trim().toLowerCase()))
+        ) {
+          localStorage.removeItem('RSB_ACTIVE_SELECTED_PROJECT');
+        }
         localStorage.removeItem(`RSB_PROJECT_DRAFT_${projectToDelete.name}`);
         localStorage.removeItem(`RSB_PROJECT_DRAFT_${projectToDelete.name.trim()}`);
         localStorage.removeItem(`RSB_PROJECT_DRAFT_${projectToDelete.id}`);

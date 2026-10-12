@@ -68,6 +68,7 @@ export function addProjectTombstone(id: string): void {
   try {
     const current = getDeletedProjectTombstones();
     current.add(id);
+    current.add(id.trim().toLowerCase());
     localStorage.setItem(PROJECT_TOMBSTONES_KEY, JSON.stringify(Array.from(current)));
   } catch (e) {
     console.error('Failed to save project tombstone:', e);
@@ -78,7 +79,9 @@ export function removeProjectTombstone(id: string): void {
   if (!id) return;
   try {
     const current = getDeletedProjectTombstones();
-    if (current.delete(id)) {
+    let changed = current.delete(id);
+    if (current.delete(id.trim().toLowerCase())) changed = true;
+    if (changed) {
       localStorage.setItem(PROJECT_TOMBSTONES_KEY, JSON.stringify(Array.from(current)));
     }
   } catch (e) {

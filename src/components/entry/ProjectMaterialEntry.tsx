@@ -545,6 +545,9 @@ export const ProjectMaterialEntry: React.FC = () => {
       }
     } else {
       setSelectedProjectName('');
+      try {
+        localStorage.removeItem('RSB_ACTIVE_SELECTED_PROJECT');
+      } catch (e) {}
     }
   }, [projects, selectedProjectName]);
 
@@ -571,6 +574,11 @@ export const ProjectMaterialEntry: React.FC = () => {
           }
         }
       }
+    } else {
+      lastSelectedProjectRef.current = '';
+      setMachineName('');
+      setPoNo('');
+      setVendorName('');
     }
 
     // 2. Synchronize Master File rows (ALL materials across ALL projects without filtering)
@@ -1864,11 +1872,17 @@ export const ProjectMaterialEntry: React.FC = () => {
               }}
               className="w-full bg-slate-900 border-2 border-indigo-500/50 hover:border-indigo-400 focus:border-blue-400 rounded-xl px-4 py-3 text-sm sm:text-base font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-400/40 shadow-lg transition-all cursor-pointer appearance-none pr-10"
             >
-              {projects.map((p) => (
-                <option key={p.id} value={p.name} className="bg-slate-900 text-white py-2 text-sm font-semibold">
-                  📁 {p.name} (PO: {p.poNo || p.poNumber || 'N/A'})
+              {projects.length === 0 ? (
+                <option value="" disabled className="bg-slate-900 text-slate-400 py-2 text-sm font-semibold">
+                  No active projects — Click "+ New Project" to create
                 </option>
-              ))}
+              ) : (
+                projects.map((p) => (
+                  <option key={p.id} value={p.name} className="bg-slate-900 text-white py-2 text-sm font-semibold">
+                    📁 {p.name} (PO: {p.poNo || p.poNumber || 'N/A'})
+                  </option>
+                ))
+              )}
               <option value="__NEW__" className="bg-indigo-950 text-amber-300 font-bold py-2">
                 + Create New Machine Project...
               </option>
