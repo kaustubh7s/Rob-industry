@@ -403,7 +403,18 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               u.name?.toLowerCase() !== 'administrator'
           );
           const existingIds = new Set(cleaned.map((u) => u.id));
-          const merged = [...cleaned];
+          const merged = cleaned.map((u) => {
+            const seed = INITIAL_USERS.find(
+              (su) =>
+                su.id === u.id ||
+                (su.email && u.email && su.email.toLowerCase() === u.email.toLowerCase()) ||
+                (su.name && u.name && su.name.toLowerCase() === u.name.toLowerCase())
+            );
+            if (seed && (!u.password || (seed.name?.toLowerCase() === 'prashant' && u.password !== 'Prashant@123'))) {
+              return { ...u, password: seed.password };
+            }
+            return u;
+          });
           for (const initU of INITIAL_USERS) {
             if (
               !existingIds.has(initU.id) &&
@@ -1299,8 +1310,35 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 mergedUsers.push(seedU);
               }
             }
-            setUsers(mergedUsers);
-            localStorage.setItem(LOCAL_STORAGE_KEY + '_users', JSON.stringify(mergedUsers));
+            setUsers((prev) => {
+              const prevMap = new Map<string, User>();
+              prev.forEach((pu) => {
+                if (pu.id) prevMap.set(pu.id, pu);
+                if (pu.email) prevMap.set(pu.email.toLowerCase(), pu);
+              });
+              const enriched = mergedUsers.map((mu) => {
+                const existing = prevMap.get(mu.id) || (mu.email ? prevMap.get(mu.email.toLowerCase()) : undefined);
+                const seed = INITIAL_USERS.find(
+                  (su) =>
+                    su.id === mu.id ||
+                    (su.email && mu.email && su.email.toLowerCase() === mu.email.toLowerCase()) ||
+                    (su.name && mu.name && su.name.toLowerCase() === mu.name.toLowerCase())
+                );
+                const finalPass =
+                  (mu.name?.toLowerCase() === 'prashant' ? 'Prashant@123' : undefined) ||
+                  mu.password ||
+                  existing?.password ||
+                  seed?.password;
+                return {
+                  ...mu,
+                  password: finalPass,
+                };
+              });
+              try {
+                localStorage.setItem(LOCAL_STORAGE_KEY + '_users', JSON.stringify(enriched));
+              } catch (e) {}
+              return enriched;
+            });
           }
         }
       } catch (err) {
@@ -2160,6 +2198,26 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         INITIAL_USERS.find((u) => u.id === 'usr-amit' || u.name.toLowerCase() === 'amit');
     }
 
+    // Explicit Prashant login recognition (id: prashant, pass: Prashant@123)
+    if (
+      trimmedId === 'prashant' ||
+      trimmedId === 'usr-1791892508324' ||
+      trimmedId === 'prashant@rsbequipments.com'
+    ) {
+      targetUser =
+        searchPool.find(
+          (u) =>
+            u.id === 'usr-1791892508324' ||
+            u.name?.toLowerCase() === 'prashant' ||
+            u.email?.toLowerCase() === 'prashant@rsbequipments.com'
+        ) ||
+        INITIAL_USERS.find(
+          (u) =>
+            u.id === 'usr-1791892508324' ||
+            u.name?.toLowerCase() === 'prashant'
+        );
+    }
+
     if (!targetUser && trimmedId) {
       targetUser = searchPool.find((u) => {
         const idMatch =
@@ -2179,11 +2237,12 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           (trimmedId === 'stores' && (u.role === 'store_incharge' || u.role === 'store_manager')) ||
           (trimmedId === 'store_incharge' && (u.role === 'store_incharge' || u.role === 'store_manager')) ||
           (trimmedId === 'kaustubh' && (u.id === 'usr-kaustubh' || u.name.toLowerCase().includes('kaustubh') || u.email.toLowerCase().includes('kaustubh'))) ||
-          (trimmedId === 'amit' && (u.id === 'usr-amit' || u.name.toLowerCase().includes('amit') || u.email.toLowerCase().includes('amit'))) ||
+          (trimmedId === 'amit' && (u.id === 'usr-amit' || u.name.toLowerCase() === 'amit') || u.email.toLowerCase().includes('amit')) ||
+          (trimmedId === 'prashant' && (u.id === 'usr-1791892508324' || u.name.toLowerCase().includes('prashant') || u.email?.toLowerCase().includes('prashant'))) ||
           (trimmedId === 'chandramani' && (u.id === 'usr-chandramani' || u.role === 'store_incharge' || u.name.toLowerCase().includes('chandramani'))) ||
           (trimmedId === 'ramesh' && (u.id === 'usr-chandramani' || u.id === 'usr-ramesh' || u.role === 'store_incharge')) ||
           (trimmedId === 'rahul' && (u.id === 'usr-rahul' || u.name.toLowerCase() === 'rahul')) ||
-          (trimmedId === 'admin' && (u.role === 'kaustubh' || u.role === 'admin' || u.role === 'super_admin' || u.name.toLowerCase() === 'rahul'));
+          (trimmedId === 'admin' && (u.role === 'kaustubh' || u.role === 'admin' || u.role === 'super_admin' || u.name.toLowerCase() === 'rahul' || u.name.toLowerCase() === 'prashant'));
         return idMatch || nameMatch || emailMatch || roleMatch;
       });
 
@@ -2195,6 +2254,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             u.name.toLowerCase().includes(trimmedId) ||
             (trimmedId === 'kaustubh' && (u.id === 'usr-kaustubh' || u.name.toLowerCase() === 'kaustubh')) ||
             (trimmedId === 'amit' && (u.id === 'usr-amit' || u.name.toLowerCase() === 'amit')) ||
+            (trimmedId === 'prashant' && (u.id === 'usr-1791892508324' || u.name.toLowerCase() === 'prashant')) ||
             (trimmedId === 'rahul' && (u.id === 'usr-rahul' || u.name.toLowerCase() === 'rahul')) ||
             (trimmedId === 'chandramani' && (u.id === 'usr-chandramani' || u.role === 'store_incharge')) ||
             (trimmedId === 'ramesh' && (u.id === 'usr-chandramani' || u.id === 'usr-ramesh')) ||
@@ -2209,6 +2269,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       targetUser = searchPool.find((u) => {
         const exp =
           u.password ||
+          ((u as any)?.permissions?.password) ||
           (u.id === 'usr-kaustubh' || u.name === 'Kaustubh'
             ? 'kaustubh7276'
             : u.id === 'usr-amit' || u.name === 'Amit'
@@ -2217,6 +2278,8 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ? 'amit@123'
             : u.role === 'kaustubh'
             ? 'kaustubh7276'
+            : u.id === 'usr-1791892508324' || u.name?.toLowerCase() === 'prashant'
+            ? 'Prashant@123'
             : u.id === 'usr-rahul' || u.name === 'Rahul'
             ? 'Rahul@123'
             : u.role === 'store_incharge' || u.role === 'store_manager'
@@ -2238,16 +2301,20 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const isAdminPass = lowerPass === 'admin@123' || lowerPass === 'kaustubh@123' || lowerPass === 'rahul@123' || trimmedPass === 'Rahul@123';
     const isStorePass = lowerPass === 'chandramani@123' || lowerPass === 'chandramani' || lowerPass === 'store@123' || lowerPass === 'ramesh@123' || lowerPass === 'store';
     const isRahulPass = lowerPass === 'rahul@123' || trimmedPass === 'Rahul@123' || lowerPass === 'rahul';
+    const isPrashantPass = lowerPass === 'prashant@123' || trimmedPass === 'Prashant@123' || lowerPass === 'prashant';
 
     const userExpectedPass = targetUser.password ? targetUser.password.toLowerCase() : '';
+    const permExpectedPass = (((targetUser as any)?.permissions?.password || (targetUser as any)?.permissions?._password || '') as string).toLowerCase();
 
     const isValidPassword =
       trimmedPass === targetUser.password ||
-      lowerPass === userExpectedPass ||
+      (userExpectedPass !== '' && lowerPass === userExpectedPass) ||
+      (permExpectedPass !== '' && (trimmedPass === (targetUser as any)?.permissions?.password || lowerPass === permExpectedPass)) ||
+      ((targetUser.name?.toLowerCase() === 'prashant' || targetUser.id === 'usr-1791892508324' || targetUser.email?.toLowerCase().includes('prashant')) && isPrashantPass) ||
       ((targetUser.id === 'usr-kaustubh' || targetUser.name.toLowerCase() === 'kaustubh' || targetUser.role === 'kaustubh') && isKaustubhPass) ||
       ((targetUser.id === 'usr-amit' || targetUser.name.toLowerCase() === 'amit') && (isAmitPass || isSuperAdminPass || isKaustubhPass)) ||
       (targetUser.role === 'super_admin' && (isSuperAdminPass || isAmitPass || isKaustubhPass)) ||
-      ((targetUser.role === 'kaustubh' || targetUser.role === 'admin' || targetUser.name === 'Rahul') && (isAdminPass || isSuperAdminPass || isRahulPass || isKaustubhPass)) ||
+      ((targetUser.role === 'kaustubh' || targetUser.role === 'admin' || targetUser.name === 'Rahul') && (isAdminPass || isSuperAdminPass || isRahulPass || isKaustubhPass || isPrashantPass)) ||
       ((targetUser.role === 'store_incharge' || targetUser.role === 'store_manager' || targetUser.id === 'usr-chandramani' || targetUser.id === 'usr-ramesh') && (isStorePass || isSuperAdminPass || isAdminPass)) ||
       (targetUser.role === 'operator' && (isRahulPass || isSuperAdminPass || isAdminPass));
 
@@ -4436,15 +4503,27 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Super Admin Member Authorization Handlers
-  const addUser = (userData: Omit<User, 'id'>) => {
+  const addUser = (userData: Omit<User, 'id'> & { id?: string }) => {
+    const assignedId = (userData as any).id || ('usr-' + Date.now());
+    const finalPassword = userData.password || 'Admin@123';
     const newUser: User = {
       ...userData,
-      id: 'usr-' + Date.now(),
+      id: assignedId,
+      password: finalPassword,
       status: userData.status || 'Active',
       lastActive: 'Just now',
+      permissions: {
+        ...(userData.permissions || {}),
+        password: finalPassword,
+      },
     };
     setUsers((prev) => {
-      const next = [newUser, ...prev];
+      const filtered = prev.filter(
+        (u) =>
+          u.id !== newUser.id &&
+          (!newUser.email || u.email?.toLowerCase() !== newUser.email.toLowerCase())
+      );
+      const next = [newUser, ...filtered];
       localStorage.setItem(LOCAL_STORAGE_KEY + '_users', JSON.stringify(next));
       return next;
     });
@@ -4457,6 +4536,12 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const next = prev.map((u) => {
         if (u.id === id) {
           const merged = { ...u, ...updates };
+          if (updates.password) {
+            merged.permissions = {
+              ...(merged.permissions || {}),
+              password: updates.password,
+            };
+          }
           dbUpsertUser(merged);
           return merged;
         }

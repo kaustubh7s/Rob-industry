@@ -18,13 +18,15 @@ export type AuthLevel =
   | 'Tier 5: External Vendor';
 
 export interface UserPermissions {
-  canEditMaterials: boolean;
-  canApproveOrders: boolean;
-  canDeleteRecords: boolean;
-  canManageUsers: boolean;
-  canExportReports: boolean;
-  canOverrideLock: boolean;
+  canEditMaterials?: boolean;
+  canApproveOrders?: boolean;
+  canDeleteRecords?: boolean;
+  canManageUsers?: boolean;
+  canExportReports?: boolean;
+  canOverrideLock?: boolean;
   canVerifyInward?: boolean; // Can Verify & Tick Physical Raw Material Inward Receipts
+  password?: string;
+  [key: string]: any;
 }
 
 export interface User {

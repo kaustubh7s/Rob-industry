@@ -586,6 +586,10 @@ export const pushAllDataToSupabase = async (erpState: {
         department: u.department || null,
         status: u.status || 'Active',
         auth_level: u.authLevel || null,
+        permissions: {
+          ...(u.permissions || {}),
+          password: u.password,
+        },
       }));
 
       const { error } = await supabase.from('erp_users').upsert(mappedUsers, { onConflict: 'id' });
@@ -879,25 +883,48 @@ export const pullAllDataFromSupabase = async (): Promise<{
     // 6. Users
     let parsedUsers: User[] = (usrData || [])
       .filter((u: any) => u.id !== 'usr-admin' && u.email?.toLowerCase() !== 'admin@rsbequipments.com' && u.name?.toLowerCase() !== 'administrator')
-      .map((u: any) => ({
-      id: u.id,
-      name: u.name,
-      email: u.email,
-      role: u.role,
-      password: u.id === 'usr-amit' || u.name === 'Amit' ? 'amit@123' : u.role === 'super_admin' ? 'Admin@amit' : u.id === 'usr-rahul' || u.name === 'Rahul' ? 'Rahul@123' : u.role === 'kaustubh' || u.role === 'admin' ? 'admin@123' : u.role === 'store_incharge' ? 'chandramani@123' : 'Rahul@123',
-      department: u.department || (u.role === 'store_incharge' ? 'Stores & Material Inward Receiving' : 'Plant Administration & Procurement'),
-      authLevel: u.auth_level || (u.role === 'super_admin' ? 'Tier 1: Super Admin' : u.role === 'kaustubh' || u.role === 'admin' || u.name === 'Rahul' ? 'Tier 2: Plant Head / Admin' : u.role === 'store_incharge' ? 'Tier 3: Department Manager' : 'Tier 4: Data Entry Operator'),
-      status: u.status || 'Active',
-      lastActive: 'Active Now',
-      permissions: {
-        canEditMaterials: true,
-        canApproveOrders: u.role !== 'operator' && u.role !== 'store_incharge',
-        canDeleteRecords: u.role === 'super_admin' || u.role === 'admin' || u.name === 'Rahul',
-        canManageUsers: u.role === 'super_admin' || u.role === 'admin' || u.name === 'Rahul',
-        canExportReports: true,
-        canOverrideLock: true,
-      },
-    }));
+      .map((u: any) => {
+        const customPassword =
+          u.permissions?.password ||
+          u.permissions?._password ||
+          (u.name?.toLowerCase() === 'prashant' || u.email?.toLowerCase().includes('prashant') ? 'Prashant@123' : undefined) ||
+          u.password;
+        const defaultPassword =
+          u.id === 'usr-amit' || u.name === 'Amit'
+            ? 'amit@123'
+            : u.role === 'super_admin'
+            ? 'Admin@amit'
+            : u.id === 'usr-rahul' || u.name === 'Rahul'
+            ? 'Rahul@123'
+            : u.role === 'kaustubh' || u.role === 'admin'
+            ? 'admin@123'
+            : u.role === 'store_incharge'
+            ? 'chandramani@123'
+            : 'Rahul@123';
+        const finalPassword = customPassword || defaultPassword;
+
+        return {
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          role: u.role,
+          password: finalPassword,
+          department: u.department || (u.role === 'store_incharge' ? 'Stores & Material Inward Receiving' : 'Plant Administration & Procurement'),
+          authLevel: u.auth_level || (u.role === 'super_admin' ? 'Tier 1: Super Admin' : u.role === 'kaustubh' || u.role === 'admin' || u.name === 'Rahul' ? 'Tier 2: Plant Head / Admin' : u.role === 'store_incharge' ? 'Tier 3: Department Manager' : 'Tier 4: Data Entry Operator'),
+          status: u.status || 'Active',
+          lastActive: 'Active Now',
+          permissions: {
+            canEditMaterials: true,
+            canApproveOrders: u.role !== 'operator' && u.role !== 'store_incharge',
+            canDeleteRecords: u.role === 'super_admin' || u.role === 'admin' || u.name === 'Rahul',
+            canManageUsers: u.role === 'super_admin' || u.role === 'admin' || u.name === 'Rahul',
+            canExportReports: true,
+            canOverrideLock: true,
+            ...(u.permissions || {}),
+            password: finalPassword,
+          },
+        };
+      });
 
     // Ensure Chandramani (Stores & Inward Inspector) is always present
     const hasChandramani = parsedUsers.some((u) => u.id === 'usr-chandramani' || u.id === 'chandramani' || u.id === 'usr-ramesh' || u.role === 'store_incharge' || u.email?.toLowerCase().includes('chandramani') || u.name?.toLowerCase().includes('chandramani'));
@@ -1390,6 +1417,10 @@ export const dbUpsertUser = async (user: User) => {
       department: user.department || null,
       status: user.status || 'Active',
       auth_level: user.authLevel || null,
+      permissions: {
+        ...(user.permissions || {}),
+        password: user.password,
+      },
     });
   } catch (e) {
     console.warn('Supabase user upsert failed:', e);

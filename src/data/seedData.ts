@@ -82,6 +82,26 @@ export const INITIAL_USERS: User[] = [
       canVerifyInward: true,
     },
   },
+  {
+    id: 'usr-1791892508324',
+    name: 'Prashant',
+    email: 'prashant@rsbequipments.com',
+    role: 'admin',
+    password: 'Prashant@123',
+    department: 'Plant Operations',
+    authLevel: 'Tier 2: Plant Head / Admin',
+    status: 'Active',
+    lastActive: 'Active Now',
+    permissions: {
+      canEditMaterials: true,
+      canApproveOrders: true,
+      canDeleteRecords: true,
+      canManageUsers: true,
+      canExportReports: true,
+      canOverrideLock: true,
+      canVerifyInward: true,
+    },
+  },
 ];
 
 export const INITIAL_MATERIALS: MaterialItem[] = [];
