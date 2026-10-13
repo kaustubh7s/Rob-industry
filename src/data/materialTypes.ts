@@ -1,0 +1,287 @@
+/**
+ * RSB Equipments ERP — Master Material Types Catalog
+ * Includes all standard manufacturing types and shop floor material entries
+ */
+
+export const USER_MATERIAL_TYPES: string[] = [
+  'M.S Circle',
+  'M.S Plate',
+  'MCB',
+  'Relay Card',
+  'SMPS',
+  'Exhaust Fan Sq Body',
+  'Fan Filter Sq Body',
+  'Contactor',
+  'Overload',
+  'Temp Controller',
+  'Tube LED',
+  'Connector',
+  'Single Core wire',
+  'Drag Chain',
+  'Cable Tray',
+  'SS 304',
+  'Rubber',
+  'SS BAR 304',
+  'SS BAR PIPE',
+  'MS PIPE',
+  'SS PIPE 304',
+  'SS RING 304',
+  'SS CIRCLE',
+  'SS FLAT 304',
+  'ACRYLIC SHEET',
+  'MS BAR',
+  'SS ROUND PIPE',
+  'SS 304 ROUND BAR',
+  'SS FLAT',
+  'SS PIPE',
+  'NYLON ROUND BAR',
+  'SS 304 PIPE',
+  'SS 304 FLAT',
+  'SS BAR 304 BRIGHT',
+  'SS SQ 304',
+  'SS BRIGHT BAR',
+  'SS CIRCLE 304',
+  'SS BAR',
+  'GUN METAL ROD',
+  'S.S304 Circle',
+  'S.S304 Pipe',
+  'S S 304 RING',
+  'MS Pipe',
+  'M S Pipe',
+  'SS FLANE 304',
+  'SS 304 BAR',
+  'SS 304 RING',
+  'S.S 304 SHEET',
+  'M.S Flate',
+  'M. S Plate',
+  'M. S Circle',
+  'M.S Triangle',
+  'SS  304 FLAT',
+  'MS PLATE',
+  'MS GATTU',
+  'NAYLON PLASTIC GATTU',
+  'GUM METAL',
+  'PLASTIC',
+  'SS SQ FLAT',
+  'BRASS PIPE',
+  'MS FLAT',
+  'SS304  BAR',
+  'ALLUMINIUM HE30',
+  'ALLUMINIUM PIPE',
+  'ALLUMINIUM BAR',
+  'MS CIRCLE',
+  'BRASS BAR',
+  'MS',
+  'Aluminium',
+  'SS',
+  'Brass bar',
+  'Brass pipe',
+  'SS 304 CIRCLE',
+  'SS FILLER WIRE',
+  'ELECTRIAL COMPONENTS',
+  'CASTING',
+  'GRAPG SCREW HARDEN',
+  'ALLEN BOLT SS',
+  'ALLEN BOLT',
+  'HEX BOLT',
+  'GRAPH SCREW',
+  'WASHER',
+  'BEARING',
+  'OIL SEAL',
+  'CHEAK NUT',
+  'M.S Bar',
+  'M S  PIPE',
+  'SS SQ BAR',
+  'SS Pipe',
+  'SS Bar',
+  'SS Flat',
+  'GEAR BOX AND MOTOR',
+  'NYLON SHEET',
+  'SS HARD CHROME BAR',
+  'SS THREADING ROD',
+  'ACRYLIC SHEET DOOR',
+  'GEAR',
+  'SS BEND',
+  'SMS COUPLING',
+  'BAREL NIPPLE',
+  'BALL VALBVE',
+];
+
+/**
+ * Categorized Master Groups for smart UI dropdowns and filters
+ */
+export interface MaterialCategoryGroup {
+  category: string;
+  items: string[];
+}
+
+export const MATERIAL_TYPE_GROUPS: MaterialCategoryGroup[] = [
+  {
+    category: 'Stainless Steel (SS)',
+    items: [
+      'SS Flat',
+      'SS 304 FLAT',
+      'SS FLAT 304',
+      'SS Pipe',
+      'SS 304 PIPE',
+      'SS PIPE 304',
+      'SS ROUND PIPE',
+      'SS BAR PIPE',
+      'SS Circle',
+      'SS CIRCLE',
+      'SS 304 CIRCLE',
+      'SS CIRCLE 304',
+      'S.S304 Circle',
+      'SS Bar',
+      'SS BAR',
+      'SS 304 BAR',
+      'SS BAR 304',
+      'SS BAR 304 BRIGHT',
+      'SS 304 ROUND BAR',
+      'SS BRIGHT BAR',
+      'SS HARD CHROME BAR',
+      'SS THREADING ROD',
+      'SS SQ 304',
+      'SS SQ BAR',
+      'SS SQ FLAT',
+      'SS RING 304',
+      'SS 304 RING',
+      'S S 304 RING',
+      'SS Sheet',
+      'S.S 304 SHEET',
+      'SS Angle',
+      'SS 304',
+      'SS',
+      'SS FLANE 304',
+      'SS BEND',
+      'SS FILLER WIRE',
+    ],
+  },
+  {
+    category: 'Mild Steel (MS)',
+    items: [
+      'M.S Circle',
+      'M. S Circle',
+      'MS CIRCLE',
+      'M.S Plate',
+      'M. S Plate',
+      'MS PLATE',
+      'M.S Flat',
+      'MS FLAT',
+      'M.S Flate',
+      'M.S Triangle',
+      'M.S Bar',
+      'MS BAR',
+      'MS PIPE',
+      'MS Pipe',
+      'M S Pipe',
+      'M S  PIPE',
+      'MS GATTU',
+      'MS',
+    ],
+  },
+  {
+    category: 'Aluminium, Brass & Non-Ferrous',
+    items: [
+      'ALLUMINIUM HE30',
+      'ALLUMINIUM PIPE',
+      'ALLUMINIUM BAR',
+      'Aluminium',
+      'BRASS PIPE',
+      'Brass pipe',
+      'BRASS BAR',
+      'Brass bar',
+      'GUN METAL ROD',
+      'GUM METAL',
+      'CASTING',
+    ],
+  },
+  {
+    category: 'Electrical & Automation Components',
+    items: [
+      'ELECTRIAL COMPONENTS',
+      'MCB',
+      'Relay Card',
+      'SMPS',
+      'Contactor',
+      'Overload',
+      'Temp Controller',
+      'Tube LED',
+      'Connector',
+      'Single Core wire',
+      'Drag Chain',
+      'Cable Tray',
+      'Exhaust Fan Sq Body',
+      'Fan Filter Sq Body',
+    ],
+  },
+  {
+    category: 'Hardware, Fasteners & Bearings',
+    items: [
+      'Hardware',
+      'ALLEN BOLT SS',
+      'ALLEN BOLT',
+      'HEX BOLT',
+      'GRAPG SCREW HARDEN',
+      'GRAPH SCREW',
+      'WASHER',
+      'CHEAK NUT',
+      'BEARING',
+      'OIL SEAL',
+    ],
+  },
+  {
+    category: 'Motors, Gears & Power Transmission',
+    items: ['GEAR BOX AND MOTOR', 'GEAR'],
+  },
+  {
+    category: 'Plastics, Acrylic & Non-Metallic',
+    items: [
+      'ACRYLIC SHEET',
+      'ACRYLIC SHEET DOOR',
+      'NYLON ROUND BAR',
+      'NYLON SHEET',
+      'NAYLON PLASTIC GATTU',
+      'PLASTIC',
+      'Rubber',
+    ],
+  },
+  {
+    category: 'Fittings & Valves',
+    items: ['SMS COUPLING', 'BAREL NIPPLE', 'BALL VALBVE', 'Consumables', 'Other'],
+  },
+];
+
+/**
+ * Primary sorted, unique list of all material types
+ * Starts with primary common items followed by all specific entries
+ */
+const DEFAULT_CORE_TYPES = [
+  'SS Flat',
+  'SS Pipe',
+  'SS Circle',
+  'SS Bar',
+  'SS Sheet',
+  'SS Angle',
+  'Hardware',
+  'Consumables',
+  'Other',
+];
+
+// Clean unified list preserving user inputs and core defaults
+export const MATERIAL_TYPES: string[] = Array.from(
+  new Set([...DEFAULT_CORE_TYPES, ...USER_MATERIAL_TYPES])
+);
+
+/**
+ * Match a raw material string against known types (exact or case-insensitive)
+ */
+export function findMatchingMaterialType(raw?: string): string {
+  if (!raw) return 'SS Flat';
+  const trimmed = raw.trim();
+  const directMatch = MATERIAL_TYPES.find(
+    (t) => t.toLowerCase() === trimmed.toLowerCase()
+  );
+  if (directMatch) return directMatch;
+  return trimmed;
+}

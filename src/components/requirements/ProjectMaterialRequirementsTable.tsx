@@ -42,6 +42,7 @@ import { formatINR, formatCompactINR, formatDate } from '../../utils/calculation
 import { exportToExcel, exportToPdfReport, parseExcelFile } from '../../utils/excelIntegration';
 import { StatusBadge } from '../common/StatusBadge';
 import { Modal } from '../common/Modal';
+import { MATERIAL_TYPES } from '../../data/materialTypes';
 
 export const ProjectMaterialRequirementsTable: React.FC = () => {
   const {
@@ -163,7 +164,9 @@ export const ProjectMaterialRequirementsTable: React.FC = () => {
   // Dropdown lists
   const uniqueProjects = Array.from(new Set(projectRequirements.map((r) => r.projectName)));
   const uniqueMachines = Array.from(new Set(projectRequirements.map((r) => r.machineType)));
-  const uniqueMaterials = Array.from(new Set(projectRequirements.map((r) => r.materialType)));
+  const uniqueMaterials = Array.from(
+    new Set([...MATERIAL_TYPES, ...projectRequirements.map((r) => r.materialType).filter(Boolean)])
+  );
 
   // Handlers
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -901,12 +904,11 @@ export const ProjectMaterialRequirementsTable: React.FC = () => {
                 onChange={(e) => setNewForm({ ...newForm, materialType: e.target.value as any })}
                 className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white"
               >
-                <option value="SS Flat">SS Flat</option>
-                <option value="SS Pipe">SS Pipe</option>
-                <option value="SS Circle">SS Circle</option>
-                <option value="SS Bar">SS Bar</option>
-                <option value="SS Sheet">SS Sheet</option>
-                <option value="Hardware">Hardware</option>
+                {uniqueMaterials.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
               </select>
             </div>
 

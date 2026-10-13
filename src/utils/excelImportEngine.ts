@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { MaterialType } from '../types/erp';
+import { findMatchingMaterialType } from '../data/materialTypes';
 
 export interface ColumnMappingOption {
   key: string;
@@ -400,16 +401,11 @@ export function analyzeWorksheet(workbook: XLSX.WorkBook, sheetName: string): Sh
       }
     }
 
-    // Material type normalization without dropping custom types
+    // Material type normalization preserving exact user material types
     let parsedMatType: MaterialType = 'SS Flat';
-    const cleanMatType = matTypeRaw.toLowerCase();
-    if (cleanMatType.includes('pipe')) parsedMatType = 'SS Pipe';
-    else if (cleanMatType.includes('plate') || cleanMatType.includes('sheet')) parsedMatType = 'SS Sheet';
-    else if (cleanMatType.includes('bar') || cleanMatType.includes('round')) parsedMatType = 'SS Bar';
-    else if (cleanMatType.includes('circle')) parsedMatType = 'SS Circle';
-    else if (cleanMatType.includes('angle')) parsedMatType = 'SS Angle';
-    else if (cleanMatType.includes('hardware') || cleanMatType.includes('fastener')) parsedMatType = 'Hardware';
-    else if (matTypeRaw) parsedMatType = matTypeRaw as MaterialType;
+    if (matTypeRaw && matTypeRaw.trim()) {
+      parsedMatType = findMatchingMaterialType(matTypeRaw) as MaterialType;
+    }
 
     // CRITICAL REQUIREMENT: PRESERVE EXACT ORIGINAL SR NO
     let finalSrNo: string | number = '';

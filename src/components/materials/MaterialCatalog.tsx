@@ -25,6 +25,7 @@ import { formatINR, formatCompactINR } from '../../utils/calculations';
 import { exportToExcel, exportToPdfReport } from '../../utils/excelIntegration';
 import { Modal } from '../common/Modal';
 import { EasyGuideBanner } from '../common/EasyGuideBanner';
+import { MATERIAL_TYPES } from '../../data/materialTypes';
 
 interface MaterialCatalogProps {
   onOpenCalculator: () => void;
@@ -239,12 +240,12 @@ export const MaterialCatalog: React.FC<MaterialCatalogProps> = ({ onOpenCalculat
             onChange={(e) => setFilterType(e.target.value)}
             className="px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-slate-200 font-medium focus:outline-hidden"
           >
-            <option value="ALL">All Types (Flat, Pipe, Circle, Bar)</option>
-            <option value="SS Flat">SS Flat</option>
-            <option value="SS Pipe">SS Pipe</option>
-            <option value="SS Circle">SS Circle</option>
-            <option value="SS Bar">SS Bar</option>
-            <option value="SS Sheet">SS Sheet</option>
+            <option value="ALL">All Material Types</option>
+            {MATERIAL_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
           </select>
 
           <select
@@ -421,11 +422,11 @@ export const MaterialCatalog: React.FC<MaterialCatalogProps> = ({ onOpenCalculat
                 onChange={(e) => setForm({ ...form, type: e.target.value as any })}
                 className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-slate-100 text-xs"
               >
-                <option value="SS Flat">SS Flat</option>
-                <option value="SS Pipe">SS Pipe</option>
-                <option value="SS Circle">SS Circle</option>
-                <option value="SS Bar">SS Bar</option>
-                <option value="SS Sheet">SS Sheet</option>
+                {MATERIAL_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
               </select>
             </div>
 

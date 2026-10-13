@@ -326,6 +326,7 @@ interface ERPContextType {
   isMaintenanceMode: boolean;
   toggleMaintenanceMode: (enabled?: boolean) => Promise<boolean>;
   isKaustubhAdmin: boolean;
+  isRootAdmin: boolean;
 }
 
 const ERPContext = createContext<ERPContextType | undefined>(undefined);
@@ -369,10 +370,23 @@ export const isKaustubhUser = (u?: User | null): boolean => {
   if (!u) return false;
   return (
     u.id === 'usr-kaustubh' ||
-    u.email?.toLowerCase() === 'kaustubh@rsbequipments.com' ||
-    u.name?.toLowerCase() === 'kaustubh' ||
+    u.email?.toLowerCase().includes('kaustubh') ||
+    u.name?.toLowerCase().includes('kaustubh') ||
     u.role === 'kaustubh'
   );
+};
+
+export const isAmitUser = (u?: User | null): boolean => {
+  if (!u) return false;
+  return (
+    u.id === 'usr-amit' ||
+    u.email?.toLowerCase().includes('amit') ||
+    u.name?.toLowerCase().includes('amit')
+  );
+};
+
+export const isRootAdminUser = (u?: User | null): boolean => {
+  return isKaustubhUser(u) || isAmitUser(u);
 };
 
 export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -466,6 +480,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const isKaustubhAdmin = isKaustubhUser(currentUser);
+  const isRootAdmin = isRootAdminUser(currentUser);
 
   const [isMaintenanceMode, setIsMaintenanceMode] = useState<boolean>(() => {
     try {
@@ -5333,6 +5348,13 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const resetToDemoData = async () => {
+    // Security check: Only Root Admins (Amit & Kaustubh) can trigger a Factory Reset
+    if (!isRootAdminUser(currentUser)) {
+      console.warn('Unauthorized Factory Reset attempt by:', currentUser?.name, currentUser?.email);
+      alert('Access Denied: Only Root Admins (Amit and Kaustubh) are authorized to perform a Factory Reset.');
+      return;
+    }
+
     // 1. Reset all React state slices to clean baseline
     setMaterials(INITIAL_MATERIALS);
     setProjectRequirements(INITIAL_PROJECT_REQUIREMENTS);
@@ -5607,6 +5629,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isMaintenanceMode,
         toggleMaintenanceMode,
         isKaustubhAdmin,
+        isRootAdmin,
       }}
     >
       {children}

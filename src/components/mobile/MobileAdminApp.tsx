@@ -37,6 +37,7 @@ import { getSupabaseConfig } from '../../lib/supabaseClient';
 import { SupabaseConnectModal } from '../admin/SupabaseConnectModal';
 import { LiveWorldSSRatesModal } from '../rates/LiveWorldSSRatesModal';
 import { Modal } from '../common/Modal';
+import { MATERIAL_TYPES } from '../../data/materialTypes';
 import confetti from 'canvas-confetti';
 
 type MobileTab = 'overview' | 'projects' | 'materials' | 'floor' | 'team';
@@ -746,7 +747,7 @@ export const MobileAdminApp: React.FC = () => {
                 onChange={(e) => setQuickMatForm({ ...quickMatForm, materialType: e.target.value as MaterialType })}
                 className="w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-900 text-xs"
               >
-                {['SS Flat', 'SS Pipe', 'SS Circle', 'SS Bar', 'SS Angle', 'SS Sheet', 'Hardware'].map((t) => (
+                {MATERIAL_TYPES.map((t) => (
                   <option key={t} value={t}>{t}</option>
                 ))}
               </select>

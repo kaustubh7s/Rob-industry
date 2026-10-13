@@ -44,6 +44,7 @@ import { ProjectMaterialRequirementItem, VendorItem, PurchaseOrder, RFQRecord, P
 import { exportToExcel } from '../../utils/excelIntegration';
 import { formatINR, formatDate } from '../../utils/calculations';
 import { isRequirementMatchedToProject } from '../../utils/projectMaterialsHelper';
+import { MATERIAL_TYPES } from '../../data/materialTypes';
 import {
   formatWhatsAppPOMessage,
   formatShortWhatsAppPOMessage,
@@ -492,7 +493,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
 
   // Extract all unique material types
   const allMaterialTypes = useMemo(() => {
-    return Array.from(new Set(activeRequirements.map((r) => r.materialType).filter(Boolean)));
+    return Array.from(new Set([...MATERIAL_TYPES, ...activeRequirements.map((r) => r.materialType).filter(Boolean)]));
   }, [activeRequirements]);
 
   // Extract all unique vendors
@@ -3319,15 +3320,11 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                     onChange={(e) => setEditMatType(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-500"
                   >
-                    <option value="SS Flat">SS Flat</option>
-                    <option value="SS Bar">SS Bar</option>
-                    <option value="SS Pipe">SS Pipe</option>
-                    <option value="SS Plate">SS Plate</option>
-                    <option value="SS Sheet">SS Sheet</option>
-                    <option value="Fasteners">Fasteners</option>
-                    <option value="Electrical">Electrical</option>
-                    <option value="Bought Out">Bought Out</option>
-                    <option value="Standard">Standard</option>
+                    {allMaterialTypes.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
                   </select>
                 </div>
 

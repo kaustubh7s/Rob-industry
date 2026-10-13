@@ -43,6 +43,7 @@ import { formatDate } from '../../utils/calculations';
 import { StatusBadge } from '../common/StatusBadge';
 import { Modal } from '../common/Modal';
 import { dbBulkUpsertRequirements } from '../../services/supabaseService';
+import { MATERIAL_TYPES } from '../../data/materialTypes';
 import { getMaterialsForProject } from '../../utils/projectMaterialsHelper';
 import {
   formatWhatsAppPOMessage,
@@ -58,17 +59,6 @@ interface ProjectDetailsViewProps {
   onOpenOrderBasket?: (projectName: string) => void;
 }
 
-const MATERIAL_TYPES: MaterialType[] = [
-  'SS Flat',
-  'SS Pipe',
-  'SS Circle',
-  'SS Bar',
-  'SS Sheet',
-  'SS Angle',
-  'Hardware',
-  'Consumables',
-  'Other',
-];
 
 const MACHINE_CATEGORIES: MachineCategory[] = [
   '10 HD',

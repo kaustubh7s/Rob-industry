@@ -53,6 +53,7 @@ import { ProcurementBasket } from '../procurement/ProcurementBasket';
 import { getMaterialsForProject, isRequirementMatchingProjectName } from '../../utils/projectMaterialsHelper';
 import { MACHINE_BOM_TEMPLATES, MachineBOMTemplate } from '../../data/machineBOMTemplates';
 import { LiveWorldSSRatesModal } from '../rates/LiveWorldSSRatesModal';
+import { MATERIAL_TYPES } from '../../data/materialTypes';
 import { getDeletedRequirementTombstones, removeRequirementTombstone } from '../../utils/tombstones';
 import { ExcelImportPreviewModal } from './ExcelImportPreviewModal';
 import { analyzeExcelFile, SheetAnalysisResult, ParsedImportRow } from '../../utils/excelImportEngine';
@@ -96,18 +97,6 @@ export const sortRowsByAscendingSrNo = <T extends { srNo?: any }>(rowList: T[]):
 };
 
 const MACHINE_SUGGESTIONS: string[] = [];
-
-const MATERIAL_TYPES: MaterialType[] = [
-  'SS Flat',
-  'SS Pipe',
-  'SS Circle',
-  'SS Bar',
-  'SS Sheet',
-  'SS Angle',
-  'Hardware',
-  'Consumables',
-  'Other',
-];
 
 const COMMON_VENDORS: string[] = [];
 
@@ -154,6 +143,7 @@ export const ProjectMaterialEntry: React.FC = () => {
     addMaterial,
     isMaintenanceMode,
     toggleMaintenanceMode,
+    isRootAdmin,
   } = useERP();
 
   const isStoreIncharge = currentUser?.role === 'store_incharge';
@@ -294,6 +284,11 @@ export const ProjectMaterialEntry: React.FC = () => {
 
   // Full Factory Baseline Reset Handler
   const handleConfirmFactoryReset = () => {
+    if (!isRootAdmin) {
+      alert('Access Denied: Only Root Admins (Amit and Kaustubh) can perform a Factory Reset.');
+      setIsFactoryResetModalOpen(false);
+      return;
+    }
     resetToDemoData();
     setRows([]);
     setCustomDescs([]);
@@ -367,10 +362,6 @@ export const ProjectMaterialEntry: React.FC = () => {
     );
   }, [customMachines, machines, projects, projectRequirements]);
 
-  const allMaterialTypes = useMemo(() => {
-    return Array.from(new Set([...MATERIAL_TYPES, ...customMaterials]));
-  }, [customMaterials]);
-
   const allVendorOptions = useMemo(() => {
     return Array.from(
       new Set([
@@ -404,6 +395,17 @@ export const ProjectMaterialEntry: React.FC = () => {
     }));
     return sortRowsByAscendingSrNo(mapped);
   });
+
+  const allMaterialTypes = useMemo(() => {
+    return Array.from(
+      new Set([
+        ...MATERIAL_TYPES,
+        ...customMaterials,
+        ...projectRequirements.map((r) => r.materialType).filter(Boolean),
+        ...rows.map((r) => r.materialType).filter(Boolean),
+      ])
+    );
+  }, [customMaterials, projectRequirements, rows]);
 
 
   const allDescriptionOptions = useMemo(() => {
@@ -1837,16 +1839,18 @@ export const ProjectMaterialEntry: React.FC = () => {
             </button>
           )}
 
-          {/* Full Factory Reset Button */}
-          <button
-            type="button"
-            onClick={() => setIsFactoryResetModalOpen(true)}
-            className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 border border-rose-400/40 hover:border-rose-500 text-xs font-black transition-all flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
-            title="Reset all data, materials, suggestions, BOMs, and workstation memory to clean factory baseline"
-          >
-            <RotateCcw className="w-4 h-4 text-rose-500" />
-            <span>Factory Reset</span>
-          </button>
+          {/* Full Factory Reset Button - Only Visible to Root Admins (Amit & Kaustubh) */}
+          {isRootAdmin && (
+            <button
+              type="button"
+              onClick={() => setIsFactoryResetModalOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 border border-rose-400/40 hover:border-rose-500 text-xs font-black transition-all flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
+              title="Reset all data, materials, suggestions, BOMs, and workstation memory to clean factory baseline (Root Admin Only)"
+            >
+              <RotateCcw className="w-4 h-4 text-rose-500" />
+              <span>Factory Reset</span>
+            </button>
+          )}
 
           <button
             type="button"
@@ -2457,7 +2461,7 @@ export const ProjectMaterialEntry: React.FC = () => {
             className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-bold focus:outline-none focus:border-blue-600 shadow-2xs"
           >
             <option value="ALL">All Materials</option>
-            {MATERIAL_TYPES.map((m) => (
+            {allMaterialTypes.map((m) => (
               <option key={m} value={m}>
                 {m}
               </option>
@@ -2678,7 +2682,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                           onChange={(e) => handleCellChange(row.id, 'materialType', e.target.value)}
                           className="w-full bg-transparent px-1.5 py-1 rounded border border-transparent hover:border-slate-300 focus:border-slate-900 focus:bg-white text-xs font-bold text-slate-800 transition-colors"
                         >
-                          {MATERIAL_TYPES.map((m) => (
+                          {allMaterialTypes.map((m) => (
                             <option key={m} value={m}>
                               {m}
                             </option>
@@ -3535,9 +3539,9 @@ export const ProjectMaterialEntry: React.FC = () => {
       </Modal>
 
       {/* ========================================================================= */}
-      {/* MODAL: FACTORY RESET CONFIRMATION */}
+      {/* MODAL: FACTORY RESET CONFIRMATION (ONLY ACCESSIBLE TO ROOT ADMINS AMIT & KAUSTUBH) */}
       {/* ========================================================================= */}
-      {isFactoryResetModalOpen && (
+      {isRootAdmin && isFactoryResetModalOpen && (
         <Modal
           isOpen={isFactoryResetModalOpen}
           onClose={() => setIsFactoryResetModalOpen(false)}

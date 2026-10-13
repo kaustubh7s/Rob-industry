@@ -130,38 +130,83 @@ export function calculateSheetWeight(input: SheetCalcInput): number {
 }
 
 /**
+ * Calculate Ring Weight in KG
+ * Formula: π × [(OD/2)² - (ID/2)²] × Thickness × Density / 1,000,000
+ */
+export function calculateRingWeight(input: {
+  outerDiaMm: number;
+  innerDiaMm: number;
+  thicknessMm: number;
+  grade?: string;
+  quantity?: number;
+}): number {
+  const density = DENSITIES[input.grade || 'SS 304'] || 7.93;
+  const rOuter = input.outerDiaMm / 2;
+  const rInner = Math.max(0, input.innerDiaMm / 2);
+  const areaMm2 = Math.PI * (rOuter * rOuter - rInner * rInner);
+  const volumeMm3 = areaMm2 * input.thicknessMm;
+  const weightPerPieceKg = (volumeMm3 * density) / 1000000;
+  const total = weightPerPieceKg * (input.quantity || 1);
+  return Number(total.toFixed(3));
+}
+
+/**
  * Parse size specification strings like "80 x 6 x 485" or "OD 106 x ID 75 x 110" or "OD 285 x 12 MM"
  */
 export function autoCalculateWeightFromSpec(type: string, sizeSpecs: string, grade = 'SS 304', qty = 1): number {
   try {
     const clean = sizeSpecs.toUpperCase();
-    if (type.includes('Flat') || type.includes('Sheet')) {
-      const parts = clean.replace(/MM/g, '').split(/[xX*]/).map(p => parseFloat(p.trim())).filter(n => !isNaN(n));
+    const typeUpper = (type || '').toUpperCase();
+
+    // Auto-resolve grade density if default 'SS 304' was passed
+    let effectiveGrade = grade;
+    if (grade === 'SS 304') {
+      if (/M\.?S|MILD\s*STEEL/.test(typeUpper)) effectiveGrade = 'MS (Mild Steel)';
+      else if (/ALL?UMIN/.test(typeUpper)) effectiveGrade = 'Aluminum';
+      else if (/BRASS/.test(typeUpper)) effectiveGrade = 'Brass';
+      else if (/316L/.test(typeUpper)) effectiveGrade = 'SS 316L';
+      else if (/316/.test(typeUpper)) effectiveGrade = 'SS 316';
+    }
+
+    if (typeUpper.includes('RING') || (clean.includes('OD') && clean.includes('ID') && (clean.includes('THICK') || typeUpper.includes('CIRCLE')))) {
+      const odMatch = clean.match(/OD\s*[-:]?\s*([0-9.]+)/i);
+      const idMatch = clean.match(/ID\s*[-:]?\s*([0-9.]+)/i);
+      const parts = clean.replace(/OD|ID|THICKNESS|THICK|MM/gi, '').split(/[xX*]/).map(p => parseFloat(p.trim())).filter(n => !isNaN(n));
+      const od = odMatch ? parseFloat(odMatch[1]) : (parts[0] || 200);
+      const id = idMatch ? parseFloat(idMatch[1]) : (parts[1] || (od * 0.5));
+      const thickness = parts[parts.length - 1] || 15;
+      return calculateRingWeight({ outerDiaMm: od, innerDiaMm: id, thicknessMm: thickness, grade: effectiveGrade, quantity: qty });
+    } else if (typeUpper.includes('FLAT') || typeUpper.includes('SHEET') || typeUpper.includes('PLATE') || typeUpper.includes('FLATE') || typeUpper.includes('TRIANGLE')) {
+      const parts = clean.replace(/MM|THICK/gi, '').split(/[xX*]/).map(p => parseFloat(p.trim())).filter(n => !isNaN(n));
       if (parts.length >= 3) {
-        return calculateFlatWeight({ widthMm: parts[0], thicknessMm: parts[1], lengthMm: parts[2], grade, quantity: qty });
+        return calculateFlatWeight({ widthMm: parts[0], thicknessMm: parts[1], lengthMm: parts[2], grade: effectiveGrade, quantity: qty });
+      } else if (parts.length === 2) {
+        // e.g. 500 X 800 (assume default 10mm or treat as length x width)
+        return calculateFlatWeight({ widthMm: parts[0], thicknessMm: 10, lengthMm: parts[1], grade: effectiveGrade, quantity: qty });
       }
-    } else if (type.includes('Pipe')) {
+    } else if (typeUpper.includes('PIPE')) {
       // e.g. OD 106 x ID 75 x 110
-      const odMatch = clean.match(/OD\s*([0-9.]+)/i);
-      const idMatch = clean.match(/ID\s*([0-9.]+)/i);
-      const parts = clean.replace(/OD|ID|MM/gi, '').split(/[xX*]/).map(p => parseFloat(p.trim())).filter(n => !isNaN(n));
+      const odMatch = clean.match(/OD\s*[-:]?\s*([0-9.]+)/i);
+      const idMatch = clean.match(/ID\s*[-:]?\s*([0-9.]+)/i);
+      const parts = clean.replace(/OD|ID|LENGTH|MM/gi, '').split(/[xX*]/).map(p => parseFloat(p.trim())).filter(n => !isNaN(n));
       
       const od = odMatch ? parseFloat(odMatch[1]) : (parts[0] || 100);
       const id = idMatch ? parseFloat(idMatch[1]) : (parts[1] || (od - 6));
       const length = parts[parts.length - 1] || 100;
-      return calculatePipeWeight({ outerDiaMm: od, innerDiaMm: id, lengthMm: length, grade, quantity: qty });
-    } else if (type.includes('Circle')) {
-      // e.g. OD 285 x 12 MM
-      const odMatch = clean.match(/OD\s*([0-9.]+)/i);
-      const parts = clean.replace(/OD|MM/gi, '').split(/[xX*]/).map(p => parseFloat(p.trim())).filter(n => !isNaN(n));
+      return calculatePipeWeight({ outerDiaMm: od, innerDiaMm: id, lengthMm: length, grade: effectiveGrade, quantity: qty });
+    } else if (typeUpper.includes('CIRCLE')) {
+      // e.g. OD 285 x 12 MM or DIA 530 X 18MM
+      const odMatch = clean.match(/(?:OD|DIA)\s*[-:]?\s*([0-9.]+)/i);
+      const parts = clean.replace(/OD|DIA|THICKNESS|THICK|MM/gi, '').split(/[xX*]/).map(p => parseFloat(p.trim())).filter(n => !isNaN(n));
       const od = odMatch ? parseFloat(odMatch[1]) : (parts[0] || 200);
       const thickness = parts.length > 1 ? parts[1] : 10;
-      return calculateCircleWeight({ outerDiaMm: od, thicknessMm: thickness, grade, quantity: qty });
-    } else if (type.includes('Bar')) {
-      const parts = clean.replace(/DIA|Ø|MM/gi, '').split(/[xX*]/).map(p => parseFloat(p.trim())).filter(n => !isNaN(n));
-      if (parts.length >= 2) {
-        return calculateBarWeight({ diameterMm: parts[0], lengthMm: parts[1], grade, quantity: qty });
-      }
+      return calculateCircleWeight({ outerDiaMm: od, thicknessMm: thickness, grade: effectiveGrade, quantity: qty });
+    } else if (typeUpper.includes('BAR') || typeUpper.includes('ROD')) {
+      const diaMatch = clean.match(/(?:DAI|DIA|OD|Ø)\s*[-:]?\s*([0-9.]+)/i);
+      const parts = clean.replace(/DAI|DIA|OD|Ø|LENGTH|MM/gi, '').split(/[xX*]/).map(p => parseFloat(p.trim())).filter(n => !isNaN(n));
+      const dia = diaMatch ? parseFloat(diaMatch[1]) : (parts[0] || 25);
+      const length = parts[parts.length - 1] || 100;
+      return calculateBarWeight({ diameterMm: dia, lengthMm: length, grade: effectiveGrade, quantity: qty });
     }
   } catch (e) {
     console.warn('Auto calculate weight failed for:', sizeSpecs, e);
