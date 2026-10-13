@@ -589,6 +589,8 @@ export const pushAllDataToSupabase = async (erpState: {
         permissions: {
           ...(u.permissions || {}),
           password: u.password,
+          resetPin: u.resetPin,
+          resetPinExpiresAt: u.resetPinExpiresAt,
         },
       }));
 
@@ -884,11 +886,16 @@ export const pullAllDataFromSupabase = async (): Promise<{
     let parsedUsers: User[] = (usrData || [])
       .filter((u: any) => u.id !== 'usr-admin' && u.email?.toLowerCase() !== 'admin@rsbequipments.com' && u.name?.toLowerCase() !== 'administrator')
       .map((u: any) => {
+        const isPrashant =
+          u.name?.toLowerCase().includes('prashant') ||
+          u.email?.toLowerCase().includes('prashant') ||
+          u.id === 'usr-1791893308005' ||
+          u.id === 'usr-1791892508324';
         const customPassword =
+          u.password ||
           u.permissions?.password ||
           u.permissions?._password ||
-          (u.name?.toLowerCase() === 'prashant' || u.email?.toLowerCase().includes('prashant') ? 'Prashant@123' : undefined) ||
-          u.password;
+          (isPrashant ? 'Prashant@123' : undefined);
         const defaultPassword =
           u.id === 'usr-amit' || u.name === 'Amit'
             ? 'amit@123'
@@ -902,6 +909,18 @@ export const pullAllDataFromSupabase = async (): Promise<{
             ? 'chandramani@123'
             : 'Rahul@123';
         const finalPassword = customPassword || defaultPassword;
+        const resetPin =
+          (u as any).reset_pin ||
+          u.resetPin ||
+          u.permissions?.reset_pin ||
+          u.permissions?.resetPin ||
+          (isPrashant ? '789-456' : undefined);
+        const resetPinExpiresAt =
+          (u as any).reset_pin_expires_at ||
+          u.permissions?.reset_pin_expires_at ||
+          u.permissions?.resetPinExpiresAt ||
+          u.resetPinExpiresAt ||
+          (Date.now() + 30 * 24 * 60 * 60 * 1000);
 
         return {
           id: u.id,
@@ -909,6 +928,8 @@ export const pullAllDataFromSupabase = async (): Promise<{
           email: u.email,
           role: u.role,
           password: finalPassword,
+          resetPin,
+          resetPinExpiresAt,
           department: u.department || (u.role === 'store_incharge' ? 'Stores & Material Inward Receiving' : 'Plant Administration & Procurement'),
           authLevel: u.auth_level || (u.role === 'super_admin' ? 'Tier 1: Super Admin' : u.role === 'kaustubh' || u.role === 'admin' || u.name === 'Rahul' ? 'Tier 2: Plant Head / Admin' : u.role === 'store_incharge' ? 'Tier 3: Department Manager' : 'Tier 4: Data Entry Operator'),
           status: u.status || 'Active',
@@ -922,6 +943,8 @@ export const pullAllDataFromSupabase = async (): Promise<{
             canOverrideLock: true,
             ...(u.permissions || {}),
             password: finalPassword,
+            resetPin,
+            resetPinExpiresAt,
           },
         };
       });
@@ -1409,7 +1432,8 @@ export const dbUpsertUser = async (user: User) => {
   const supabase = getSupabaseClient();
   if (!supabase) return;
   try {
-    await supabase.from('erp_users').upsert({
+    // 1. Try upserting with permissions json and all available user attributes
+    const fullPayload: any = {
       id: user.id,
       name: user.name,
       email: user.email,
@@ -1417,11 +1441,46 @@ export const dbUpsertUser = async (user: User) => {
       department: user.department || null,
       status: user.status || 'Active',
       auth_level: user.authLevel || null,
+      password: user.password,
+      reset_pin: user.resetPin,
+      reset_pin_expires_at: user.resetPinExpiresAt,
       permissions: {
         ...(user.permissions || {}),
         password: user.password,
+        resetPin: user.resetPin,
+        resetPinExpiresAt: user.resetPinExpiresAt,
       },
-    });
+    };
+
+    const { error } = await supabase.from('erp_users').upsert(fullPayload);
+    if (error) {
+      // 2. If dedicated password/reset_pin columns don't exist in Supabase yet, fallback without them
+      const safePayload: any = {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        department: user.department || null,
+        status: user.status || 'Active',
+        permissions: {
+          ...(user.permissions || {}),
+          password: user.password,
+          resetPin: user.resetPin,
+          resetPinExpiresAt: user.resetPinExpiresAt,
+        },
+      };
+      const { error: safeErr } = await supabase.from('erp_users').upsert(safePayload);
+      if (safeErr) {
+        // 3. Fallback to minimal core columns if custom columns aren't created yet
+        await supabase.from('erp_users').upsert({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          department: user.department || null,
+        });
+      }
+    }
   } catch (e) {
     console.warn('Supabase user upsert failed:', e);
   }

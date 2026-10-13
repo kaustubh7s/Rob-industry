@@ -3,6 +3,7 @@ import {
   Lock,
   Unlock,
   KeyRound,
+  Key,
   AlertCircle,
   AlertTriangle,
   Eye,
@@ -13,14 +14,17 @@ import {
   User,
   Sparkles,
   Cpu,
+  CheckCircle2,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 
 export const LoginScreen: React.FC = () => {
-  const { login, isMaintenanceMode } = useERP();
+  const { login, loginWithPasskey, isMaintenanceMode } = useERP();
 
+  const [loginMode, setLoginMode] = useState<'password' | 'passkey'>('password');
   const [loginId, setLoginId] = useState<string>('');
   const [password, setPassword] = useState<string>('');
+  const [passkeyInput, setPasskeyInput] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -31,6 +35,22 @@ export const LoginScreen: React.FC = () => {
     setIsLoading(true);
 
     try {
+      if (loginMode === 'passkey') {
+        const clean = passkeyInput.trim();
+        if (!clean) {
+          setError('Please enter your 6-digit One-Time Passkey.');
+          setIsLoading(false);
+          return;
+        }
+        const result = loginWithPasskey ? loginWithPasskey(clean) : login(clean, clean);
+        if (!result.success) {
+          setError(result.error || 'Invalid or expired One-Time Passkey.');
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      // Standard login mode
       const result = login(loginId, password);
       if (!result.success) {
         setError(result.error || 'Invalid Login ID or Password. Access Denied.');
@@ -158,59 +178,152 @@ export const LoginScreen: React.FC = () => {
                 </div>
               )}
 
+              {/* Mode Switcher Tabs */}
+              <div className="grid grid-cols-2 p-1 bg-slate-900/90 rounded-xl border border-white/10 text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoginMode('password');
+                    setError(null);
+                  }}
+                  className={`py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    loginMode === 'password'
+                      ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md shadow-cyan-900/40'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                  <span>Password Login</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoginMode('passkey');
+                    setError(null);
+                  }}
+                  className={`py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    loginMode === 'passkey'
+                      ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md shadow-amber-900/40'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Key className="w-3.5 h-3.5" />
+                  <span>One-Time Passkey</span>
+                </button>
+              </div>
+
               {/* Login Form */}
               <form onSubmit={handleSubmit} className="space-y-4 pt-1">
-                
-                {/* Login ID Input */}
-                <div className="space-y-1.5 text-left">
-                  <label className="block text-xs font-semibold text-slate-300">
-                    Login ID / Username / Email:
-                  </label>
-                  <div className="relative group/input">
-                    <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors group-focus-within/input:text-cyan-400" />
-                    <input
-                      autoFocus
-                      type="text"
-                      value={loginId}
-                      onChange={(e) => {
-                        setLoginId(e.target.value);
-                        setError(null);
-                      }}
-                      placeholder="Enter login ID..."
-                      required
-                      className="w-full bg-[#050811]/90 border border-white/10 rounded-xl pl-10 pr-3.5 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 font-mono transition-all"
-                    />
-                  </div>
-                </div>
+                {loginMode === 'passkey' ? (
+                  /* Passkey Direct Login Mode */
+                  <div className="space-y-2 text-left">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-semibold text-amber-300">
+                        Emergency One-Time Passkey:
+                      </label>
+                      <span className="text-[10px] text-amber-400/90 font-mono">
+                        6-Digit PIN (e.g. 789-456)
+                      </span>
+                    </div>
+                    <div className="relative group/input">
+                      <Key className="w-4 h-4 text-amber-400 absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors" />
+                      <input
+                        autoFocus
+                        type="text"
+                        value={passkeyInput}
+                        onChange={(e) => {
+                          setPasskeyInput(e.target.value);
+                          setError(null);
+                        }}
+                        placeholder="Enter passkey (e.g. 789-456)..."
+                        required
+                        className="w-full bg-[#050811]/90 border border-amber-500/40 rounded-xl pl-10 pr-3.5 py-3 text-sm text-amber-200 placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-500/20 font-mono tracking-widest transition-all font-bold"
+                      />
+                    </div>
 
-                {/* Password Input */}
-                <div className="space-y-1.5 text-left">
-                  <label className="block text-xs font-semibold text-slate-300">
-                    Security Password:
-                  </label>
-                  <div className="relative group/input">
-                    <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors group-focus-within/input:text-cyan-400" />
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={(e) => {
-                        setPassword(e.target.value);
-                        setError(null);
-                      }}
-                      placeholder="Enter your security password..."
-                      required
-                      className="w-full bg-[#050811]/90 border border-white/10 rounded-xl pl-10 pr-10 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 font-mono transition-all"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
-                      tabIndex={-1}
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
+                    <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-200/90 space-y-1.5">
+                      <div className="flex items-center gap-1.5 font-bold text-amber-300">
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Instant Single-Step Authorization</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300 leading-relaxed">
+                        Enter the emergency passkey issued by the Administrator. You will be automatically authenticated into your authorized account with full permissions.
+                      </p>
+                      <div className="pt-1 flex items-center justify-between">
+                        <span className="text-[10px] text-slate-400">Prashant Master Passkey:</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPasskeyInput('789-456');
+                            setError(null);
+                          }}
+                          className="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-[10px] font-mono font-bold cursor-pointer transition-colors"
+                        >
+                          Use 789-456
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  /* Standard Password Login Mode */
+                  <>
+                    {/* Login ID Input */}
+                    <div className="space-y-1.5 text-left">
+                      <label className="block text-xs font-semibold text-slate-300">
+                        Login ID / Username / Email:
+                      </label>
+                      <div className="relative group/input">
+                        <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors group-focus-within/input:text-cyan-400" />
+                        <input
+                          autoFocus
+                          type="text"
+                          value={loginId}
+                          onChange={(e) => {
+                            setLoginId(e.target.value);
+                            setError(null);
+                          }}
+                          placeholder="Enter username (e.g. Prashant)..."
+                          required
+                          className="w-full bg-[#050811]/90 border border-white/10 rounded-xl pl-10 pr-3.5 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 font-mono transition-all"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Password Input */}
+                    <div className="space-y-1.5 text-left">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs font-semibold text-slate-300">
+                          Security Password or Passkey:
+                        </label>
+                        <span className="text-[10px] text-cyan-400 font-mono">
+                          Passkeys supported (e.g. 789-456)
+                        </span>
+                      </div>
+                      <div className="relative group/input">
+                        <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors group-focus-within/input:text-cyan-400" />
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          value={password}
+                          onChange={(e) => {
+                            setPassword(e.target.value);
+                            setError(null);
+                          }}
+                          placeholder="Enter password or one-time passkey..."
+                          required
+                          className="w-full bg-[#050811]/90 border border-white/10 rounded-xl pl-10 pr-10 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 font-mono transition-all"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
+                          tabIndex={-1}
+                        >
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 {/* Error Alert */}
                 {error && (
@@ -226,8 +339,20 @@ export const LoginScreen: React.FC = () => {
                   disabled={isLoading}
                   className="relative w-full group/btn overflow-hidden rounded-xl p-[1px] focus:outline-none cursor-pointer active:scale-[0.99] transition-transform disabled:opacity-50 mt-2"
                 >
-                  <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 via-sky-500 to-indigo-600 rounded-xl transition-all duration-300 group-hover/btn:opacity-90" />
-                  <div className="relative py-3.5 px-4 bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-white shadow-lg shadow-cyan-900/30">
+                  <div
+                    className={`absolute inset-0 rounded-xl transition-all duration-300 group-hover/btn:opacity-90 ${
+                      loginMode === 'passkey'
+                        ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600'
+                        : 'bg-gradient-to-r from-cyan-500 via-sky-500 to-indigo-600'
+                    }`}
+                  />
+                  <div
+                    className={`relative py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-white shadow-lg ${
+                      loginMode === 'passkey'
+                        ? 'bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 shadow-amber-900/30'
+                        : 'bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 shadow-cyan-900/30'
+                    }`}
+                  >
                     {isLoading ? (
                       <span className="inline-flex items-center gap-2">
                         <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -235,8 +360,8 @@ export const LoginScreen: React.FC = () => {
                       </span>
                     ) : (
                       <>
-                        <Unlock className="w-4 h-4" />
-                        <span>UNLOCK & ENTER ERP</span>
+                        {loginMode === 'passkey' ? <Key className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+                        <span>{loginMode === 'passkey' ? 'VERIFY PASSKEY & ENTER ERP' : 'UNLOCK & ENTER ERP'}</span>
                         <ArrowRight className="w-4 h-4 group-hover/btn:translate-x-0.5 transition-transform" />
                       </>
                     )}

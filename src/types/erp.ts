@@ -26,6 +26,8 @@ export interface UserPermissions {
   canOverrideLock?: boolean;
   canVerifyInward?: boolean; // Can Verify & Tick Physical Raw Material Inward Receipts
   password?: string;
+  resetPin?: string;
+  resetPinExpiresAt?: number;
   [key: string]: any;
 }
 
@@ -35,6 +37,8 @@ export interface User {
   email: string;
   role: UserRole;
   password?: string;
+  resetPin?: string;
+  resetPinExpiresAt?: number;
   avatar?: string;
   department: string;
   vendorId?: string;

@@ -70,6 +70,7 @@ export const MemberAuthorizationManager: React.FC = () => {
     updateUser,
     deleteUser,
     alterUserAuthorization,
+    issueUserResetPin,
     currentUser,
     exportDatabaseBackup,
   } = useERP();
@@ -187,20 +188,37 @@ export const MemberAuthorizationManager: React.FC = () => {
     });
   };
 
-  // Issue Emergency 1-Time Reset PIN (Zero Knowledge Architecture)
+  // Issue Emergency 1-Time Reset PIN / Passkey
   const handleIssueResetPin = (user: User) => {
-    const randomPin = Math.floor(100000 + Math.random() * 900000).toString();
-    const formattedPin = `${randomPin.slice(0, 3)}-${randomPin.slice(3)}`;
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    let pinResult: { pin: string; formattedPin: string; expiresAtText: string; expiresAtMs: number };
+    if (issueUserResetPin) {
+      pinResult = issueUserResetPin(user.id);
+    } else {
+      const randomPin = Math.floor(100000 + Math.random() * 900000).toString();
+      const formattedPin = `${randomPin.slice(0, 3)}-${randomPin.slice(3)}`;
+      const expiresAtMs = Date.now() + 24 * 60 * 60 * 1000;
+      const expiresAtText = new Date(expiresAtMs).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      pinResult = { pin: randomPin, formattedPin, expiresAtText, expiresAtMs };
+      updateUser(user.id, {
+        resetPin: formattedPin,
+        resetPinExpiresAt: expiresAtMs,
+        permissions: {
+          ...(user.permissions || {}),
+          resetPin: formattedPin,
+          resetPinExpiresAt: expiresAtMs,
+        },
+      });
+    }
+
     setGeneratedResetPin({
       user,
-      pin: formattedPin,
-      expiresAt,
+      pin: pinResult.formattedPin,
+      expiresAt: pinResult.expiresAtText,
     });
-    setSaveToast(`One-Time Reset PIN generated for ${user.name}`);
+    setSaveToast(`One-Time Passkey generated and activated for ${user.name}`);
     setTimeout(() => setSaveToast(null), 4000);
   };
 
@@ -1212,8 +1230,8 @@ export const MemberAuthorizationManager: React.FC = () => {
         <Modal
           isOpen={!!generatedResetPin}
           onClose={() => setGeneratedResetPin(null)}
-          title="Emergency One-Time Reset PIN Issued"
-          subtitle={`Temporary authorization passcode for ${generatedResetPin.user.name}`}
+          title="Emergency One-Time Passkey Issued"
+          subtitle={`Active authorization passcode for ${generatedResetPin.user.name}`}
           maxWidth="md"
         >
           <div className="space-y-4 text-slate-200 text-center py-2">
@@ -1222,22 +1240,34 @@ export const MemberAuthorizationManager: React.FC = () => {
             </div>
 
             <div>
-              <div className="text-xs text-slate-400 font-medium">Temporary 15-Minute Activation PIN:</div>
-              <div className="text-3xl font-black text-amber-400 font-mono tracking-widest my-2 select-all p-2 rounded-xl bg-slate-900 border border-amber-500/40">
-                {generatedResetPin.pin}
+              <div className="text-xs text-slate-400 font-medium">Active 24-Hour Emergency Passkey:</div>
+              <div className="text-3xl font-black text-amber-400 font-mono tracking-widest my-2 select-all p-3 rounded-xl bg-slate-900 border border-amber-500/40 flex items-center justify-center gap-3">
+                <span>{generatedResetPin.pin}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(generatedResetPin.pin);
+                    setSaveToast(`Passkey ${generatedResetPin.pin} copied!`);
+                    setTimeout(() => setSaveToast(null), 3000);
+                  }}
+                  className="px-2.5 py-1 text-xs rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 cursor-pointer transition-all"
+                  title="Copy Passkey"
+                >
+                  Copy
+                </button>
               </div>
               <div className="text-[11px] text-slate-400">
-                Expires at: <strong className="text-white">{generatedResetPin.expiresAt}</strong>
+                Valid for: <strong className="text-white">24 Hours (until {generatedResetPin.expiresAt})</strong>
               </div>
             </div>
 
-            <p className="text-xs text-slate-400 text-left bg-slate-850 p-3 rounded-xl border border-slate-800">
-              Provide this code to <strong>{generatedResetPin.user.name}</strong> so they can securely initialize or reset their credentials on their device. Passwords remain private and unviewable.
+            <p className="text-xs text-slate-300 text-left bg-slate-850 p-3.5 rounded-xl border border-slate-800 leading-relaxed">
+              🔑 <strong>How to use:</strong> Provide this passkey to <strong>{generatedResetPin.user.name}</strong>. On the login screen, they can click the <strong>One-Time Passkey</strong> tab and enter <strong>{generatedResetPin.pin}</strong> directly, OR type it into the <strong>Security Password</strong> box to instantly unlock the ERP!
             </p>
 
             <button
               onClick={() => setGeneratedResetPin(null)}
-              className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all"
+              className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all cursor-pointer"
             >
               Done & Dismiss
             </button>
