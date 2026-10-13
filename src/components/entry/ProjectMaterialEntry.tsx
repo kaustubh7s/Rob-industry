@@ -2118,7 +2118,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                   setManualSrNo(e.target.value);
                 }}
                 placeholder={String(rows.length + 1)}
-                className="w-full bg-slate-800 border border-emerald-500/50 rounded-lg px-2 py-1.5 text-xs font-mono font-bold text-emerald-300 text-center focus:bg-slate-900 focus:outline-none focus:border-emerald-400 shadow-2xs"
+                className="w-full bg-slate-800 border border-emerald-500/50 rounded-lg px-2 py-1.5 text-xs font-mono font-black text-emerald-300 text-center focus:bg-slate-900 focus:outline-none focus:border-emerald-400 shadow-2xs no-spin [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 title="Manual Serial Number for material item"
               />
             </div>
@@ -2253,7 +2253,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                       quickUnitRef.current?.focus();
                     }
                   }}
-                  className="w-1/2 bg-transparent px-2 py-1.5 text-xs font-mono font-black text-white text-center focus:outline-none"
+                  className="w-1/2 bg-transparent px-2 py-1.5 text-xs font-mono font-black text-white text-center focus:outline-none no-spin [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   placeholder="Qty"
                 />
                 <div className="h-4 w-px bg-slate-700" />
@@ -2573,19 +2573,19 @@ export const ProjectMaterialEntry: React.FC = () => {
                 {/* 3. Date */}
                 <th className="p-2.5 min-w-[100px] whitespace-nowrap">Date</th>
                 {/* 4. PO No */}
-                <th className="p-2.5 min-w-[90px] whitespace-nowrap">PO No</th>
+                <th className="py-2.5 pl-2.5 pr-0.5 min-w-[85px] whitespace-nowrap">PO No</th>
                 {/* 5. Sr No */}
-                <th className="p-2.5 w-12 text-center whitespace-nowrap">Sr No</th>
+                <th className="py-2.5 px-0.5 w-10 text-center whitespace-nowrap font-black">Sr No</th>
                 {/* 6. Material Type */}
                 <th className="p-2.5 min-w-[130px] whitespace-nowrap">Material Type</th>
                 {/* 7. Size Specification */}
-                <th className="p-2.5 min-w-[160px] whitespace-nowrap">Size Specification</th>
+                <th className="p-2.5 min-w-[260px] whitespace-nowrap">Size Specification</th>
                 {/* 8. Qty */}
-                <th className="p-2.5 min-w-[90px] text-center whitespace-nowrap">Qty</th>
+                <th className="p-2.5 min-w-[85px] text-center whitespace-nowrap">Qty</th>
                 {/* 9. Description */}
-                <th className="p-2.5 min-w-[200px] whitespace-nowrap">Description</th>
+                <th className="p-2.5 min-w-[180px] whitespace-nowrap">Description</th>
                 {/* 10. Ordered By (NON-EDITABLE) */}
-                <th className="p-2.5 min-w-[120px] whitespace-nowrap">Ordered By</th>
+                <th className="p-2.5 w-20 text-center whitespace-nowrap">Ordered By</th>
                 {/* Actions */}
                 <th className="p-2.5 w-20 text-center whitespace-nowrap">Actions</th>
               </tr>
@@ -2655,7 +2655,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                       </td>
 
                       {/* 3. PO No */}
-                      <td className="p-2">
+                      <td className="py-2 pl-2 pr-0.5">
                         <input
                           type="text"
                           value={row.poNo}
@@ -2665,13 +2665,13 @@ export const ProjectMaterialEntry: React.FC = () => {
                       </td>
 
                       {/* 4. Sr No */}
-                      <td className="p-2 text-center">
+                      <td className="py-2 px-0.5 text-center">
                         <input
                           type="number"
                           min="1"
                           value={row.srNo || ''}
                           onChange={(e) => handleCellChange(row.id, 'srNo', parseInt(e.target.value, 10) || 1)}
-                          className="w-12 text-center bg-transparent hover:bg-white focus:bg-white px-1 py-1 rounded border border-transparent hover:border-slate-300 focus:border-slate-900 text-xs font-mono font-bold text-slate-700 transition-colors"
+                          className="w-10 text-center bg-transparent hover:bg-white focus:bg-white px-0.5 py-1 rounded border border-transparent hover:border-slate-300 focus:border-slate-900 text-xs font-mono font-black text-slate-900 transition-colors no-spin [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
                       </td>
 
@@ -2691,13 +2691,14 @@ export const ProjectMaterialEntry: React.FC = () => {
                       </td>
 
                       {/* 6. Size Specification */}
-                      <td className="p-2">
+                      <td className="p-2 min-w-[260px]">
                         <input
                           type="text"
                           list="size-suggestions"
                           value={row.sizeSpecs}
                           onChange={(e) => handleCellChange(row.id, 'sizeSpecs', e.target.value)}
-                          className="w-full bg-transparent px-2 py-1 rounded border border-transparent hover:border-slate-300 focus:border-slate-900 focus:bg-white text-xs font-mono font-bold text-blue-700 transition-colors"
+                          className="w-full min-w-[250px] bg-transparent px-2 py-1 rounded border border-transparent hover:border-slate-300 focus:border-slate-900 focus:bg-white text-xs font-mono font-bold text-blue-700 transition-colors whitespace-nowrap"
+                          placeholder="e.g. 80 x 6 x 485"
                         />
                       </td>
 
@@ -2710,7 +2711,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                             step="any"
                             value={row.quantity}
                             onChange={(e) => handleCellChange(row.id, 'quantity', parseFloat(e.target.value) || 0)}
-                            className="w-14 text-center bg-slate-100 hover:bg-white focus:bg-white px-1.5 py-1 rounded border border-slate-200 text-xs font-mono font-black text-slate-900 shadow-2xs"
+                            className="w-14 text-center bg-slate-100 hover:bg-white focus:bg-white px-1.5 py-1 rounded border border-slate-200 text-xs font-mono font-black text-slate-900 shadow-2xs no-spin [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           />
                           <span className="text-[10px] text-slate-500 font-semibold">{row.unit || 'Nos'}</span>
                         </div>
@@ -2728,11 +2729,23 @@ export const ProjectMaterialEntry: React.FC = () => {
                       </td>
 
                       {/* 10. Ordered By (AUTO-FILLED, READ-ONLY, LOCKED) */}
-                      <td className="p-2">
-                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-black" title="Auto-filled from logged-in user (Read-only)">
-                          <Lock className="w-3 h-3 text-emerald-600" />
-                          <span>{row.orderedBy || activeOrderedBy}</span>
-                        </div>
+                      <td className="p-2 text-center whitespace-nowrap">
+                        {(() => {
+                          const userStr = (row.orderedBy || activeOrderedBy || 'Admin').trim();
+                          const initial = (userStr[0] || 'A').toUpperCase();
+                          const shortName = userStr.split(' ')[0] || userStr;
+                          return (
+                            <div
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-black cursor-help"
+                              title={`Ordered by: ${userStr} (Auto-filled, Read-only)`}
+                            >
+                              <span className="w-4 h-4 rounded-full bg-emerald-200 text-emerald-900 text-[9px] font-black flex items-center justify-center shrink-0">
+                                {initial}
+                              </span>
+                              <span className="max-w-[50px] truncate">{shortName}</span>
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       {/* Actions */}

@@ -186,3 +186,14 @@ html:not(.dark) ::-webkit-scrollbar-thumb {
     page-break-after: always;
   }
 }
+
+/* Remove number input spin buttons / arrow toggles */
+.no-spin::-webkit-inner-spin-button,
+.no-spin::-webkit-outer-spin-button {
+  -webkit-appearance: none !important;
+  margin: 0 !important;
+}
+.no-spin {
+  -moz-appearance: textfield !important;
+  appearance: textfield !important;
+}
