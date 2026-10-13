@@ -382,20 +382,36 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const parsed: User[] = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const existingIds = new Set(parsed.map((u) => u.id));
-          const merged = [...parsed];
+          const cleaned = parsed.filter(
+            (u) =>
+              u.id !== 'usr-admin' &&
+              u.email?.toLowerCase() !== 'admin@rsbequipments.com' &&
+              u.name?.toLowerCase() !== 'administrator'
+          );
+          const existingIds = new Set(cleaned.map((u) => u.id));
+          const merged = [...cleaned];
           for (const initU of INITIAL_USERS) {
-            if (!existingIds.has(initU.id)) {
+            if (
+              !existingIds.has(initU.id) &&
+              initU.id !== 'usr-admin' &&
+              initU.email?.toLowerCase() !== 'admin@rsbequipments.com'
+            ) {
               merged.push(initU);
             }
           }
+          localStorage.setItem(LOCAL_STORAGE_KEY + '_users', JSON.stringify(merged));
           return merged;
         }
       } catch (e) {
         console.error(e);
       }
     }
-    return INITIAL_USERS;
+    return INITIAL_USERS.filter(
+      (u) =>
+        u.id !== 'usr-admin' &&
+        u.email?.toLowerCase() !== 'admin@rsbequipments.com' &&
+        u.name?.toLowerCase() !== 'administrator'
+    );
   });
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
@@ -424,12 +440,23 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentUser, setCurrentUser] = useState<User>(() => {
     try {
       const sessionUser = sessionStorage.getItem(AUTH_SESSION_KEY) || localStorage.getItem(AUTH_SESSION_KEY);
-      if (sessionUser) {
+      if (sessionUser && sessionUser !== 'usr-admin' && sessionUser !== 'admin@rsbequipments.com') {
         const savedUsersRaw = localStorage.getItem(LOCAL_STORAGE_KEY + '_users');
         const userPool: User[] = savedUsersRaw ? JSON.parse(savedUsersRaw) : INITIAL_USERS;
+        const validPool = userPool.filter(
+          (u) =>
+            u.id !== 'usr-admin' &&
+            u.email?.toLowerCase() !== 'admin@rsbequipments.com' &&
+            u.name?.toLowerCase() !== 'administrator'
+        );
         const found =
-          userPool.find((u) => u.id === sessionUser || u.role === sessionUser || u.email === sessionUser) ||
-          INITIAL_USERS.find((u) => u.id === sessionUser || u.role === sessionUser || u.email === sessionUser);
+          validPool.find((u) => u.id === sessionUser || u.role === sessionUser || u.email === sessionUser) ||
+          INITIAL_USERS.find(
+            (u) =>
+              (u.id === sessionUser || u.role === sessionUser || u.email === sessionUser) &&
+              u.id !== 'usr-admin' &&
+              u.email?.toLowerCase() !== 'admin@rsbequipments.com'
+          );
         if (found) return found;
       }
     } catch {
@@ -1241,10 +1268,19 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               if (u.email) remoteMap.set(u.email.toLowerCase(), u);
             });
 
-            const mergedUsers: User[] = [...remoteUsers];
+            const mergedUsers: User[] = [...remoteUsers].filter(
+              (u) =>
+                u.id !== 'usr-admin' &&
+                u.email?.toLowerCase() !== 'admin@rsbequipments.com' &&
+                u.name?.toLowerCase() !== 'administrator'
+            );
             for (const seedU of INITIAL_USERS) {
               const matched = remoteMap.get(seedU.id) || (seedU.email ? remoteMap.get(seedU.email.toLowerCase()) : undefined);
-              if (!matched) {
+              if (
+                !matched &&
+                seedU.id !== 'usr-admin' &&
+                seedU.email?.toLowerCase() !== 'admin@rsbequipments.com'
+              ) {
                 mergedUsers.push(seedU);
               }
             }
@@ -2094,8 +2130,13 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     let targetUser: User | undefined;
 
-    // Search active users list first, then fallback to INITIAL_USERS
-    const searchPool = users.length > 0 ? users : INITIAL_USERS;
+    // Search active users list first, then fallback to INITIAL_USERS (excluding deleted Administrator)
+    const searchPool = (users.length > 0 ? users : INITIAL_USERS).filter(
+      (u) =>
+        u.id !== 'usr-admin' &&
+        u.email?.toLowerCase() !== 'admin@rsbequipments.com' &&
+        u.name?.toLowerCase() !== 'administrator'
+    );
 
     // Explicit Amit login recognition (id: amit, pass: amit@123)
     if (trimmedId === 'amit' || trimmedId === 'usr-amit' || trimmedId === 'amit@rsbequipments.com') {

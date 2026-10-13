@@ -877,7 +877,9 @@ export const pullAllDataFromSupabase = async (): Promise<{
     }));
 
     // 6. Users
-    let parsedUsers: User[] = (usrData || []).map((u: any) => ({
+    let parsedUsers: User[] = (usrData || [])
+      .filter((u: any) => u.id !== 'usr-admin' && u.email?.toLowerCase() !== 'admin@rsbequipments.com' && u.name?.toLowerCase() !== 'administrator')
+      .map((u: any) => ({
       id: u.id,
       name: u.name,
       email: u.email,

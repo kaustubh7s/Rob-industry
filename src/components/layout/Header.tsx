@@ -397,7 +397,7 @@ export const Header: React.FC<HeaderProps> = ({
                     ? 'Plant Head'
                     : currentUser.authLevel
                     ? currentUser.authLevel.replace(/^Tier \d+:\s*/i, '')
-                    : 'Administrator'}
+                    : 'Super Admin'}
                 </span>
               </div>
 
@@ -509,7 +509,7 @@ export const Header: React.FC<HeaderProps> = ({
       <Modal
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
-        title="👤 Administrator Profile"
+        title="👤 Super Admin Profile"
         subtitle="Current user identity, governance level, and system access rights"
         maxWidth="md"
       >

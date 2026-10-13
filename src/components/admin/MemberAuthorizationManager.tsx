@@ -387,7 +387,7 @@ export const MemberAuthorizationManager: React.FC = () => {
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Logged in as <strong className="text-purple-300">Super Admin {currentUser?.name || 'Administrator'}</strong>. Full username, password & authorization control.
+                  Logged in as <strong className="text-purple-300">Super Admin {currentUser?.name || 'Amit'}</strong>. Full username, password & authorization control.
                 </p>
               </div>
             </div>
