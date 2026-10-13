@@ -37,7 +37,7 @@ export const LoginScreen: React.FC = () => {
       const trimmedPass = password.trim();
 
       if (!trimmedId && !trimmedPass) {
-        setError('Please enter your Login ID and Password, or a One-Time Passkey.');
+        setError('Please enter your Login ID and Security Password.');
         setIsLoading(false);
         return;
       }
@@ -45,7 +45,7 @@ export const LoginScreen: React.FC = () => {
       // Seamlessly handles username+password, username+passkey, or passkey directly in either field
       const result = login(trimmedId, trimmedPass);
       if (!result.success) {
-        setError(result.error || 'Invalid credentials or passkey. Access Denied.');
+        setError(result.error || 'Invalid Login ID or Security Password. Access Denied.');
         setIsLoading(false);
       }
     } catch (err: any) {
@@ -195,14 +195,9 @@ export const LoginScreen: React.FC = () => {
 
                 {/* Password Input */}
                 <div className="space-y-1.5 text-left">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-xs font-semibold text-slate-300">
-                      Security Password or Passkey:
-                    </label>
-                    <span className="text-[10px] text-cyan-400 font-mono font-medium">
-                      Passkeys supported (e.g. 789-456)
-                    </span>
-                  </div>
+                  <label className="block text-xs font-semibold text-slate-300">
+                    Security Password:
+                  </label>
                   <div className="relative group/input">
                     <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors group-focus-within/input:text-cyan-400" />
                     <input
@@ -212,7 +207,7 @@ export const LoginScreen: React.FC = () => {
                         setPassword(e.target.value);
                         setError(null);
                       }}
-                      placeholder="Enter password or one-time passkey..."
+                      placeholder="Enter password..."
                       className="w-full bg-[#050811]/90 border border-white/10 rounded-xl pl-10 pr-10 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 font-mono transition-all"
                     />
                     <button
