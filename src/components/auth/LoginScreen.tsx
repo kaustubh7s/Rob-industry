@@ -4,6 +4,7 @@ import {
   Unlock,
   KeyRound,
   AlertCircle,
+  AlertTriangle,
   Eye,
   EyeOff,
   ArrowRight,
@@ -16,7 +17,7 @@ import {
 import { useERP } from '../../context/ERPContext';
 
 export const LoginScreen: React.FC = () => {
-  const { login } = useERP();
+  const { login, isMaintenanceMode } = useERP();
 
   const [loginId, setLoginId] = useState<string>('');
   const [password, setPassword] = useState<string>('');
@@ -141,6 +142,21 @@ export const LoginScreen: React.FC = () => {
                   <span>Authorized Personnel Access Only</span>
                 </div>
               </div>
+
+              {/* Maintenance Mode Alert Banner */}
+              {isMaintenanceMode && (
+                <div className="p-4 rounded-2xl bg-amber-500/15 border-2 border-amber-500/60 text-amber-200 shadow-xl shadow-amber-950/40 text-center animate-pulse space-y-1">
+                  <div className="flex items-center justify-center gap-2">
+                    <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+                    <span className="text-base font-black tracking-widest text-amber-300 uppercase">
+                      Under Maintance
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-amber-300/80 font-medium">
+                    The ERP system is temporarily offline for maintenance. Access is restricted.
+                  </p>
+                </div>
+              )}
 
               {/* Login Form */}
               <form onSubmit={handleSubmit} className="space-y-4 pt-1">

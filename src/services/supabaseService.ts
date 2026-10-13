@@ -882,7 +882,7 @@ export const pullAllDataFromSupabase = async (): Promise<{
       name: u.name,
       email: u.email,
       role: u.role,
-      password: u.role === 'super_admin' ? 'Admin@amit' : u.id === 'usr-rahul' || u.name === 'Rahul' ? 'Rahul@123' : u.role === 'kaustubh' || u.role === 'admin' ? 'admin@123' : u.role === 'store_incharge' ? 'chandramani@123' : 'Rahul@123',
+      password: u.id === 'usr-amit' || u.name === 'Amit' ? 'amit@123' : u.role === 'super_admin' ? 'Admin@amit' : u.id === 'usr-rahul' || u.name === 'Rahul' ? 'Rahul@123' : u.role === 'kaustubh' || u.role === 'admin' ? 'admin@123' : u.role === 'store_incharge' ? 'chandramani@123' : 'Rahul@123',
       department: u.department || (u.role === 'store_incharge' ? 'Stores & Material Inward Receiving' : 'Plant Administration & Procurement'),
       authLevel: u.auth_level || (u.role === 'super_admin' ? 'Tier 1: Super Admin' : u.role === 'kaustubh' || u.role === 'admin' || u.name === 'Rahul' ? 'Tier 2: Plant Head / Admin' : u.role === 'store_incharge' ? 'Tier 3: Department Manager' : 'Tier 4: Data Entry Operator'),
       status: u.status || 'Active',
@@ -1763,5 +1763,66 @@ export const dbFactoryResetDatabase = async (): Promise<{ success: boolean; mess
     return { success: false, message: err?.message || 'Database purge error' };
   }
 };
+
+/**
+ * Fetch global system maintenance mode status from Supabase
+ */
+export const getRemoteMaintenanceMode = async (): Promise<boolean | null> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase
+      .from('workbook_activity_logs')
+      .select('action, details')
+      .eq('id', 'system-maintenance-mode')
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return data.action === 'MAINTENANCE_ENABLED' || data.details === 'true';
+  } catch (err) {
+    console.warn('Error fetching maintenance mode status from Supabase:', err);
+    return null;
+  }
+};
+
+/**
+ * Persist global system maintenance mode status to Supabase and broadcast
+ */
+export const setRemoteMaintenanceMode = async (enabled: boolean): Promise<boolean> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return false;
+  try {
+    const { error } = await supabase
+      .from('workbook_activity_logs')
+      .upsert({
+        id: 'system-maintenance-mode',
+        action: enabled ? 'MAINTENANCE_ENABLED' : 'MAINTENANCE_DISABLED',
+        user_name: 'Kaustubh Admin',
+        user_role: 'kaustubh',
+        details: enabled ? 'true' : 'false',
+        timestamp: new Date().toISOString(),
+      });
+
+    // Realtime broadcast to all clients
+    try {
+      const channel = supabase.channel('rsb-system-broadcast');
+      await channel.subscribe();
+      await channel.send({
+        type: 'broadcast',
+        event: 'MAINTENANCE_MODE_CHANGED',
+        payload: {
+          enabled,
+          timestamp: Date.now(),
+        },
+      });
+    } catch {}
+
+    return !error;
+  } catch (err) {
+    console.error('Error saving maintenance mode status to Supabase:', err);
+    return false;
+  }
+};
+
 
 

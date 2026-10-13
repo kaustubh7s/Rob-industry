@@ -70,6 +70,9 @@ export const Header: React.FC<HeaderProps> = ({
     activeTab,
     setActiveTab,
     users,
+    isMaintenanceMode,
+    toggleMaintenanceMode,
+    isKaustubhAdmin,
   } = useERP();
 
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -248,6 +251,32 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="font-extrabold tracking-wide">TOUR</span>
             <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping shrink-0" />
           </button>
+
+          {/* Strictly Kaustubh Admin Level Only: Maintenance Mode Button */}
+          {isKaustubhAdmin && (
+            <button
+              type="button"
+              onClick={async () => {
+                const nextState = !isMaintenanceMode;
+                const confirmed = window.confirm(
+                  nextState
+                    ? '⚠️ ACTIVATE SYSTEM MAINTENANCE MODE?\n\n• When activated, NO ONE will be able to login\n• Login screen will display "Under Maintance"\n• All active non-admin users will be signed out\n\nDo you want to proceed?'
+                    : 'Deactivate Maintenance Mode?\n\nUsers will be able to log in normally again.'
+                );
+                if (!confirmed) return;
+                await toggleMaintenanceMode(nextState);
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-xs border active:scale-95 ${
+                isMaintenanceMode
+                  ? 'bg-rose-600 hover:bg-rose-700 text-white border-rose-400 ring-2 ring-rose-400/50 animate-pulse'
+                  : 'bg-amber-950/80 hover:bg-amber-900 border-amber-600/50 text-amber-300'
+              }`}
+              title="Strictly Kaustubh Admin Level Only: Toggle Global Maintenance Mode"
+            >
+              <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+              <span>{isMaintenanceMode ? 'MAINTENANCE: ON' : 'MAINTENANCE MODE'}</span>
+            </button>
+          )}
         </div>
 
         {/* ========================================================================= */}

@@ -15,6 +15,7 @@ import {
   Trash2,
   UserCheck,
   ShieldCheck,
+  ShieldAlert,
   Globe,
   Sliders,
   Terminal,
@@ -33,6 +34,8 @@ export const SuperAdminPanel: React.FC = () => {
     resetToDemoData,
     exportDatabaseBackup,
     importDatabaseBackup,
+    isMaintenanceMode,
+    toggleMaintenanceMode,
   } = useERP();
 
   const [activeAdminTab, setActiveAdminTab] = useState<'security_matrix' | 'company' | 'backup' | 'audit' | 'templates'>('security_matrix');
@@ -84,6 +87,29 @@ export const SuperAdminPanel: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          {isKaustubhAdmin && (
+            <button
+              onClick={async () => {
+                const nextState = !isMaintenanceMode;
+                const confirmed = window.confirm(
+                  nextState
+                    ? '⚠️ ACTIVATE SYSTEM MAINTENANCE MODE?\n\n• When activated, NO ONE will be able to login\n• Login screen will display "Under Maintance"\n• All active non-admin users will be signed out\n\nDo you want to proceed?'
+                    : 'Deactivate Maintenance Mode?\n\nUsers will be able to log in normally again.'
+                );
+                if (!confirmed) return;
+                await toggleMaintenanceMode(nextState);
+              }}
+              className={`flex items-center gap-1.5 px-4 py-2 text-xs font-black rounded-xl shadow-lg transition-all active:scale-95 cursor-pointer ${
+                isMaintenanceMode
+                  ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-600/40 ring-2 ring-rose-400 animate-pulse'
+                  : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/50'
+              }`}
+            >
+              <ShieldAlert className="w-4 h-4 text-amber-400" />
+              <span>{isMaintenanceMode ? 'Maintenance Mode: ACTIVE' : 'Maintenance Mode'}</span>
+            </button>
+          )}
+
           <button
             onClick={exportDatabaseBackup}
             className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-extrabold rounded-xl shadow-lg shadow-purple-600/30 transition-all active:scale-95"

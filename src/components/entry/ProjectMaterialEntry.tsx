@@ -35,6 +35,7 @@ import {
   PlusCircle,
   Eye,
   ShieldCheck,
+  ShieldAlert,
   Globe,
   ShoppingCart,
   RefreshCw,
@@ -74,6 +75,25 @@ export interface EntryRow {
   projectName?: string;
   isEditing?: boolean;
 }
+
+/**
+ * Sorts materials strictly in ascending order of Sr. No. (1, 2, 3...)
+ * Material Entry workstation never groups materials project-wise.
+ */
+export const sortRowsByAscendingSrNo = <T extends { srNo?: any }>(rowList: T[]): T[] => {
+  return [...rowList].sort((a, b) => {
+    const parseSr = (val: any) => {
+      if (val === undefined || val === null || val === '') return 99999999;
+      const clean = String(val).trim();
+      const num = parseFloat(clean.replace(/[^0-9.]/g, ''));
+      return isNaN(num) ? 99999999 : num;
+    };
+    const numA = parseSr(a.srNo);
+    const numB = parseSr(b.srNo);
+    if (numA !== numB) return numA - numB;
+    return String(a.srNo || '').localeCompare(String(b.srNo || ''), undefined, { numeric: true });
+  });
+};
 
 const MACHINE_SUGGESTIONS: string[] = [];
 
@@ -132,6 +152,8 @@ export const ProjectMaterialEntry: React.FC = () => {
     orders,
     materials,
     addMaterial,
+    isMaintenanceMode,
+    toggleMaintenanceMode,
   } = useERP();
 
   const isStoreIncharge = currentUser?.role === 'store_incharge';
@@ -361,11 +383,11 @@ export const ProjectMaterialEntry: React.FC = () => {
     );
   }, [customVendors, vendors, projects, projectRequirements]);
 
-  // Seed Initial 10-column table directly with ALL materials across all projects from context/DB
+  // Seed Initial 10-column table directly with ALL materials across all projects from context/DB (Ordered strictly by ascending Sr. No.)
   const [rows, setRows] = useState<EntryRow[]>(() => {
     const tombstones = getDeletedRequirementTombstones();
     const allMats = (projectRequirements || []).filter((m) => Boolean(m && m.id && !tombstones.has(m.id)));
-    return allMats.map((m, idx) => ({
+    const mapped = allMats.map((m, idx) => ({
       id: m.id,
       machineName: m.machineName || m.machineType || '',
       date: formatDate(m.poDate || m.date || getTodayFormatted()),
@@ -380,6 +402,7 @@ export const ProjectMaterialEntry: React.FC = () => {
       orderedBy: m.orderedBy || 'Amit',
       projectName: m.projectName || '',
     }));
+    return sortRowsByAscendingSrNo(mapped);
   });
 
 
@@ -518,14 +541,15 @@ export const ProjectMaterialEntry: React.FC = () => {
   }, [rows, selectedProjectName]);
 
 
-  // Normalize Sr Numbers (Preserves user-defined manual Sr. No without renumbering or sorting)
+  // Normalize Sr Numbers & sort strictly in ascending order of Sr. No. (1, 2, 3...)
   const normalizeSrNumbers = (rowList: EntryRow[]) => {
-    return rowList.map((r, index) => ({
+    const normalized = rowList.map((r, index) => ({
       ...r,
       srNo: (r.srNo !== undefined && r.srNo !== null && String(r.srNo).trim() !== '')
         ? r.srNo
         : index + 1,
     }));
+    return sortRowsByAscendingSrNo(normalized);
   };
 
   // Sync selectedProjectName when projects list updates: ensure selected project still exists
@@ -612,9 +636,11 @@ export const ProjectMaterialEntry: React.FC = () => {
       projectName: m.projectName || '',
     }));
 
+    const sortedMasterRows = sortRowsByAscendingSrNo(mappedMasterRows);
+
     setRows((prev) => {
       if (isUserManuallyEditingRef.current) return prev;
-      return mappedMasterRows;
+      return sortedMasterRows;
     });
   }, [projectRequirements, selectedProjectName, projects, activeOrderedBy]);
 
@@ -1527,16 +1553,16 @@ export const ProjectMaterialEntry: React.FC = () => {
       sheetName: batchInfo.sheetName,
     });
 
-    setRows(newEntryRows);
+    setRows(sortRowsByAscendingSrNo(newEntryRows));
     setIsImportPreviewOpen(false);
     confetti({ particleCount: 90, spread: 70, origin: { y: 0.6 } });
     setSaveToast(`🎉 Successfully imported and persisted ${newEntryRows.length} items from sheet "${batchInfo.sheetName}"!`);
     setTimeout(() => setSaveToast(null), 3500);
   };
 
-  // Filtered rows for table (Searches across all projects)
+  // Filtered rows for table (Arranged strictly in ascending order of Sr. No. - NOT project-wise)
   const filteredRows = useMemo(() => {
-    return rows.filter((r) => {
+    const list = rows.filter((r) => {
       const matchSearch =
         searchTerm === '' ||
         (r.projectName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -1550,6 +1576,8 @@ export const ProjectMaterialEntry: React.FC = () => {
       const matchMat = filterMaterialType === 'ALL' || r.materialType === filterMaterialType;
       return matchSearch && matchMat;
     });
+
+    return sortRowsByAscendingSrNo(list);
   }, [rows, searchTerm, filterMaterialType]);
 
   const handleSwitchView = (mode: 'entry' | 'projects' | 'procurement') => {
@@ -1776,6 +1804,38 @@ export const ProjectMaterialEntry: React.FC = () => {
             <Zap className="w-4 h-4 text-amber-300" />
             <span>⚡ Load Machine BOM</span>
           </button>
+
+          {/* Strictly Kaustubh Admin Level Only: Maintenance Mode Button */}
+          {isKaustubhAdmin && (
+            <button
+              type="button"
+              onClick={async () => {
+                const nextState = !isMaintenanceMode;
+                const confirmed = window.confirm(
+                  nextState
+                    ? '⚠️ ACTIVATE SYSTEM MAINTENANCE MODE?\n\n• When activated, NO ONE will be able to login\n• Login screen will display "Under Maintance"\n• All active non-admin users will be signed out\n\nDo you want to proceed?'
+                    : 'Deactivate Maintenance Mode?\n\nUsers will be able to log in normally again.'
+                );
+                if (!confirmed) return;
+                await toggleMaintenanceMode(nextState);
+                setSaveToast(
+                  nextState
+                    ? '🚨 Maintenance Mode ACTIVATED! System login locked ("Under Maintance").'
+                    : '✅ Maintenance Mode DEACTIVATED! System open for logins.'
+                );
+                setTimeout(() => setSaveToast(null), 4000);
+              }}
+              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-md cursor-pointer active:scale-95 ${
+                isMaintenanceMode
+                  ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-600/30 ring-2 ring-rose-400 animate-pulse'
+                  : 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-800 dark:text-amber-300 border border-amber-500/50'
+              }`}
+              title="Strictly Kaustubh Admin Level Only: Toggle Global Maintenance Mode"
+            >
+              <ShieldAlert className="w-4 h-4 text-amber-400" />
+              <span>{isMaintenanceMode ? 'Maintenance: ACTIVE' : 'Maintenance Mode'}</span>
+            </button>
+          )}
 
           {/* Full Factory Reset Button */}
           <button

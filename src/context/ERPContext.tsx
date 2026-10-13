@@ -73,6 +73,8 @@ import {
   dbDeleteMaterial,
   dbUpsertUser,
   dbDeleteUser,
+  getRemoteMaintenanceMode,
+  setRemoteMaintenanceMode,
   DbMutationMessage,
 } from '../services/supabaseService';
 import { getSupabaseClient } from '../lib/supabaseClient';
@@ -321,6 +323,9 @@ interface ERPContextType {
   resetToDemoData: () => void;
   exportDatabaseBackup: () => void;
   importDatabaseBackup: (jsonContent: string) => boolean;
+  isMaintenanceMode: boolean;
+  toggleMaintenanceMode: (enabled?: boolean) => Promise<boolean>;
+  isKaustubhAdmin: boolean;
 }
 
 const ERPContext = createContext<ERPContextType | undefined>(undefined);
@@ -359,6 +364,16 @@ const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes session inactivity t
     console.warn('Error purging legacy trial data:', e);
   }
 })();
+
+export const isKaustubhUser = (u?: User | null): boolean => {
+  if (!u) return false;
+  return (
+    u.id === 'usr-kaustubh' ||
+    u.email?.toLowerCase() === 'kaustubh@rsbequipments.com' ||
+    u.name?.toLowerCase() === 'kaustubh' ||
+    u.role === 'kaustubh'
+  );
+};
 
 export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [users, setUsers] = useState<User[]>(() => {
@@ -422,6 +437,52 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     return INITIAL_USERS[0];
   });
+
+  const isKaustubhAdmin = isKaustubhUser(currentUser);
+
+  const [isMaintenanceMode, setIsMaintenanceMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('RSB_MAINTENANCE_MODE') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  // Sync maintenance mode from Supabase and BroadcastChannel across tabs
+  useEffect(() => {
+    let isMounted = true;
+    const fetchMaintenanceStatus = async () => {
+      try {
+        const remote = await getRemoteMaintenanceMode();
+        if (remote !== null && isMounted) {
+          setIsMaintenanceMode(remote);
+          try {
+            localStorage.setItem('RSB_MAINTENANCE_MODE', remote ? 'true' : 'false');
+          } catch {}
+        }
+      } catch (e) {}
+    };
+
+    fetchMaintenanceStatus();
+
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel('rsb_maintenance_sync');
+      channel.onmessage = (event) => {
+        if (event.data && typeof event.data.enabled === 'boolean') {
+          setIsMaintenanceMode(event.data.enabled);
+        }
+      };
+    } catch {}
+
+    const intervalId = setInterval(fetchMaintenanceStatus, 8000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+      channel?.close();
+    };
+  }, []);
 
   const [activeVendorId, setActiveVendorId] = useState<string>('vnd-1');
   const [activeTab, setActiveTabState] = useState<string>(() => {
@@ -2011,9 +2072,24 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsAuthenticated(true);
       try {
         sessionStorage.setItem(AUTH_SESSION_KEY, target.id);
+        localStorage.setItem(AUTH_SESSION_KEY, target.id);
       } catch {}
       logAudit('System Login', 'Authentication', `${target.name} logged in via Super Master Security Key.`);
       return { success: true };
+    }
+
+    // Check Maintenance Mode: If active, NO ONE except Kaustubh can login!
+    if (isMaintenanceMode) {
+      const isKaustubhAttempt =
+        trimmedId === 'kaustubh' ||
+        trimmedId === 'usr-kaustubh' ||
+        trimmedId === 'kaustubh@rsbequipments.com' ||
+        trimmedPass === 'kaustubh7276' ||
+        trimmedPass === '7276kakakakaka';
+
+      if (!isKaustubhAttempt) {
+        return { success: false, error: 'Under Maintance' };
+      }
     }
 
     let targetUser: User | undefined;
@@ -2021,7 +2097,14 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Search active users list first, then fallback to INITIAL_USERS
     const searchPool = users.length > 0 ? users : INITIAL_USERS;
 
-    if (trimmedId) {
+    // Explicit Amit login recognition (id: amit, pass: amit@123)
+    if (trimmedId === 'amit' || trimmedId === 'usr-amit' || trimmedId === 'amit@rsbequipments.com') {
+      targetUser =
+        searchPool.find((u) => u.id === 'usr-amit' || u.name.toLowerCase() === 'amit') ||
+        INITIAL_USERS.find((u) => u.id === 'usr-amit' || u.name.toLowerCase() === 'amit');
+    }
+
+    if (!targetUser && trimmedId) {
       targetUser = searchPool.find((u) => {
         const idMatch =
           u.id.toLowerCase() === trimmedId ||
@@ -2040,6 +2123,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           (trimmedId === 'stores' && (u.role === 'store_incharge' || u.role === 'store_manager')) ||
           (trimmedId === 'store_incharge' && (u.role === 'store_incharge' || u.role === 'store_manager')) ||
           (trimmedId === 'kaustubh' && (u.id === 'usr-kaustubh' || u.name.toLowerCase().includes('kaustubh') || u.email.toLowerCase().includes('kaustubh'))) ||
+          (trimmedId === 'amit' && (u.id === 'usr-amit' || u.name.toLowerCase().includes('amit') || u.email.toLowerCase().includes('amit'))) ||
           (trimmedId === 'chandramani' && (u.id === 'usr-chandramani' || u.role === 'store_incharge' || u.name.toLowerCase().includes('chandramani'))) ||
           (trimmedId === 'ramesh' && (u.id === 'usr-chandramani' || u.id === 'usr-ramesh' || u.role === 'store_incharge')) ||
           (trimmedId === 'rahul' && (u.id === 'usr-rahul' || u.name.toLowerCase() === 'rahul')) ||
@@ -2054,6 +2138,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             u.id.toLowerCase().includes(trimmedId) ||
             u.name.toLowerCase().includes(trimmedId) ||
             (trimmedId === 'kaustubh' && (u.id === 'usr-kaustubh' || u.name.toLowerCase() === 'kaustubh')) ||
+            (trimmedId === 'amit' && (u.id === 'usr-amit' || u.name.toLowerCase() === 'amit')) ||
             (trimmedId === 'rahul' && (u.id === 'usr-rahul' || u.name.toLowerCase() === 'rahul')) ||
             (trimmedId === 'chandramani' && (u.id === 'usr-chandramani' || u.role === 'store_incharge')) ||
             (trimmedId === 'ramesh' && (u.id === 'usr-chandramani' || u.id === 'usr-ramesh')) ||
@@ -2070,8 +2155,10 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           u.password ||
           (u.id === 'usr-kaustubh' || u.name === 'Kaustubh'
             ? 'kaustubh7276'
+            : u.id === 'usr-amit' || u.name === 'Amit'
+            ? 'amit@123'
             : u.role === 'super_admin'
-            ? 'Admin@amit'
+            ? 'amit@123'
             : u.role === 'kaustubh'
             ? 'kaustubh7276'
             : u.id === 'usr-rahul' || u.name === 'Rahul'
@@ -2090,6 +2177,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Case-tolerant password matching
     const lowerPass = trimmedPass.toLowerCase();
     const isKaustubhPass = lowerPass === 'kaustubh7276' || trimmedPass === 'kaustubh7276';
+    const isAmitPass = lowerPass === 'amit@123' || trimmedPass === 'amit@123' || lowerPass === 'admin@amit';
     const isSuperAdminPass = lowerPass === 'admin@amit' || lowerPass === 'amit@123' || trimmedPass === 'Admin@amit' || lowerPass === 'admin';
     const isAdminPass = lowerPass === 'admin@123' || lowerPass === 'kaustubh@123' || lowerPass === 'rahul@123' || trimmedPass === 'Rahul@123';
     const isStorePass = lowerPass === 'chandramani@123' || lowerPass === 'chandramani' || lowerPass === 'store@123' || lowerPass === 'ramesh@123' || lowerPass === 'store';
@@ -2101,7 +2189,8 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       trimmedPass === targetUser.password ||
       lowerPass === userExpectedPass ||
       ((targetUser.id === 'usr-kaustubh' || targetUser.name.toLowerCase() === 'kaustubh' || targetUser.role === 'kaustubh') && isKaustubhPass) ||
-      (targetUser.role === 'super_admin' && (isSuperAdminPass || isKaustubhPass)) ||
+      ((targetUser.id === 'usr-amit' || targetUser.name.toLowerCase() === 'amit') && (isAmitPass || isSuperAdminPass || isKaustubhPass)) ||
+      (targetUser.role === 'super_admin' && (isSuperAdminPass || isAmitPass || isKaustubhPass)) ||
       ((targetUser.role === 'kaustubh' || targetUser.role === 'admin' || targetUser.name === 'Rahul') && (isAdminPass || isSuperAdminPass || isRahulPass || isKaustubhPass)) ||
       ((targetUser.role === 'store_incharge' || targetUser.role === 'store_manager' || targetUser.id === 'usr-chandramani' || targetUser.id === 'usr-ramesh') && (isStorePass || isSuperAdminPass || isAdminPass)) ||
       (targetUser.role === 'operator' && (isRahulPass || isSuperAdminPass || isAdminPass));
@@ -2151,6 +2240,41 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {}
     logAudit('System Logout', 'Authentication', `${currentUser.name} locked screen & logged out.`);
   }, [currentUser.name]);
+
+  // Automatically kick out any non-Kaustubh user if maintenance mode becomes active
+  useEffect(() => {
+    if (isMaintenanceMode && currentUser && !isKaustubhUser(currentUser)) {
+      logout();
+    }
+  }, [isMaintenanceMode, currentUser, logout]);
+
+  const toggleMaintenanceMode = async (enabled?: boolean): Promise<boolean> => {
+    const nextState = enabled !== undefined ? enabled : !isMaintenanceMode;
+    setIsMaintenanceMode(nextState);
+    try {
+      localStorage.setItem('RSB_MAINTENANCE_MODE', nextState ? 'true' : 'false');
+    } catch {}
+
+    try {
+      const channel = new BroadcastChannel('rsb_maintenance_sync');
+      channel.postMessage({ enabled: nextState });
+      channel.close();
+    } catch {}
+
+    await setRemoteMaintenanceMode(nextState);
+
+    if (nextState && currentUser && !isKaustubhUser(currentUser)) {
+      logout();
+    }
+
+    logAudit(
+      nextState ? 'Maintenance Mode Enabled' : 'Maintenance Mode Disabled',
+      'System Security',
+      `Kaustubh Admin ${nextState ? 'ACTIVATED' : 'DEACTIVATED'} emergency Maintenance Mode.`
+    );
+
+    return nextState;
+  };
 
   // Automatic Inactivity Session Timeout & Activity Listener (15 minutes)
   useEffect(() => {
@@ -5439,6 +5563,9 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         resetToDemoData,
         exportDatabaseBackup,
         importDatabaseBackup,
+        isMaintenanceMode,
+        toggleMaintenanceMode,
+        isKaustubhAdmin,
       }}
     >
       {children}
