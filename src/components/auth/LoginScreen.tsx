@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Lock,
   Unlock,
@@ -26,6 +26,7 @@ export const LoginScreen: React.FC = () => {
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const passwordInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -187,6 +188,12 @@ export const LoginScreen: React.FC = () => {
                         setLoginId(e.target.value);
                         setError(null);
                       }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          passwordInputRef.current?.focus();
+                        }
+                      }}
                       placeholder="Enter login ID..."
                       className="w-full bg-[#050811]/90 border border-white/10 rounded-xl pl-10 pr-3.5 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 font-mono transition-all"
                     />
@@ -201,11 +208,18 @@ export const LoginScreen: React.FC = () => {
                   <div className="relative group/input">
                     <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors group-focus-within/input:text-cyan-400" />
                     <input
+                      ref={passwordInputRef}
                       type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={(e) => {
                         setPassword(e.target.value);
                         setError(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleSubmit(e);
+                        }
                       }}
                       placeholder="Enter password..."
                       className="w-full bg-[#050811]/90 border border-white/10 rounded-xl pl-10 pr-10 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 font-mono transition-all"

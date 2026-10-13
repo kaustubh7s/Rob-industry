@@ -1582,6 +1582,70 @@ export const ProjectMaterialEntry: React.FC = () => {
     return sortRowsByAscendingSrNo(list);
   }, [rows, searchTerm, filterMaterialType]);
 
+  // Keyboard Shortcuts for Toolbar Actions:
+  // - Ctrl+S / Cmd+S: SAVE ORDER (Saves directly to DB & Cloud)
+  // - Alt+I / Ctrl+Alt+I: Import Excel file
+  // - Alt+E / Ctrl+Alt+E: Export Excel file
+  // - Alt+A / Ctrl+Alt+A: All Materials (Resets material filter)
+  const handleSaveProjectRef = useRef(handleSaveProject);
+  handleSaveProjectRef.current = handleSaveProject;
+
+  const handleExportExcelRef = useRef(handleExportExcel);
+  handleExportExcelRef.current = handleExportExcel;
+
+  useEffect(() => {
+    const handleGlobalSaveOrder = () => {
+      handleSaveProjectRef.current();
+    };
+
+    const handleToolbarKeyDown = (e: KeyboardEvent) => {
+      const isCmdOrCtrl = e.ctrlKey || e.metaKey;
+      const key = e.key.toLowerCase();
+
+      // 1. SAVE ORDER: Ctrl+S / Cmd+S
+      if (isCmdOrCtrl && !e.shiftKey && !e.altKey && key === 's') {
+        e.preventDefault();
+        e.stopPropagation();
+        handleSaveProjectRef.current();
+        return;
+      }
+
+      // 2. IMPORT EXCEL: Alt+I or Ctrl+Alt+I
+      if ((e.altKey && !isCmdOrCtrl && key === 'i') || (isCmdOrCtrl && e.altKey && key === 'i')) {
+        e.preventDefault();
+        e.stopPropagation();
+        fileInputRef.current?.click();
+        return;
+      }
+
+      // 3. EXPORT EXCEL: Alt+E or Ctrl+Alt+E or Alt+X
+      if ((e.altKey && !isCmdOrCtrl && (key === 'e' || key === 'x')) || (isCmdOrCtrl && e.altKey && (key === 'e' || key === 'x'))) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleExportExcelRef.current();
+        return;
+      }
+
+      // 4. ALL MATERIALS (Reset Material Filter): Alt+A or Alt+M or Ctrl+Alt+A
+      if ((e.altKey && !isCmdOrCtrl && (key === 'a' || key === 'm')) || (isCmdOrCtrl && e.altKey && key === 'a')) {
+        e.preventDefault();
+        e.stopPropagation();
+        setFilterMaterialType('ALL');
+        setSaveToast('🔍 Material Filter reset to "All Materials"');
+        setTimeout(() => setSaveToast(null), 2500);
+        return;
+      }
+    };
+
+    window.addEventListener('rsb:save-order', handleGlobalSaveOrder);
+    window.addEventListener('keydown', handleToolbarKeyDown);
+
+    return () => {
+      window.removeEventListener('rsb:save-order', handleGlobalSaveOrder);
+      window.removeEventListener('keydown', handleToolbarKeyDown);
+    };
+  }, []);
+
   const handleSwitchView = (mode: 'entry' | 'projects' | 'procurement') => {
     setActiveViewMode(mode);
     setActiveTab(mode);
@@ -2070,7 +2134,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                 onClick={handleSaveProject}
                 disabled={isSavingOrder}
                 className="w-full py-2 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white text-xs font-black transition-all shadow-md shadow-emerald-950/40 flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
-                title="Save order specifications directly to database"
+                title="Save order specifications directly to database (Shortcut: Ctrl+S / ⌘+S)"
               >
                 {isSavingOrder ? (
                   <>
@@ -2081,6 +2145,9 @@ export const ProjectMaterialEntry: React.FC = () => {
                   <>
                     <Save className="w-3.5 h-3.5 text-emerald-200" />
                     <span>Save Order</span>
+                    <kbd className="ml-1 px-1.5 py-0.5 text-[9px] font-mono font-bold rounded bg-emerald-950/60 border border-emerald-400/30 text-emerald-200 shadow-2xs">
+                      Ctrl+S
+                    </kbd>
                   </>
                 )}
               </button>
@@ -2455,18 +2522,21 @@ export const ProjectMaterialEntry: React.FC = () => {
             />
           </div>
 
-          <select
-            value={filterMaterialType}
-            onChange={(e) => setFilterMaterialType(e.target.value)}
-            className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-bold focus:outline-none focus:border-blue-600 shadow-2xs"
-          >
-            <option value="ALL">All Materials</option>
-            {allMaterialTypes.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
+          <div className="relative">
+            <select
+              value={filterMaterialType}
+              onChange={(e) => setFilterMaterialType(e.target.value)}
+              className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-bold focus:outline-none focus:border-blue-600 shadow-2xs cursor-pointer"
+              title="Filter materials by type (Shortcut: Alt+A to select All Materials)"
+            >
+              <option value="ALL">All Materials [Alt+A]</option>
+              {allMaterialTypes.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {/* Action Hub */}
@@ -2486,20 +2556,26 @@ export const ProjectMaterialEntry: React.FC = () => {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             className="px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
-            title="Import 10-column table from Excel"
+            title="Import 10-column table from Excel (Shortcut: Alt+I)"
           >
             <Upload className="w-3.5 h-3.5 text-amber-600" />
             <span>Import Excel</span>
+            <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[9px] font-mono font-semibold rounded bg-amber-100 border border-amber-300 text-amber-800">
+              Alt+I
+            </kbd>
           </button>
 
           <button
             type="button"
             onClick={handleExportExcel}
             className="px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-900 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
-            title="Export 10-column table to Excel"
+            title="Export 10-column table to Excel (Shortcut: Alt+E)"
           >
             <Download className="w-3.5 h-3.5 text-emerald-600" />
             <span>Export Excel</span>
+            <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[9px] font-mono font-semibold rounded bg-emerald-100 border border-emerald-300 text-emerald-800">
+              Alt+E
+            </kbd>
           </button>
 
           <button
@@ -2508,7 +2584,7 @@ export const ProjectMaterialEntry: React.FC = () => {
             onClick={handleSaveProject}
             disabled={isSavingOrder}
             className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white text-xs font-black transition-all shadow-md shadow-emerald-950/40 flex items-center gap-1.5 cursor-pointer active:scale-95"
-            title="Save order specifications directly to database"
+            title="Save order specifications directly to database (Shortcut: Ctrl+S / ⌘+S)"
           >
             {isSavingOrder ? (
               <>
@@ -2519,6 +2595,9 @@ export const ProjectMaterialEntry: React.FC = () => {
               <>
                 <Save className="w-3.5 h-3.5 text-emerald-200" />
                 <span>SAVE ORDER</span>
+                <kbd className="ml-1 px-1.5 py-0.5 text-[10px] font-mono font-bold rounded bg-emerald-950/60 border border-emerald-400/40 text-emerald-200 shadow-2xs">
+                  Ctrl+S
+                </kbd>
               </>
             )}
           </button>

@@ -185,6 +185,11 @@ const ERPAppContent: React.FC = () => {
           setActiveTab('microsoft');
           return;
         }
+        if (e.key.toLowerCase() === 's') {
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent('rsb:save-order'));
+          return;
+        }
         if (e.key === 'r' || e.key === 'R') {
           // Allow default browser reload
           return;
