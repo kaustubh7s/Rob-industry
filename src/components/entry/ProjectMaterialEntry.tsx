@@ -37,6 +37,7 @@ import {
   ShieldCheck,
   Globe,
   ShoppingCart,
+  RefreshCw,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useERP } from '../../context/ERPContext';
@@ -51,7 +52,7 @@ import { ProcurementBasket } from '../procurement/ProcurementBasket';
 import { getMaterialsForProject, isRequirementMatchingProjectName } from '../../utils/projectMaterialsHelper';
 import { MACHINE_BOM_TEMPLATES, MachineBOMTemplate } from '../../data/machineBOMTemplates';
 import { LiveWorldSSRatesModal } from '../rates/LiveWorldSSRatesModal';
-import { getDeletedRequirementTombstones } from '../../utils/tombstones';
+import { getDeletedRequirementTombstones, removeRequirementTombstone } from '../../utils/tombstones';
 import { ExcelImportPreviewModal } from './ExcelImportPreviewModal';
 import { analyzeExcelFile, SheetAnalysisResult, ParsedImportRow } from '../../utils/excelImportEngine';
 import { dbUpsertRequirement, dbBulkUpsertRequirements, dbDeleteRequirement } from '../../services/supabaseService';
@@ -111,6 +112,8 @@ export const ProjectMaterialEntry: React.FC = () => {
     replaceProjectRequirements,
     importMaterialRequirements,
     deleteProjectRequirement,
+    deleteProjectRequirements,
+    refreshDatabase,
     trashItems,
     restoreFromTrash,
     permanentlyDeleteFromTrash,
@@ -143,6 +146,7 @@ export const ProjectMaterialEntry: React.FC = () => {
     currentUser?.role === 'admin' ||
     currentUser?.role === 'super_admin' ||
     currentUser?.role === 'kaustubh' ||
+    currentUser?.name?.toLowerCase() === 'rahul' ||
     isKaustubhAdmin
   );
 
@@ -357,28 +361,25 @@ export const ProjectMaterialEntry: React.FC = () => {
     );
   }, [customVendors, vendors, projects, projectRequirements]);
 
-  // Seed Initial 10-column table with ALL materials across all projects (Master File / Register)
+  // Seed Initial 10-column table directly with ALL materials across all projects from context/DB
   const [rows, setRows] = useState<EntryRow[]>(() => {
     const tombstones = getDeletedRequirementTombstones();
     const allMats = (projectRequirements || []).filter((m) => Boolean(m && m.id && !tombstones.has(m.id)));
-    if (allMats.length > 0) {
-      return allMats.map((m, idx) => ({
-        id: m.id,
-        machineName: m.machineName || m.machineType || '',
-        date: formatDate(m.poDate || m.date || getTodayFormatted()),
-        poNo: m.poNumber || m.poNo || '',
-        srNo: (m.srNo !== undefined && m.srNo !== null && String(m.srNo).trim() !== '') ? m.srNo : idx + 1,
-        materialType: (m.materialType || 'SS Flat') as MaterialType,
-        sizeSpecs: m.sizeSpecs || '',
-        quantity: Number(m.quantity) || 1,
-        unit: m.unit || 'Nos',
-        vendorName: m.vendorName || m.vendor || '',
-        description: m.description || '',
-        orderedBy: m.orderedBy || 'Amit',
-        projectName: m.projectName || '',
-      }));
-    }
-    return [];
+    return allMats.map((m, idx) => ({
+      id: m.id,
+      machineName: m.machineName || m.machineType || '',
+      date: formatDate(m.poDate || m.date || getTodayFormatted()),
+      poNo: m.poNumber || m.poNo || '',
+      srNo: (m.srNo !== undefined && m.srNo !== null && String(m.srNo).trim() !== '') ? m.srNo : idx + 1,
+      materialType: (m.materialType || 'SS Flat') as MaterialType,
+      sizeSpecs: m.sizeSpecs || '',
+      quantity: Number(m.quantity) || 1,
+      unit: m.unit || 'Nos',
+      vendorName: m.vendorName || m.vendor || '',
+      description: m.description || '',
+      orderedBy: m.orderedBy || 'Amit',
+      projectName: m.projectName || '',
+    }));
   });
 
 
@@ -612,20 +613,8 @@ export const ProjectMaterialEntry: React.FC = () => {
     }));
 
     setRows((prev) => {
-      const nonTombstonedPrev = prev.filter((r) => !tombstones.has(r.id));
-      if (nonTombstonedPrev.length === 0 && mappedMasterRows.length === 0) return [];
-      if (nonTombstonedPrev.length === 0) return mappedMasterRows;
-
-      // Keep unpersisted newly-added empty rows that user is actively filling
-      const localEmptyRows = nonTombstonedPrev.filter((r) => r.id.startsWith('empty-') && !allMats.some((m) => m.id === r.id));
-
-      const prevSignature = nonTombstonedPrev.map((r) => `${r.id}_${r.projectName}_${r.quantity}_${r.description}_${r.sizeSpecs}_${r.materialType}_${r.machineName}_${r.srNo}`).join('|');
-      const nextSignature = [...mappedMasterRows, ...localEmptyRows].map((r) => `${r.id}_${r.projectName}_${r.quantity}_${r.description}_${r.sizeSpecs}_${r.materialType}_${r.machineName}_${r.srNo}`).join('|');
-
-      if (prevSignature !== nextSignature) {
-        return [...mappedMasterRows, ...localEmptyRows];
-      }
-      return nonTombstonedPrev;
+      if (isUserManuallyEditingRef.current) return prev;
+      return mappedMasterRows;
     });
   }, [projectRequirements, selectedProjectName, projects, activeOrderedBy]);
 
@@ -1170,6 +1159,7 @@ export const ProjectMaterialEntry: React.FC = () => {
       learnUnit(quickUnit);
     }
 
+    removeRequirementTombstone(newRow.id);
     const nextRows = [...rows, newRow];
     setRows(nextRows);
     localStorage.setItem(`RSB_PROJECT_DRAFT_${targetProject}`, JSON.stringify(nextRows));
@@ -1238,6 +1228,9 @@ export const ProjectMaterialEntry: React.FC = () => {
     const nextRows = normalizeSrNumbers(rows.filter((r) => r.id !== rowId));
     setRows(nextRows);
     localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextRows));
+    if (selectedProjectName) {
+      localStorage.setItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`, JSON.stringify(nextRows));
+    }
     setSaveToast('🗑️ Deleted row by Admin • Synced to DB');
     setTimeout(() => {
       isUserManuallyEditingRef.current = false;
@@ -1259,15 +1252,14 @@ export const ProjectMaterialEntry: React.FC = () => {
       )
     ) {
       isUserManuallyEditingRef.current = true;
-      selectedRowIds.forEach((id) => {
-        const row = rows.find((r) => r.id === id);
-        if (row) {
-          deleteProjectRequirement(row.id);
-        }
-      });
-      const nextRows = normalizeSrNumbers(rows.filter((r) => !selectedRowIds.includes(r.id)));
+      const idsToDelete = [...selectedRowIds];
+      deleteProjectRequirements(idsToDelete);
+      const nextRows = normalizeSrNumbers(rows.filter((r) => !idsToDelete.includes(r.id)));
       setRows(nextRows);
       localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextRows));
+      if (selectedProjectName) {
+        localStorage.setItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`, JSON.stringify(nextRows));
+      }
       setSelectedRowIds([]);
       setSaveToast(`🗑️ Deleted ${count} row(s) by Admin • Purged from DB`);
       setTimeout(() => {

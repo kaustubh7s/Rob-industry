@@ -126,6 +126,18 @@ export function addMaterialTombstones(ids: string[]): void {
   }
 }
 
+export function removeMaterialTombstone(id: string): void {
+  if (!id) return;
+  try {
+    const current = getDeletedMaterialTombstones();
+    if (current.delete(id)) {
+      localStorage.setItem(MATERIAL_TOMBSTONES_KEY, JSON.stringify(Array.from(current)));
+    }
+  } catch (e) {
+    console.error('Failed to remove material tombstone:', e);
+  }
+}
+
 const VENDOR_TOMBSTONES_KEY = 'RSB_ERP_STATE_V6_deleted_vendors';
 
 export function getDeletedVendorTombstones(): Set<string> {

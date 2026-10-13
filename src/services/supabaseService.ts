@@ -32,6 +32,63 @@ import {
   addVendorTombstone,
 } from '../utils/tombstones';
 
+export interface DbMutationMessage {
+  action: 'UPSERT' | 'DELETE' | 'BULK_UPSERT' | 'BULK_DELETE';
+  entity: 'requirement' | 'project' | 'material' | 'vendor' | 'customer';
+  id?: string;
+  ids?: string[];
+  data?: any;
+  timestamp: number;
+}
+
+let broadcastChannelInstance: any = null;
+
+export const getBroadcastChannel = () => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+  if (!broadcastChannelInstance) {
+    broadcastChannelInstance = supabase.channel('rsb-system-broadcast');
+    broadcastChannelInstance.subscribe();
+  }
+  return broadcastChannelInstance;
+};
+
+export const broadcastDbMutation = async (mutation: Omit<DbMutationMessage, 'timestamp'>) => {
+  try {
+    const ch = getBroadcastChannel();
+    if (!ch) return;
+    await ch.send({
+      type: 'broadcast',
+      event: 'DB_MUTATION',
+      payload: {
+        ...mutation,
+        timestamp: Date.now(),
+      },
+    });
+  } catch (err) {
+    console.warn('Realtime broadcastDbMutation failed:', err);
+  }
+};
+
+export const toSafeIsoTimestamp = (val?: any): string => {
+  if (!val) return new Date().toISOString();
+  if (val instanceof Date) return isNaN(val.getTime()) ? new Date().toISOString() : val.toISOString();
+  if (typeof val === 'number') return isNaN(val) ? new Date().toISOString() : new Date(val).toISOString();
+  const str = String(val).trim();
+  if (!str || str === '-' || str === 'undefined' || str === 'null') return new Date().toISOString();
+  const dmyMatch = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(.*)$/);
+  if (dmyMatch) {
+    const [, day, month, year, rest] = dmyMatch;
+    const timeRest = rest && rest.trim().length > 0 ? rest.trim() : 'T12:00:00.000Z';
+    const isoCandidate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}${timeRest.startsWith('T') ? timeRest : 'T' + timeRest}`;
+    const d = new Date(isoCandidate);
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) return d.toISOString();
+  return new Date().toISOString();
+};
+
 export const SUPABASE_SCHEMA_SQL = `-- =========================================================================
 -- RSB EQUIPMENTS ERP — SUPABASE POSTGRESQL SCHEMA INITIALIZATION
 -- Paste this script into your Supabase Dashboard -> SQL Editor -> Run
@@ -343,6 +400,13 @@ CREATE POLICY "Allow public full access for workbook_directories" ON public.work
 CREATE POLICY "Allow public full access for workbooks" ON public.workbooks FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public full access for workbook_activity_logs" ON public.workbook_activity_logs FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public full access for deleted_workbook_items" ON public.deleted_workbook_items FOR ALL USING (true) WITH CHECK (true);
+
+-- Enable Realtime Replication Publication
+ALTER PUBLICATION supabase_realtime ADD TABLE public.projects;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.project_material_requirements;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.materials;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.vendors;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.customers;
 `;
 
 // Push all local factory state to Supabase
@@ -441,7 +505,7 @@ export const pushAllDataToSupabase = async (erpState: {
         received_by_initials: r.receivedByInitials || null,
         received_by_role: r.receivedByRole || null,
         received_notes: r.receivedNotes || null,
-        timestamp: (r as any).timestamp || r.date || new Date().toISOString(),
+        timestamp: toSafeIsoTimestamp((r as any).timestamp || r.date || (r as any).poDate),
       }));
 
       const { error } = await supabase.from('project_material_requirements').upsert(mappedReqs, { onConflict: 'id' });
@@ -562,9 +626,25 @@ export const pullAllDataFromSupabase = async (): Promise<{
   }
 
   try {
-    // 1. Fetch Projects
-    const { data: prjData, error: prjErr } = await supabase.from('projects').select('*').order('created_at', { ascending: false });
+    // 1. Parallel fetch all tables concurrently for instant initial sync
+    const [
+      { data: prjData, error: prjErr },
+      { data: reqData, error: reqErr },
+      { data: matData },
+      { data: vndData },
+      { data: custData },
+      { data: usrData },
+    ] = await Promise.all([
+      supabase.from('projects').select('*').order('created_at', { ascending: false }),
+      supabase.from('project_material_requirements').select('*').order('timestamp', { ascending: false }),
+      supabase.from('materials').select('*'),
+      supabase.from('vendors').select('*'),
+      supabase.from('customers').select('*'),
+      supabase.from('erp_users').select('*'),
+    ]);
+
     if (prjErr) throw prjErr;
+    if (reqErr) throw reqErr;
 
     // Database is authoritative ground truth: any active project in Supabase clears stale tombstones
     const prjTombstones = getDeletedProjectTombstones();
@@ -598,19 +678,17 @@ export const pullAllDataFromSupabase = async (): Promise<{
       }));
 
     // 2. Fetch Requirements
-    const { data: reqData, error: reqErr } = await supabase.from('project_material_requirements').select('*').order('timestamp', { ascending: false });
-    if (reqErr) throw reqErr;
-
-    // Database is authoritative ground truth: any active row in Supabase clears stale tombstones
+    // Tombstones represent explicit user deletions: filter out tombstoned rows so they never resurrect
     const reqTombstones = getDeletedRequirementTombstones();
-    (reqData || []).forEach((r: any) => {
+    const activeReqData = (reqData || []).filter((r: any) => {
       if (reqTombstones.has(r.id)) {
-        removeRequirementTombstone(r.id);
-        reqTombstones.delete(r.id);
+        supabase.from('project_material_requirements').delete().eq('id', r.id).then(() => {});
+        return false;
       }
+      return true;
     });
 
-    const parsedRequirements: ProjectMaterialRequirementItem[] = (reqData || [])
+    const parsedRequirements: ProjectMaterialRequirementItem[] = activeReqData
       .map((r: any) => {
         const notesStr = String(r.notes || '');
         let tagReceived = false;
@@ -732,8 +810,7 @@ export const pullAllDataFromSupabase = async (): Promise<{
       });
 
 
-    // 3. Fetch Materials
-    const { data: matData } = await supabase.from('materials').select('*');
+    // 3. Materials
     const matTombstones = getDeletedMaterialTombstones();
     const parsedMaterials: MaterialItem[] = (matData || [])
       .filter((m: any) => !matTombstones.has(m.id))
@@ -756,8 +833,7 @@ export const pullAllDataFromSupabase = async (): Promise<{
       notes: m.notes,
     }));
 
-    // 4. Fetch Vendors
-    const { data: vndData } = await supabase.from('vendors').select('*');
+    // 4. Vendors
     const vndTombstones = getDeletedVendorTombstones();
     const parsedVendors: VendorItem[] = (vndData || [])
       .filter((v: any) => !vndTombstones.has(v.id))
@@ -784,8 +860,7 @@ export const pullAllDataFromSupabase = async (): Promise<{
       rank: 1,
     }));
 
-    // 5. Fetch Customers
-    const { data: custData } = await supabase.from('customers').select('*');
+    // 5. Customers
     const parsedCustomers: CustomerItem[] = (custData || []).map((c: any) => ({
       id: c.id,
       name: c.name,
@@ -801,8 +876,7 @@ export const pullAllDataFromSupabase = async (): Promise<{
       rating: 5,
     }));
 
-    // 6. Fetch Users
-    const { data: usrData } = await supabase.from('erp_users').select('*');
+    // 6. Users
     let parsedUsers: User[] = (usrData || []).map((u: any) => ({
       id: u.id,
       name: u.name,
@@ -918,6 +992,7 @@ export const dbUpsertProject = async (project: ProjectItem): Promise<{ success: 
       console.warn('Supabase project upsert warning:', error);
       return { success: false, message: error.message };
     }
+    broadcastDbMutation({ action: 'UPSERT', entity: 'project', data: project });
     return { success: true };
   } catch (e: any) {
     console.warn('Supabase project upsert failed:', e);
@@ -926,6 +1001,8 @@ export const dbUpsertProject = async (project: ProjectItem): Promise<{ success: 
 };
 
 export const dbDeleteProject = async (projectId: string) => {
+  addProjectTombstone(projectId);
+  broadcastDbMutation({ action: 'DELETE', entity: 'project', id: projectId });
   const supabase = getSupabaseClient();
   if (!supabase) return;
 
@@ -957,6 +1034,7 @@ export const dbDeleteRequirementsByProject = async (
     // 1. Delete known requirement IDs directly
     if (knownReqIds.length > 0) {
       addRequirementTombstones(knownReqIds);
+      broadcastDbMutation({ action: 'BULK_DELETE', entity: 'requirement', ids: knownReqIds });
       await supabase.from('project_material_requirements').delete().in('id', knownReqIds);
     }
 
@@ -970,6 +1048,7 @@ export const dbDeleteRequirementsByProject = async (
       if (matched && matched.length > 0) {
         const ids = matched.map((m: any) => m.id);
         addRequirementTombstones(ids);
+        broadcastDbMutation({ action: 'BULK_DELETE', entity: 'requirement', ids });
         await supabase.from('project_material_requirements').delete().in('id', ids);
       } else {
         await supabase.from('project_material_requirements').delete().ilike('project_name', target);
@@ -1027,69 +1106,50 @@ export const dbUpsertRequirement = async (req: ProjectMaterialRequirementItem): 
 
     const payload = {
       id: req.id,
-      sr_no: req.srNo,
+      sr_no: req.srNo !== undefined && req.srNo !== null ? String(req.srNo) : null,
       description: req.description,
       material_type: req.materialType,
-      material_grade: req.materialGrade,
+      material_grade: req.materialGrade || 'SS 304',
       size_specs: req.sizeSpecs,
-      quantity: req.quantity,
-      unit: req.unit,
-      weight_kg: req.weightKg,
+      quantity: Number(req.quantity) || 0,
+      unit: req.unit || 'Nos',
+      weight_kg: req.weightKg !== undefined && req.weightKg !== null ? Number(req.weightKg) : null,
       project_name: req.projectName,
-      customer_name: req.customerName,
-      po_number: req.poNo || req.poNumber,
-      po_date: req.date || req.poDate,
-      machine_type: req.machineName || req.machineType,
-      order_source: req.orderSource,
-      delivery_date: req.deliveryDate,
-      vendor: req.vendorName || req.vendor,
-      bom_ref: req.bomRef,
-      stock_status: req.stockStatus,
-      available_stock: req.availableStock,
-      shortage_qty: req.shortageQty,
-      production_status: req.productionStatus,
-      qc_status: req.qcStatus,
-      dispatch_status: req.dispatchStatus,
-      job_card_no: req.jobCardNo,
-      assigned_operator: req.assignedOperator,
-      assigned_machine: req.assignedMachine,
-      productionStage: req.productionStage,
-      material_cost: req.materialCost,
-      labor_cost: req.laborCost,
-      machine_cost: req.machineCost,
-      outsourcing_cost: req.outsourcingCost,
-      total_cost: req.totalCost,
-      selling_price_allocated: req.sellingPriceAllocated,
+      customer_name: req.customerName || null,
+      po_number: req.poNo || req.poNumber || null,
+      po_date: req.date || req.poDate || null,
+      machine_type: req.machineName || req.machineType || null,
+      order_source: req.orderSource || null,
+      delivery_date: req.deliveryDate || null,
+      vendor: req.vendorName || req.vendor || null,
+      bom_ref: req.bomRef || null,
+      stock_status: req.stockStatus || 'Available',
+      available_stock: Number(req.availableStock) || 0,
+      shortage_qty: Number(req.shortageQty) || 0,
+      production_status: req.productionStatus || 'Pending',
+      qc_status: req.qcStatus || 'Not Started',
+      dispatch_status: req.dispatchStatus || 'Not Ready',
+      job_card_no: req.jobCardNo || null,
+      assigned_operator: req.assignedOperator || null,
+      assigned_machine: req.assignedMachine || null,
+      production_stage: req.productionStage || null,
+      material_cost: Number(req.materialCost) || 0,
+      labor_cost: Number(req.laborCost) || 0,
+      machine_cost: Number(req.machineCost) || 0,
+      outsourcing_cost: Number(req.outsourcingCost) || 0,
+      total_cost: Number(req.totalCost) || 0,
+      selling_price_allocated: Number(req.sellingPriceAllocated) || 0,
       notes: baseNotes,
-      ordered_by: req.orderedBy,
-      is_received: Boolean(req.isReceived),
-      received_at: req.receivedAt || null,
-      received_by: req.receivedBy || null,
-      received_by_initials: req.receivedByInitials || null,
-      received_by_role: req.receivedByRole || null,
-      received_notes: req.receivedNotes || null,
-      timestamp: (req as any).timestamp || req.date || new Date().toISOString(),
+      ordered_by: req.orderedBy || null,
+      timestamp: toSafeIsoTimestamp((req as any).timestamp || req.date || req.poDate),
     };
 
     const { error } = await supabase.from('project_material_requirements').upsert(payload, { onConflict: 'id' });
     if (error) {
-      // Fallback without new columns if remote table has legacy schema
-      const legacyPayload = { ...payload };
-      delete (legacyPayload as any).is_received;
-      delete (legacyPayload as any).received_at;
-      delete (legacyPayload as any).received_by;
-      delete (legacyPayload as any).received_by_initials;
-      delete (legacyPayload as any).received_by_role;
-      delete (legacyPayload as any).received_notes;
-      if (typeof legacyPayload.sr_no === 'string' && isNaN(Number(legacyPayload.sr_no))) {
-        (legacyPayload as any).sr_no = null;
-      }
-      const { error: legErr } = await supabase.from('project_material_requirements').upsert(legacyPayload, { onConflict: 'id' });
-      if (legErr) {
-        console.warn('Supabase requirement legacy upsert warning:', legErr);
-        return { success: false, message: legErr.message };
-      }
+      console.warn('Supabase requirement upsert warning:', error.message);
+      return { success: false, message: error.message };
     }
+    broadcastDbMutation({ action: 'UPSERT', entity: 'requirement', data: req });
     return { success: true };
   } catch (e: any) {
     console.warn('Supabase requirement upsert failed:', e);
@@ -1099,6 +1159,7 @@ export const dbUpsertRequirement = async (req: ProjectMaterialRequirementItem): 
 
 export const dbDeleteRequirement = async (reqId: string): Promise<{ success: boolean; message?: string }> => {
   addRequirementTombstone(reqId);
+  broadcastDbMutation({ action: 'DELETE', entity: 'requirement', id: reqId });
   const supabase = getSupabaseClient();
   if (!supabase) return { success: true };
 
@@ -1157,76 +1218,51 @@ export const dbBulkUpsertRequirements = async (
 
       return {
         id: r.id,
-        sr_no: r.srNo,
+        sr_no: r.srNo !== undefined && r.srNo !== null ? String(r.srNo) : null,
         description: r.description,
         material_type: r.materialType,
-        material_grade: r.materialGrade,
+        material_grade: r.materialGrade || 'SS 304',
         size_specs: r.sizeSpecs,
-        quantity: r.quantity,
-        unit: r.unit,
-        weight_kg: r.weightKg,
+        quantity: Number(r.quantity) || 0,
+        unit: r.unit || 'Nos',
+        weight_kg: r.weightKg !== undefined && r.weightKg !== null ? Number(r.weightKg) : null,
         project_name: r.projectName,
-        customer_name: r.customerName,
-        po_number: r.poNo || r.poNumber,
-        po_date: r.date || r.poDate,
-        machine_type: r.machineName || r.machineType,
-
-        order_source: r.orderSource,
-        delivery_date: r.deliveryDate,
-        vendor: r.vendor,
-        bom_ref: r.bomRef,
-        stock_status: r.stockStatus,
-        available_stock: r.availableStock,
-        shortage_qty: r.shortageQty,
-        production_status: r.productionStatus,
-        qc_status: r.qcStatus,
-        dispatch_status: r.dispatchStatus,
-        job_card_no: r.jobCardNo,
-        assigned_operator: r.assignedOperator,
-        assigned_machine: r.assignedMachine,
-        production_stage: r.productionStage,
-        material_cost: r.materialCost,
-        labor_cost: r.laborCost,
-        machine_cost: r.machineCost,
-        outsourcing_cost: r.outsourcingCost,
-        total_cost: r.totalCost,
-        selling_price_allocated: r.sellingPriceAllocated,
+        customer_name: r.customerName || null,
+        po_number: r.poNo || r.poNumber || null,
+        po_date: r.date || r.poDate || null,
+        machine_type: r.machineName || r.machineType || null,
+        order_source: r.orderSource || null,
+        delivery_date: r.deliveryDate || null,
+        vendor: r.vendorName || r.vendor || null,
+        bom_ref: r.bomRef || null,
+        stock_status: r.stockStatus || 'Available',
+        available_stock: Number(r.availableStock) || 0,
+        shortage_qty: Number(r.shortageQty) || 0,
+        production_status: r.productionStatus || 'Pending',
+        qc_status: r.qcStatus || 'Not Started',
+        dispatch_status: r.dispatchStatus || 'Not Ready',
+        job_card_no: r.jobCardNo || null,
+        assigned_operator: r.assignedOperator || null,
+        assigned_machine: r.assignedMachine || null,
+        production_stage: r.productionStage || null,
+        material_cost: Number(r.materialCost) || 0,
+        labor_cost: Number(r.laborCost) || 0,
+        machine_cost: Number(r.machineCost) || 0,
+        outsourcing_cost: Number(r.outsourcingCost) || 0,
+        total_cost: Number(r.totalCost) || 0,
+        selling_price_allocated: Number(r.sellingPriceAllocated) || 0,
         notes: baseNotes,
-        ordered_by: r.orderedBy,
-        is_received: Boolean(r.isReceived),
-        received_at: r.receivedAt || null,
-        received_by: r.receivedBy || null,
-        received_by_initials: r.receivedByInitials || null,
-        received_by_role: r.receivedByRole || null,
-        received_notes: r.receivedNotes || null,
-        timestamp: (r as any).timestamp || r.date || new Date().toISOString(),
+        ordered_by: r.orderedBy || null,
+        timestamp: toSafeIsoTimestamp((r as any).timestamp || r.date || r.poDate),
       };
     });
 
     const { error } = await supabase.from('project_material_requirements').upsert(mapped, { onConflict: 'id' });
     if (error) {
-      // Fallback for legacy database schema without new columns or with INTEGER sr_no
-      const legacyMapped = mapped.map((m) => {
-        const item = { ...m };
-        delete (item as any).is_received;
-        delete (item as any).received_at;
-        delete (item as any).received_by;
-        delete (item as any).received_by_initials;
-        delete (item as any).received_by_role;
-        delete (item as any).received_notes;
-        if (typeof item.sr_no === 'string' && isNaN(Number(item.sr_no))) {
-          // If remote column is strictly INTEGER, provide numeric index while original remains in notes
-          (item as any).sr_no = null;
-        }
-        return item;
-      });
-      const { error: legacyErr } = await supabase.from('project_material_requirements').upsert(legacyMapped, { onConflict: 'id' });
-      if (legacyErr) {
-        console.warn('Supabase bulk requirements upsert warning:', legacyErr);
-        return { success: false, count: 0, message: legacyErr.message };
-      }
+      console.warn('Supabase bulk requirements upsert warning:', error);
+      return { success: false, count: 0, message: error.message };
     }
-
+    broadcastDbMutation({ action: 'BULK_UPSERT', entity: 'requirement', data: reqs });
     return { success: true, count: mapped.length };
   } catch (e: any) {
     console.warn('Supabase bulk requirements upsert error:', e);
@@ -1251,12 +1287,15 @@ export const dbUpsertVendor = async (vendor: VendorItem) => {
       rating: vendor.rating || 5.0,
       payment_terms: vendor.paymentTerms || null,
     });
+    broadcastDbMutation({ action: 'UPSERT', entity: 'vendor', data: vendor });
   } catch (e) {
     console.warn('Supabase vendor upsert failed:', e);
   }
 };
 
 export const dbDeleteVendor = async (vendorId: string) => {
+  addVendorTombstone(vendorId);
+  broadcastDbMutation({ action: 'DELETE', entity: 'vendor', id: vendorId });
   const supabase = getSupabaseClient();
   if (!supabase) return;
   try {
@@ -1318,12 +1357,15 @@ export const dbUpsertMaterial = async (material: MaterialItem) => {
       vendor: material.vendor,
       notes: material.notes,
     });
+    broadcastDbMutation({ action: 'UPSERT', entity: 'material', data: material });
   } catch (e) {
     console.warn('Supabase material upsert failed:', e);
   }
 };
 
 export const dbDeleteMaterial = async (materialId: string) => {
+  addMaterialTombstone(materialId);
+  broadcastDbMutation({ action: 'DELETE', entity: 'material', id: materialId });
   const supabase = getSupabaseClient();
   if (!supabase) return;
   try {

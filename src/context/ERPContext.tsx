@@ -73,6 +73,7 @@ import {
   dbDeleteMaterial,
   dbUpsertUser,
   dbDeleteUser,
+  DbMutationMessage,
 } from '../services/supabaseService';
 import { getSupabaseClient } from '../lib/supabaseClient';
 import {
@@ -86,6 +87,7 @@ import {
   getDeletedMaterialTombstones,
   addMaterialTombstone,
   addMaterialTombstones,
+  removeMaterialTombstone,
   getDeletedVendorTombstones,
   addVendorTombstone,
   addVendorTombstones,
@@ -144,6 +146,8 @@ interface ERPContextType {
   addProjectRequirement: (req: Omit<ProjectMaterialRequirementItem, 'id' | 'srNo'>) => void;
   updateProjectRequirement: (id: string, updates: Partial<ProjectMaterialRequirementItem>) => void;
   deleteProjectRequirement: (id: string) => void;
+  deleteProjectRequirements: (ids: string[]) => void;
+  refreshDatabase: () => Promise<void>;
   bulkImportProjectRequirements: (items: any[]) => void;
   populateRequirementsFromBOM: (projectId: string, bomId: string) => void;
   createJobCardFromRequirement: (reqId: string) => JobCard | undefined;
@@ -853,7 +857,203 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     safeLocalStorageSet(LOCAL_STORAGE_KEY + '_vdocs', vendorDocuments);
-  }, [vendorDocuments]);  // Initial Background Sync & Real-time Live Subscription with Supabase Cloud
+  }, [vendorDocuments]);
+
+  // Pure Database Entity Synchronization Helpers
+  const safeMergeRequirements = (existing: ProjectMaterialRequirementItem[], remote: ProjectMaterialRequirementItem[]) => {
+    const tombstones = getDeletedRequirementTombstones();
+    const projectTombstones = getDeletedProjectTombstones();
+
+    // Clear tombstones for any items active in remote database
+    (remote || []).forEach((r) => {
+      if (tombstones.has(r.id)) {
+        removeRequirementTombstone(r.id);
+        tombstones.delete(r.id);
+      }
+    });
+
+    const isBelongingToDeletedProject = (r: ProjectMaterialRequirementItem) => {
+      if (!r) return false;
+      if (r.projectName && (projectTombstones.has(r.projectName) || projectTombstones.has(r.projectName.trim().toLowerCase()))) {
+        return true;
+      }
+      return false;
+    };
+
+    const purgeRequirementLocally = (id: string, projectName?: string) => {
+      addRequirementTombstone(id);
+      try {
+        const draft = localStorage.getItem('RSB_PROJECT_MATERIAL_ENTRY_10COL_WORKFLOW_V4');
+        if (draft) {
+          const parsed = JSON.parse(draft);
+          if (Array.isArray(parsed)) {
+            const cleaned = parsed.filter((r: any) => r.id !== id);
+            if (cleaned.length > 0) {
+              localStorage.setItem('RSB_PROJECT_MATERIAL_ENTRY_10COL_WORKFLOW_V4', JSON.stringify(cleaned));
+            } else {
+              localStorage.removeItem('RSB_PROJECT_MATERIAL_ENTRY_10COL_WORKFLOW_V4');
+            }
+          }
+        }
+        if (projectName) {
+          const prjDraftKey = `RSB_PROJECT_DRAFT_${projectName}`;
+          const prjDraft = localStorage.getItem(prjDraftKey);
+          if (prjDraft) {
+            const parsedPrj = JSON.parse(prjDraft);
+            if (Array.isArray(parsedPrj)) {
+              const cleanedPrj = parsedPrj.filter((r: any) => r.id !== id);
+              if (cleanedPrj.length > 0) {
+                localStorage.setItem(prjDraftKey, JSON.stringify(cleanedPrj));
+              } else {
+                localStorage.removeItem(prjDraftKey);
+              }
+            }
+          }
+        }
+      } catch (e) {}
+    };
+
+    const filteredExisting = (existing || []).filter((r) => !tombstones.has(r.id) && !isBelongingToDeletedProject(r));
+    const filteredRemote = (remote || []).filter((r) => !tombstones.has(r.id) && !isBelongingToDeletedProject(r));
+
+    const remoteMap = new Map(filteredRemote.map((r) => [r.id, r]));
+    const merged = [...filteredRemote];
+    filteredExisting.forEach((loc) => {
+      if (!remoteMap.has(loc.id)) {
+        if (pendingSyncIdsRef.current.has(loc.id)) {
+          merged.push(loc);
+        } else {
+          addRequirementTombstone(loc.id);
+        }
+      }
+    });
+
+    // Deduplicate strictly by primary key ID - preserve all distinct items created across devices
+    const seenIds = new Set<string>();
+    const deduped: ProjectMaterialRequirementItem[] = [];
+
+    for (const item of merged) {
+      if (!item || !item.id || seenIds.has(item.id) || tombstones.has(item.id)) continue;
+      seenIds.add(item.id);
+      deduped.push(item);
+    }
+
+    return deduped;
+  };
+
+  const safeMergeProjects = (existing: ProjectItem[], remote: ProjectItem[]) => {
+    const tombstones = getDeletedProjectTombstones();
+
+    // Clear tombstones for any projects active in remote database
+    (remote || []).forEach((p) => {
+      if (tombstones.has(p.id)) {
+        removeProjectTombstone(p.id);
+        tombstones.delete(p.id);
+      }
+      if (p.name && (tombstones.has(p.name) || tombstones.has(p.name.trim().toLowerCase()))) {
+        removeProjectTombstone(p.name);
+        tombstones.delete(p.name);
+        tombstones.delete(p.name.trim().toLowerCase());
+      }
+    });
+
+    const purgeProjectLocally = (p: ProjectItem) => {
+      addProjectTombstone(p.id);
+      if (p.name) addProjectTombstone(p.name);
+      try {
+        const activeSaved = localStorage.getItem('RSB_ACTIVE_SELECTED_PROJECT');
+        if (
+          activeSaved &&
+          (activeSaved.trim().toLowerCase() === p.name.trim().toLowerCase() ||
+           activeSaved === p.id ||
+           (p.projectNumber && activeSaved.trim().toLowerCase() === p.projectNumber.trim().toLowerCase()))
+        ) {
+          localStorage.removeItem('RSB_ACTIVE_SELECTED_PROJECT');
+        }
+        localStorage.removeItem(`RSB_PROJECT_DRAFT_${p.name}`);
+        localStorage.removeItem(`RSB_PROJECT_DRAFT_${p.name.trim()}`);
+        localStorage.removeItem(`RSB_PROJECT_DRAFT_${p.id}`);
+        if (p.projectNumber) {
+          localStorage.removeItem(`RSB_PROJECT_DRAFT_${p.projectNumber}`);
+        }
+      } catch (e) {}
+    };
+
+    const filteredExisting = (existing || []).filter(
+      (p) => !tombstones.has(p.id) && (!p.name || (!tombstones.has(p.name) && !tombstones.has(p.name.trim().toLowerCase())))
+    );
+    const filteredRemote = (remote || []).filter(
+      (p) => !tombstones.has(p.id) && (!p.name || (!tombstones.has(p.name) && !tombstones.has(p.name.trim().toLowerCase())))
+    );
+
+    const remoteMap = new Map(filteredRemote.map((p) => [p.id, p]));
+    const merged = [...filteredRemote];
+    filteredExisting.forEach((loc) => {
+      if (!remoteMap.has(loc.id)) {
+        if (pendingSyncIdsRef.current.has(loc.id)) {
+          merged.push(loc);
+        } else {
+          addProjectTombstone(loc.id);
+        }
+      }
+    });
+
+    // Deduplicate strictly by ID
+    const seenIds = new Set<string>();
+    const deduped: ProjectItem[] = [];
+    for (const p of merged) {
+      if (!p || !p.id || seenIds.has(p.id)) continue;
+      seenIds.add(p.id);
+      deduped.push(p);
+    }
+    return deduped;
+  };
+
+  const safeMergeMaterials = (existing: MaterialItem[], remote: MaterialItem[]) => {
+    const tombstones = getDeletedMaterialTombstones();
+    const filteredExisting = (existing || []).filter((m) => !tombstones.has(m.id));
+    const filteredRemote = (remote || []).filter((m) => !tombstones.has(m.id));
+    if (filteredRemote.length === 0) {
+      return filteredExisting.filter((loc) => pendingSyncIdsRef.current.has(loc.id));
+    }
+    const remoteMap = new Map(filteredRemote.map((m) => [m.id, m]));
+    const merged = [...filteredRemote];
+    filteredExisting.forEach((loc) => {
+      if (!remoteMap.has(loc.id)) {
+        if (pendingSyncIdsRef.current.has(loc.id)) {
+          merged.push(loc);
+        } else {
+          // Deleted in database on another system or directly in DB! Register tombstone
+          addMaterialTombstone(loc.id);
+        }
+      }
+    });
+    return merged.filter((m) => !tombstones.has(m.id));
+  };
+
+  const safeMergeVendors = (existing: VendorItem[], remote: VendorItem[]) => {
+    const tombstones = getDeletedVendorTombstones();
+    const filteredExisting = (existing || []).filter((v) => !tombstones.has(v.id));
+    const filteredRemote = (remote || []).filter((v) => !tombstones.has(v.id));
+    if (filteredRemote.length === 0) {
+      return filteredExisting.filter((loc) => pendingSyncIdsRef.current.has(loc.id));
+    }
+    const remoteMap = new Map(filteredRemote.map((v) => [v.id, v]));
+    const merged = [...filteredRemote];
+    filteredExisting.forEach((loc) => {
+      if (!remoteMap.has(loc.id)) {
+        if (pendingSyncIdsRef.current.has(loc.id)) {
+          merged.push(loc);
+        } else {
+          // Deleted in database on another system or directly in DB! Register tombstone
+          addVendorTombstone(loc.id);
+        }
+      }
+    });
+    return merged.filter((v) => !tombstones.has(v.id));
+  };
+
+  // Initial Background Sync & Real-time Live Subscription with Supabase Cloud
   useEffect(() => {
     let isMounted = true;
 
@@ -918,279 +1118,6 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch (e) {
         console.warn('LocalStorage clear error:', e);
       }
-    };
-
-    const safeMergeRequirements = (existing: ProjectMaterialRequirementItem[], remote: ProjectMaterialRequirementItem[]) => {
-      const tombstones = getDeletedRequirementTombstones();
-      const projectTombstones = getDeletedProjectTombstones();
-
-      // Clear tombstones for any items active in remote database
-      (remote || []).forEach((r) => {
-        if (tombstones.has(r.id)) {
-          removeRequirementTombstone(r.id);
-          tombstones.delete(r.id);
-        }
-      });
-
-      const isBelongingToDeletedProject = (r: ProjectMaterialRequirementItem) => {
-        if (!r) return false;
-        if (r.projectName && (projectTombstones.has(r.projectName) || projectTombstones.has(r.projectName.trim().toLowerCase()))) {
-          return true;
-        }
-        return false;
-      };
-
-      const purgeRequirementLocally = (id: string, projectName?: string) => {
-        addRequirementTombstone(id);
-        try {
-          const draft = localStorage.getItem('RSB_PROJECT_MATERIAL_ENTRY_10COL_WORKFLOW_V4');
-          if (draft) {
-            const parsed = JSON.parse(draft);
-            if (Array.isArray(parsed)) {
-              const cleaned = parsed.filter((r: any) => r.id !== id);
-              if (cleaned.length > 0) {
-                localStorage.setItem('RSB_PROJECT_MATERIAL_ENTRY_10COL_WORKFLOW_V4', JSON.stringify(cleaned));
-              } else {
-                localStorage.removeItem('RSB_PROJECT_MATERIAL_ENTRY_10COL_WORKFLOW_V4');
-              }
-            }
-          }
-          if (projectName) {
-            const prjDraftKey = `RSB_PROJECT_DRAFT_${projectName}`;
-            const prjDraft = localStorage.getItem(prjDraftKey);
-            if (prjDraft) {
-              const parsedPrj = JSON.parse(prjDraft);
-              if (Array.isArray(parsedPrj)) {
-                const cleanedPrj = parsedPrj.filter((r: any) => r.id !== id);
-                if (cleanedPrj.length > 0) {
-                  localStorage.setItem(prjDraftKey, JSON.stringify(cleanedPrj));
-                } else {
-                  localStorage.removeItem(prjDraftKey);
-                }
-              }
-            }
-          }
-        } catch (e) {}
-      };
-
-      const filteredExisting = (existing || []).filter((r) => !tombstones.has(r.id) && !isBelongingToDeletedProject(r));
-      const filteredRemote = (remote || []).filter((r) => !tombstones.has(r.id) && !isBelongingToDeletedProject(r));
-
-      if (filteredRemote.length === 0) {
-        filteredExisting.forEach((loc) => {
-          if (!pendingSyncIdsRef.current.has(loc.id)) {
-            purgeRequirementLocally(loc.id, loc.projectName);
-          }
-        });
-        return filteredExisting.filter((loc) => pendingSyncIdsRef.current.has(loc.id));
-      }
-
-      const remoteMap = new Map(filteredRemote.map((r) => [r.id, r]));
-      const merged = [...filteredRemote];
-      filteredExisting.forEach((loc) => {
-        if (!remoteMap.has(loc.id)) {
-          if (pendingSyncIdsRef.current.has(loc.id)) {
-            // Keep in-flight local additions that haven't landed in remote yet
-            merged.push(loc);
-          } else {
-            // Deleted in database on another workstation or directly in DB! Register tombstone and purge
-            purgeRequirementLocally(loc.id, loc.projectName);
-          }
-        }
-      });
-
-      // Deduplicate strictly by primary key ID!
-      // NEVER deduplicate by content/specs: master holds 1500+ items,
-      // and duplicate specs across machines/drawings are valid and expected.
-      const seenIds = new Set<string>();
-      const deduped: ProjectMaterialRequirementItem[] = [];
-      for (const item of merged) {
-        if (!item || !item.id || seenIds.has(item.id) || tombstones.has(item.id)) continue;
-        seenIds.add(item.id);
-        deduped.push(item);
-      }
-      return deduped;
-    };
-
-    const safeMergeProjects = (existing: ProjectItem[], remote: ProjectItem[]) => {
-      const tombstones = getDeletedProjectTombstones();
-
-      // Clear tombstones for any projects active in remote database
-      (remote || []).forEach((p) => {
-        if (tombstones.has(p.id)) {
-          removeProjectTombstone(p.id);
-          tombstones.delete(p.id);
-        }
-        if (p.name && (tombstones.has(p.name) || tombstones.has(p.name.trim().toLowerCase()))) {
-          removeProjectTombstone(p.name);
-          tombstones.delete(p.name);
-          tombstones.delete(p.name.trim().toLowerCase());
-        }
-      });
-
-      const purgeProjectLocally = (p: ProjectItem) => {
-        addProjectTombstone(p.id);
-        if (p.name) addProjectTombstone(p.name);
-        try {
-          const activeSaved = localStorage.getItem('RSB_ACTIVE_SELECTED_PROJECT');
-          if (
-            activeSaved &&
-            (activeSaved.trim().toLowerCase() === p.name.trim().toLowerCase() ||
-             activeSaved === p.id ||
-             (p.projectNumber && activeSaved.trim().toLowerCase() === p.projectNumber.trim().toLowerCase()))
-          ) {
-            localStorage.removeItem('RSB_ACTIVE_SELECTED_PROJECT');
-          }
-          localStorage.removeItem(`RSB_PROJECT_DRAFT_${p.name}`);
-          localStorage.removeItem(`RSB_PROJECT_DRAFT_${p.name.trim()}`);
-          localStorage.removeItem(`RSB_PROJECT_DRAFT_${p.id}`);
-          if (p.projectNumber) {
-            localStorage.removeItem(`RSB_PROJECT_DRAFT_${p.projectNumber}`);
-          }
-        } catch (e) {}
-      };
-
-      const filteredExisting = (existing || []).filter(
-        (p) => !tombstones.has(p.id) && (!p.name || (!tombstones.has(p.name) && !tombstones.has(p.name.trim().toLowerCase())))
-      );
-      const filteredRemote = (remote || []).filter(
-        (p) => !tombstones.has(p.id) && (!p.name || (!tombstones.has(p.name) && !tombstones.has(p.name.trim().toLowerCase())))
-      );
-
-      const deletedProjects: ProjectItem[] = [];
-
-      if (filteredRemote.length === 0) {
-        filteredExisting.forEach((loc) => {
-          if (!pendingSyncIdsRef.current.has(loc.id)) {
-            purgeProjectLocally(loc);
-            deletedProjects.push(loc);
-          }
-        });
-
-        if (deletedProjects.length > 0) {
-          setTimeout(() => {
-            setProjectRequirements((prev) => {
-              const reqIdsToTombstone: string[] = [];
-              const next = prev.filter((r) => {
-                const belongsToDeleted = deletedProjects.some((dp) =>
-                  isRequirementMatchedToProject(r.projectName, dp) ||
-                  isRequirementMatchingProjectName(r.projectName, dp.name) ||
-                  (dp.projectNumber && r.projectName.toLowerCase().includes(dp.projectNumber.toLowerCase()))
-                );
-                if (belongsToDeleted) {
-                  reqIdsToTombstone.push(r.id);
-                  return false;
-                }
-                return true;
-              });
-              if (reqIdsToTombstone.length > 0) {
-                addRequirementTombstones(reqIdsToTombstone);
-              }
-              try {
-                localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(next));
-              } catch (e) {}
-              return next;
-            });
-          }, 0);
-        }
-
-        return filteredExisting.filter((loc) => pendingSyncIdsRef.current.has(loc.id));
-      }
-
-      const remoteMap = new Map(filteredRemote.map((p) => [p.id, p]));
-      const merged = [...filteredRemote];
-      filteredExisting.forEach((loc) => {
-        if (!remoteMap.has(loc.id)) {
-          if (pendingSyncIdsRef.current.has(loc.id)) {
-            merged.push(loc);
-          } else {
-            // Deleted in database on another system or directly in DB! Register tombstone and purge
-            purgeProjectLocally(loc);
-            deletedProjects.push(loc);
-          }
-        }
-      });
-
-      if (deletedProjects.length > 0) {
-        setTimeout(() => {
-          setProjectRequirements((prev) => {
-            const reqIdsToTombstone: string[] = [];
-            const next = prev.filter((r) => {
-              const belongsToDeleted = deletedProjects.some((dp) =>
-                isRequirementMatchedToProject(r.projectName, dp) ||
-                isRequirementMatchingProjectName(r.projectName, dp.name) ||
-                (dp.projectNumber && r.projectName.toLowerCase().includes(dp.projectNumber.toLowerCase()))
-              );
-              if (belongsToDeleted) {
-                reqIdsToTombstone.push(r.id);
-                return false;
-              }
-              return true;
-            });
-            if (reqIdsToTombstone.length > 0) {
-              addRequirementTombstones(reqIdsToTombstone);
-            }
-            try {
-              localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(next));
-            } catch (e) {}
-            return next;
-          });
-        }, 0);
-      }
-
-      // Deduplicate strictly by ID
-      const seenIds = new Set<string>();
-      const deduped: ProjectItem[] = [];
-      for (const p of merged) {
-        if (!p || !p.id || seenIds.has(p.id)) continue;
-        seenIds.add(p.id);
-        deduped.push(p);
-      }
-      return deduped;
-    };
-
-    const safeMergeMaterials = (existing: MaterialItem[], remote: MaterialItem[]) => {
-      const tombstones = getDeletedMaterialTombstones();
-      const filteredExisting = (existing || []).filter((m) => !tombstones.has(m.id));
-      const filteredRemote = (remote || []).filter((m) => !tombstones.has(m.id));
-      if (filteredRemote.length === 0) {
-        return filteredExisting.filter((loc) => pendingSyncIdsRef.current.has(loc.id));
-      }
-      const remoteMap = new Map(filteredRemote.map((m) => [m.id, m]));
-      const merged = [...filteredRemote];
-      filteredExisting.forEach((loc) => {
-        if (!remoteMap.has(loc.id)) {
-          if (pendingSyncIdsRef.current.has(loc.id)) {
-            merged.push(loc);
-          } else {
-            // Deleted in database on another system or directly in DB! Register tombstone
-            addMaterialTombstone(loc.id);
-          }
-        }
-      });
-      return merged.filter((m) => !tombstones.has(m.id));
-    };
-
-    const safeMergeVendors = (existing: VendorItem[], remote: VendorItem[]) => {
-      const tombstones = getDeletedVendorTombstones();
-      const filteredExisting = (existing || []).filter((v) => !tombstones.has(v.id));
-      const filteredRemote = (remote || []).filter((v) => !tombstones.has(v.id));
-      if (filteredRemote.length === 0) {
-        return filteredExisting.filter((loc) => pendingSyncIdsRef.current.has(loc.id));
-      }
-      const remoteMap = new Map(filteredRemote.map((v) => [v.id, v]));
-      const merged = [...filteredRemote];
-      filteredExisting.forEach((loc) => {
-        if (!remoteMap.has(loc.id)) {
-          if (pendingSyncIdsRef.current.has(loc.id)) {
-            merged.push(loc);
-          } else {
-            // Deleted in database on another system or directly in DB! Register tombstone
-            addVendorTombstone(loc.id);
-          }
-        }
-      });
-      return merged.filter((v) => !tombstones.has(v.id));
     };
 
     const initCloudSync = async () => {
@@ -1268,7 +1195,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn('Initial cloud pull skipped:', err);
       }
 
-      // 2. Realtime broadcast listener: Global Factory Reset across all active admins/devices
+      // 2. Realtime broadcast listener: Global Factory Reset & DB Mutations across all active admins/devices
       try {
         client
           .channel('rsb-system-broadcast')
@@ -1276,6 +1203,144 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             console.warn('⚡ Global Factory Reset broadcast received from Supabase Cloud.');
             applyGlobalFactoryReset();
             addNotification('Factory Reset Applied', 'The system was reset to clean baseline.', 'warning');
+          })
+          .on('broadcast', { event: 'DB_MUTATION' }, (msg: any) => {
+            const m = msg?.payload as DbMutationMessage;
+            if (!m || !isMounted || !m.action || !m.entity) return;
+
+            if (m.action === 'DELETE') {
+              if (m.entity === 'requirement' && m.id) {
+                addRequirementTombstone(m.id);
+                setProjectRequirements((prev) => {
+                  const next = prev.filter((r) => r.id !== m.id);
+                  try { safeLocalStorageSet(LOCAL_STORAGE_KEY + '_requirements', next); } catch (e) {}
+                  return next;
+                });
+                try {
+                  const draft = localStorage.getItem('RSB_PROJECT_MATERIAL_ENTRY_10COL_WORKFLOW_V4');
+                  if (draft) {
+                    const parsed = JSON.parse(draft);
+                    if (Array.isArray(parsed)) {
+                      const cleaned = parsed.filter((r: any) => r.id !== m.id);
+                      if (cleaned.length > 0) safeLocalStorageSet('RSB_PROJECT_MATERIAL_ENTRY_10COL_WORKFLOW_V4', cleaned);
+                      else localStorage.removeItem('RSB_PROJECT_MATERIAL_ENTRY_10COL_WORKFLOW_V4');
+                    }
+                  }
+                } catch (e) {}
+              } else if (m.entity === 'requirement' && m.ids && Array.isArray(m.ids)) {
+                addRequirementTombstones(m.ids);
+                setProjectRequirements((prev) => {
+                  const next = prev.filter((r) => !m.ids!.includes(r.id));
+                  try { safeLocalStorageSet(LOCAL_STORAGE_KEY + '_requirements', next); } catch (e) {}
+                  return next;
+                });
+              } else if (m.entity === 'project' && m.id) {
+                addProjectTombstone(m.id);
+                setProjects((prev) => {
+                  const next = prev.filter((p) => p.id !== m.id);
+                  try { safeLocalStorageSet(LOCAL_STORAGE_KEY + '_projects', next); } catch (e) {}
+                  return next;
+                });
+              } else if (m.entity === 'material' && m.id) {
+                addMaterialTombstone(m.id);
+                setMaterials((prev) => {
+                  const next = prev.filter((item) => item.id !== m.id);
+                  try { safeLocalStorageSet(LOCAL_STORAGE_KEY + '_materials', next); } catch (e) {}
+                  return next;
+                });
+              } else if (m.entity === 'vendor' && m.id) {
+                addVendorTombstone(m.id);
+                setVendors((prev) => {
+                  const next = prev.filter((v) => v.id !== m.id);
+                  try { safeLocalStorageSet(LOCAL_STORAGE_KEY + '_vendors', next); } catch (e) {}
+                  return next;
+                });
+              }
+            } else if (m.action === 'UPSERT') {
+              if (m.entity === 'requirement' && m.data && m.data.id) {
+                const req = m.data as ProjectMaterialRequirementItem;
+                removeRequirementTombstone(req.id);
+                setProjectRequirements((prev) => {
+                  const existingIdx = prev.findIndex((r) => r.id === req.id);
+                  let next: ProjectMaterialRequirementItem[];
+                  if (existingIdx >= 0) {
+                    next = [...prev];
+                    next[existingIdx] = { ...next[existingIdx], ...req };
+                  } else {
+                    next = [req, ...prev];
+                  }
+                  try { safeLocalStorageSet(LOCAL_STORAGE_KEY + '_requirements', next); } catch (e) {}
+                  return next;
+                });
+              } else if (m.entity === 'project' && m.data && m.data.id) {
+                const prj = m.data as ProjectItem;
+                removeProjectTombstone(prj.id);
+                setProjects((prev) => {
+                  const existingIdx = prev.findIndex((p) => p.id === prj.id);
+                  let next: ProjectItem[];
+                  if (existingIdx >= 0) {
+                    next = [...prev];
+                    next[existingIdx] = { ...next[existingIdx], ...prj };
+                  } else {
+                    next = [prj, ...prev];
+                  }
+                  try { safeLocalStorageSet(LOCAL_STORAGE_KEY + '_projects', next); } catch (e) {}
+                  return next;
+                });
+              } else if (m.entity === 'material' && m.data && m.data.id) {
+                const mat = m.data as MaterialItem;
+                removeMaterialTombstone(mat.id);
+                setMaterials((prev) => {
+                  const existingIdx = prev.findIndex((item) => item.id === mat.id);
+                  let next: MaterialItem[];
+                  if (existingIdx >= 0) {
+                    next = [...prev];
+                    next[existingIdx] = { ...next[existingIdx], ...mat };
+                  } else {
+                    next = [mat, ...prev];
+                  }
+                  try { safeLocalStorageSet(LOCAL_STORAGE_KEY + '_materials', next); } catch (e) {}
+                  return next;
+                });
+              } else if (m.entity === 'vendor' && m.data && m.data.id) {
+                const vnd = m.data as VendorItem;
+                removeVendorTombstone(vnd.id);
+                setVendors((prev) => {
+                  const existingIdx = prev.findIndex((v) => v.id === vnd.id);
+                  let next: VendorItem[];
+                  if (existingIdx >= 0) {
+                    next = [...prev];
+                    next[existingIdx] = { ...next[existingIdx], ...vnd };
+                  } else {
+                    next = [vnd, ...prev];
+                  }
+                  try { safeLocalStorageSet(LOCAL_STORAGE_KEY + '_vendors', next); } catch (e) {}
+                  return next;
+                });
+              }
+            } else if (m.action === 'BULK_UPSERT') {
+              if (m.entity === 'requirement' && Array.isArray(m.data) && m.data.length > 0) {
+                const newItemsMap = new Map<string, ProjectMaterialRequirementItem>(m.data.map((item: any) => [item.id, item]));
+                m.data.forEach((item: any) => removeRequirementTombstone(item.id));
+                setProjectRequirements((prev) => {
+                  const updated = prev.map((item) => newItemsMap.get(item.id) || item);
+                  const existingIds = new Set(prev.map((i) => i.id));
+                  const additions = (m.data as ProjectMaterialRequirementItem[]).filter((item) => !existingIds.has(item.id));
+                  const next = [...additions, ...updated];
+                  try { safeLocalStorageSet(LOCAL_STORAGE_KEY + '_requirements', next); } catch (e) {}
+                  return next;
+                });
+              }
+            } else if (m.action === 'BULK_DELETE') {
+              if (m.entity === 'requirement' && Array.isArray(m.ids) && m.ids.length > 0) {
+                addRequirementTombstones(m.ids);
+                setProjectRequirements((prev) => {
+                  const next = prev.filter((r) => !m.ids!.includes(r.id));
+                  try { safeLocalStorageSet(LOCAL_STORAGE_KEY + '_requirements', next); } catch (e) {}
+                  return next;
+                });
+              }
+            }
           })
           .subscribe();
       } catch (bErr) {
@@ -1765,7 +1830,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!isMounted) return;
       try {
         const pullRes = await pullAllDataFromSupabase();
-        if (pullRes.success && pullRes.data) {
+        if (isMounted && pullRes.success && pullRes.data) {
           if (pullRes.data.projects) {
             const remoteProjects = pullRes.data.projects;
             setProjects((prev) => {
@@ -1825,6 +1890,57 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     };
   }, []);
+
+  // Manual Refresh from Database on demand
+  const refreshDatabase = async () => {
+    try {
+      const pullRes = await pullAllDataFromSupabase();
+      if (pullRes.success && pullRes.data) {
+        if (pullRes.data.projects) {
+          const remoteProjects = pullRes.data.projects;
+          setProjects((prev) => {
+            const merged = safeMergeProjects(prev, remoteProjects);
+            try {
+              localStorage.setItem(LOCAL_STORAGE_KEY + '_projects', JSON.stringify(merged));
+            } catch (e) {}
+            return merged;
+          });
+        }
+        if (pullRes.data.requirements) {
+          const remoteReqs = pullRes.data.requirements;
+          setProjectRequirements((prev) => {
+            const merged = safeMergeRequirements(prev, remoteReqs);
+            try {
+              localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(merged));
+            } catch (e) {}
+            return merged;
+          });
+        }
+        if (pullRes.data.materials !== undefined) {
+          const remoteMats = pullRes.data.materials || [];
+          setMaterials((prev) => {
+            const merged = safeMergeMaterials(prev, remoteMats);
+            try {
+              localStorage.setItem(LOCAL_STORAGE_KEY + '_materials', JSON.stringify(merged));
+            } catch (e) {}
+            return merged;
+          });
+        }
+        if (pullRes.data.vendors !== undefined) {
+          const remoteVendors = pullRes.data.vendors || [];
+          setVendors((prev) => {
+            const merged = safeMergeVendors(prev, remoteVendors);
+            try {
+              localStorage.setItem(LOCAL_STORAGE_KEY + '_vendors', JSON.stringify(merged));
+            } catch (e) {}
+            return merged;
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('Manual refresh from DB failed:', err);
+    }
+  };
 
   // Audit Logger Helper
   const logAudit = (action: string, module: string, details: string) => {
@@ -2127,7 +2243,16 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ? (req as any).srNo
       : projectRequirements.length + 1;
 
+    const cleanDesc = (req.description || '').trim().toLowerCase();
+    const cleanSpec = (req.sizeSpecs || '').trim().toLowerCase().replace(/\s+/g, '');
+    const cleanType = (req.materialType || '').trim().toLowerCase();
+    const cleanPrj = targetPrj.trim().toLowerCase();
+
     const finalId = (req as any).id || ('pmr-' + Date.now() + '-' + Math.floor(Math.random() * 1000));
+    removeRequirementTombstone(finalId);
+    if (targetPrj) {
+      removeProjectTombstone(targetPrj);
+    }
     pendingSyncIdsRef.current.add(finalId);
 
     const newReq: ProjectMaterialRequirementItem = {
@@ -2151,11 +2276,10 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setProjectRequirements((prev) => {
-      // 1. If an item with the same ID already exists, update it
-      const existingIdx = prev.findIndex((r) => r.id === newReq.id);
+      const existingIdx = prev.findIndex((r) => r.id === finalId);
       if (existingIdx >= 0) {
         const copy = [...prev];
-        copy[existingIdx] = newReq;
+        copy[existingIdx] = { ...copy[existingIdx], ...newReq };
         return copy;
       }
       return [...prev, newReq];
@@ -2193,7 +2317,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     dbUpsertRequirement(newReq).finally(() => {
       setTimeout(() => {
         pendingSyncIdsRef.current.delete(finalId);
-      }, 5000);
+      }, 20000);
     });
 
     // Auto-sync linked Project BOM
@@ -2213,7 +2337,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             dbUpsertRequirement(merged).finally(() => {
               setTimeout(() => {
                 pendingSyncIdsRef.current.delete(id);
-              }, 5000);
+              }, 20000);
             });
             return merged;
           }
@@ -2224,7 +2348,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dbUpsertRequirement(newEntry).finally(() => {
           setTimeout(() => {
             pendingSyncIdsRef.current.delete(id);
-          }, 5000);
+          }, 20000);
         });
         updatedList = [newEntry, ...prev];
       }
@@ -2240,6 +2364,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteProjectRequirement = (id: string) => {
     addRequirementTombstone(id);
+    pendingSyncIdsRef.current.delete(id);
     const reqToDelete = projectRequirements.find((r) => r.id === id);
     if (reqToDelete) {
       const trashEntry: TrashItem = {
@@ -2334,6 +2459,106 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e) {}
 
     logAudit('Requirement Deleted', 'Project Material Requirement', `Deleted Requirement ID ${id} (Moved to Trash)`);
+  };
+
+  const deleteProjectRequirements = (ids: string[]) => {
+    if (!ids || ids.length === 0) return;
+    const idSet = new Set(ids);
+    addRequirementTombstones(ids);
+    ids.forEach((id) => pendingSyncIdsRef.current.delete(id));
+
+    const reqsToDelete = projectRequirements.filter((r) => idSet.has(r.id));
+    if (reqsToDelete.length > 0) {
+      const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toISOString().split('T')[0];
+      const newTrashItems: TrashItem[] = reqsToDelete.map((req) => ({
+        id: `trash-req-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        type: 'requirement',
+        deletedAt: nowStr,
+        deletedBy: currentUser?.name || 'Amit',
+        title: `${req.description} (${req.sizeSpecs})`,
+        subtitle: `Project: ${req.projectName} • ${req.quantity} ${req.unit} • Vendor: ${req.vendor || 'Unassigned'}`,
+        requirementData: req,
+      }));
+      setTrashItems((prev) => [...newTrashItems, ...prev]);
+
+      // Group by project to update metrics and clear drafts
+      const projectCounts = new Map<string, { count: number; qty: number }>();
+      reqsToDelete.forEach((req) => {
+        if (req.projectName) {
+          const prevP = projectCounts.get(req.projectName) || { count: 0, qty: 0 };
+          projectCounts.set(req.projectName, {
+            count: prevP.count + 1,
+            qty: prevP.qty + Number(req.quantity || 0),
+          });
+        }
+      });
+
+      projectCounts.forEach((delta, prjName) => {
+        const existingProject = projects.find((p) => p.name.trim().toLowerCase() === prjName.trim().toLowerCase());
+        if (existingProject) {
+          const updatedPrj: ProjectItem = {
+            ...existingProject,
+            materialsCount: Math.max(0, (existingProject.materialsCount || delta.count) - delta.count),
+            totalQuantity: Math.max(0, (existingProject.totalQuantity || delta.qty) - delta.qty),
+          };
+          setProjects((prev) => prev.map((p) => (p.id === updatedPrj.id ? updatedPrj : p)));
+          dbUpsertProject(updatedPrj);
+        }
+
+        try {
+          const draftKey = `RSB_PROJECT_DRAFT_${prjName}`;
+          const cached = localStorage.getItem(draftKey);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed)) {
+              const cleaned = parsed.filter((row: any) => !idSet.has(row.id));
+              if (cleaned.length > 0) {
+                localStorage.setItem(draftKey, JSON.stringify(cleaned));
+              } else {
+                localStorage.removeItem(draftKey);
+              }
+            }
+          }
+        } catch (e) {}
+      });
+    }
+
+    // Clean global draft
+    try {
+      const globalDraft = localStorage.getItem(DRAFT_STORAGE_KEY);
+      if (globalDraft) {
+        const parsed = JSON.parse(globalDraft);
+        if (Array.isArray(parsed)) {
+          const cleaned = parsed.filter((row: any) => !idSet.has(row.id));
+          if (cleaned.length > 0) {
+            localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(cleaned));
+          } else {
+            localStorage.removeItem(DRAFT_STORAGE_KEY);
+          }
+        }
+      }
+    } catch (e) {}
+
+    setProjectRequirements((prev) => {
+      const nextReqs = prev.filter((r) => !idSet.has(r.id));
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(nextReqs));
+      } catch (e) {}
+      return nextReqs;
+    });
+
+    // Batch delete in Supabase
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      supabase.from('project_material_requirements').delete().in('id', ids).then(() => {});
+    }
+    try {
+      const bc = new BroadcastChannel('rsb_erp_live_sync');
+      bc.postMessage({ type: 'PROJECTS_UPDATED', ids });
+      bc.close();
+    } catch (e) {}
+
+    logAudit('Requirements Bulk Deleted', 'Project Material Requirement', `Bulk deleted ${ids.length} requirements (Moved to Trash)`);
   };
 
 
@@ -3231,10 +3456,16 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...material,
       id: 'mat-' + (materials.length + 1) + '-' + Date.now().toString().slice(-4),
     };
+    pendingSyncIdsRef.current.add(newMat.id);
+    removeMaterialTombstone(newMat.id);
     setMaterials((prev) => [newMat, ...prev]);
     logAudit('Material Created', 'Materials Master', `Created material ${newMat.name} (${newMat.code})`);
     addNotification('Material Added', `Added ${newMat.name} to inventory catalog`, 'success', 'materials');
-    dbUpsertMaterial(newMat);
+    dbUpsertMaterial(newMat).finally(() => {
+      setTimeout(() => {
+        pendingSyncIdsRef.current.delete(newMat.id);
+      }, 20000);
+    });
   };
 
   const updateMaterial = (id: string, updates: Partial<MaterialItem>) => {
@@ -3653,6 +3884,10 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       'info',
       'projects'
     );
+    removeProjectTombstone(newPrj.id);
+    if (newPrj.name) {
+      removeProjectTombstone(newPrj.name);
+    }
     pendingSyncIdsRef.current.add(newPrj.id);
     dbUpsertProject(newPrj).then(() => {
       setTimeout(() => {
@@ -3840,7 +4075,35 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addNotification('Project Restored', `Restored project "${prj.name}" to active projects`, 'success', 'projects');
     } else if (item.type === 'requirement' && item.requirementData) {
       const req = item.requirementData;
-      setProjectRequirements((prev) => [req, ...prev.filter((r) => r.id !== req.id)]);
+      removeRequirementTombstone(req.id);
+      if (req.projectName) removeProjectTombstone(req.projectName);
+      pendingSyncIdsRef.current.add(req.id);
+
+      setProjectRequirements((prev) => {
+        // If an item with this ID already exists, update it in place; otherwise add it back
+        const existingIdx = prev.findIndex((r) => r.id === req.id);
+        if (existingIdx >= 0) {
+          const copy = [...prev];
+          copy[existingIdx] = req;
+          return copy;
+        }
+        return [req, ...prev];
+      });
+
+      // Update project metrics in state & DB
+      if (req.projectName) {
+        const existingProject = projects.find((p) => p.name.trim().toLowerCase() === req.projectName?.trim().toLowerCase());
+        if (existingProject) {
+          const updatedPrj: ProjectItem = {
+            ...existingProject,
+            materialsCount: (existingProject.materialsCount || 0) + 1,
+            totalQuantity: (existingProject.totalQuantity || 0) + Number(req.quantity || 0),
+          };
+          setProjects((prev) => prev.map((p) => (p.id === updatedPrj.id ? updatedPrj : p)));
+          dbUpsertProject(updatedPrj);
+        }
+      }
+
       dbUpsertRequirement(req);
       logAudit('Requirement Restored', 'Trash Bin', `Restored ${req.description} from Trash Bin`);
       addNotification('Material Restored', `Restored "${req.description}" to ${req.projectName}`, 'success', 'requirements');
@@ -3865,6 +4128,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...vendor,
       id: 'vnd-' + (vendors.length + 1) + '-' + Date.now().toString().slice(-4),
     };
+    pendingSyncIdsRef.current.add(newVendor.id);
     removeVendorTombstone(newVendor.id);
     setVendors((prev) => {
       const next = [newVendor, ...prev.filter((v) => v.id !== newVendor.id)];
@@ -3873,7 +4137,11 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch (e) {}
       return next;
     });
-    dbUpsertVendor(newVendor);
+    dbUpsertVendor(newVendor).finally(() => {
+      setTimeout(() => {
+        pendingSyncIdsRef.current.delete(newVendor.id);
+      }, 20000);
+    });
     try {
       const bc = new BroadcastChannel('rsb_erp_live_sync');
       bc.postMessage({ type: 'VENDOR_UPSERTED', vendor: newVendor });
@@ -5059,6 +5327,8 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addProjectRequirement,
         updateProjectRequirement,
         deleteProjectRequirement,
+        deleteProjectRequirements,
+        refreshDatabase,
         bulkImportProjectRequirements,
         populateRequirementsFromBOM,
         createJobCardFromRequirement,
