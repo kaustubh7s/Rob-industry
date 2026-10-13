@@ -1257,12 +1257,12 @@ export const MemberAuthorizationManager: React.FC = () => {
                 </button>
               </div>
               <div className="text-[11px] text-slate-400">
-                Valid for: <strong className="text-white">24 Hours (until {generatedResetPin.expiresAt})</strong>
+                Validity: <strong className="text-white">One-Time Use (Kept as is until used; rotates automatically upon login)</strong>
               </div>
             </div>
 
             <p className="text-xs text-slate-300 text-left bg-slate-850 p-3.5 rounded-xl border border-slate-800 leading-relaxed">
-              🔑 <strong>How to use:</strong> Provide this passkey to <strong>{generatedResetPin.user.name}</strong>. On the login screen, they can click the <strong>One-Time Passkey</strong> tab and enter <strong>{generatedResetPin.pin}</strong> directly, OR type it into the <strong>Security Password</strong> box to instantly unlock the ERP!
+              🔑 <strong>How to use:</strong> Provide this passkey to <strong>{generatedResetPin.user.name}</strong>. It can be typed directly into the <strong>Security Password</strong> box or Login ID box to instantly unlock the ERP. <em>Once used, this passkey is consumed and a new passkey is automatically issued for next time.</em>
             </p>
 
             <button

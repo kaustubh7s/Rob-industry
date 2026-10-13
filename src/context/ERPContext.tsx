@@ -2203,59 +2203,176 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Key for tracking passkeys that have already been consumed (1-time use only)
+  const RSB_CONSUMED_PASSKEYS_KEY = 'RSB_CONSUMED_PASSKEYS';
+
+  const getConsumedPasskeys = (): string[] => {
+    try {
+      const raw = localStorage.getItem(RSB_CONSUMED_PASSKEYS_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const markPasskeyConsumed = (rawPin: string) => {
+    try {
+      const clean = rawPin.replace(/[-\s]/g, '');
+      const consumed = getConsumedPasskeys();
+      if (!consumed.includes(clean)) {
+        consumed.push(clean);
+        localStorage.setItem(RSB_CONSUMED_PASSKEYS_KEY, JSON.stringify(consumed));
+      }
+      // Clean up from active pins cache
+      const rawPins = localStorage.getItem('RSB_USER_RESET_PINS');
+      if (rawPins) {
+        const parsed = JSON.parse(rawPins);
+        delete parsed[`pin_${clean}`];
+        for (const [k, v] of Object.entries(parsed)) {
+          if (
+            v &&
+            typeof v === 'object' &&
+            ((v as any).rawPin === clean || ((v as any).pin || '').replace(/[-\s]/g, '') === clean)
+          ) {
+            delete parsed[k];
+          }
+        }
+        localStorage.setItem('RSB_USER_RESET_PINS', JSON.stringify(parsed));
+      }
+    } catch {}
+  };
+
+  // Consumes the current 1-time passkey and automatically generates a new one for next use
+  const consumeAndRotatePasskey = (user: User, usedPin: string): string => {
+    const cleanUsed = usedPin.replace(/[-\s]/g, '');
+    markPasskeyConsumed(cleanUsed);
+
+    // Generate brand new 6-digit random passkey
+    const newRandomPin = Math.floor(100000 + Math.random() * 900000).toString();
+    const newFormattedPin = `${newRandomPin.slice(0, 3)}-${newRandomPin.slice(3)}`;
+    const expiresAtMs = Date.now() + 30 * 24 * 60 * 60 * 1000;
+    const expiresAtText = new Date(expiresAtMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    // Update user state and storage with newly rotated passkey
+    setUsers((prev) => {
+      const next = prev.map((u) => {
+        if (u.id === user.id) {
+          const updated: User = {
+            ...u,
+            resetPin: newFormattedPin,
+            resetPinExpiresAt: expiresAtMs,
+            permissions: {
+              ...(u.permissions || {}),
+              resetPin: newFormattedPin,
+              resetPinExpiresAt: expiresAtMs,
+            },
+          };
+          dbUpsertUser(updated);
+          return updated;
+        }
+        return u;
+      });
+      localStorage.setItem(LOCAL_STORAGE_KEY + '_users', JSON.stringify(next));
+      return next;
+    });
+
+    // Save in RSB_USER_RESET_PINS
+    try {
+      const rawPins = localStorage.getItem('RSB_USER_RESET_PINS') || '{}';
+      const pins = JSON.parse(rawPins);
+      const pinPayload = {
+        pin: newFormattedPin,
+        rawPin: newRandomPin,
+        expiresAtMs,
+        expiresAtText,
+        userId: user.id,
+        userName: user.name,
+      };
+      pins[user.id] = pinPayload;
+      pins[user.name.toLowerCase()] = pinPayload;
+      if (user.email) pins[user.email.toLowerCase()] = pinPayload;
+      pins[`pin_${newRandomPin}`] = pinPayload;
+      pins[`pin_${newFormattedPin.replace(/[-\s]/g, '')}`] = pinPayload;
+      localStorage.setItem('RSB_USER_RESET_PINS', JSON.stringify(pins));
+    } catch {}
+
+    logAudit(
+      'Passkey Consumed & Rotated',
+      'User Authorization',
+      `One-Time Passkey (${cleanUsed}) consumed for ${user.name}. Generated new 1-time emergency passkey (${newFormattedPin}).`
+    );
+    return newFormattedPin;
+  };
+
   // Helper to locate which user a given 4-8 digit One-Time Emergency Passkey belongs to
-  const findUserByPasskey = (passkey: string, searchPool: User[]): User | undefined => {
+  const findUserByPasskey = (passkey: string, searchPool: User[]): { user: User; matchedPin: string } | undefined => {
     if (!passkey) return undefined;
     const cleanPass = passkey.trim().replace(/[-\s]/g, '');
     if (cleanPass.length < 4) return undefined;
 
-    // 1. Prashant built-in default emergency passkey (789-456 / 789456)
-    if (cleanPass === '789456') {
-      const pUser =
-        searchPool.find((u) => u.name?.toLowerCase().includes('prashant') || u.id === 'usr-1791893308005') ||
-        INITIAL_USERS.find((u) => u.name?.toLowerCase().includes('prashant') || u.id === 'usr-1791893308005');
-      if (pUser) return pUser;
+    // Check if this passkey has ALREADY been consumed (strictly 1-time use)
+    const consumed = getConsumedPasskeys();
+    if (consumed.includes(cleanPass)) {
+      return undefined;
     }
 
-    // 2. Direct match on user.resetPin or permissions.resetPin
-    const matchedUser = searchPool.find((u) => {
-      const pin1 = (u.resetPin || '').replace(/[-\s]/g, '');
-      const pin2 = ((u.permissions as any)?.resetPin || '').replace(/[-\s]/g, '');
-      const pin3 = ((u as any).reset_pin || '').replace(/[-\s]/g, '');
-      return (pin1 && pin1 === cleanPass) || (pin2 && pin2 === cleanPass) || (pin3 && pin3 === cleanPass);
-    }) || INITIAL_USERS.find((u) => {
-      const pin1 = (u.resetPin || '').replace(/[-\s]/g, '');
-      const pin2 = ((u.permissions as any)?.resetPin || '').replace(/[-\s]/g, '');
-      return (pin1 && pin1 === cleanPass) || (pin2 && pin2 === cleanPass);
-    });
-    if (matchedUser) return matchedUser;
-
-    // 3. Match in RSB_USER_RESET_PINS localStorage store
+    // 1. Match in RSB_USER_RESET_PINS localStorage store
     try {
       const rawPins = localStorage.getItem('RSB_USER_RESET_PINS');
       if (rawPins) {
         const parsed = JSON.parse(rawPins);
-        // Direct pin index lookup
         const directEntry = parsed[`pin_${cleanPass}`];
         if (directEntry) {
-          const u = searchPool.find((x) => x.id === directEntry.userId || x.name?.toLowerCase() === directEntry.userName?.toLowerCase()) ||
-                    INITIAL_USERS.find((x) => x.id === directEntry.userId || x.name?.toLowerCase() === directEntry.userName?.toLowerCase());
-          if (u) return u;
+          const u =
+            searchPool.find(
+              (x) => x.id === directEntry.userId || x.name?.toLowerCase() === directEntry.userName?.toLowerCase()
+            ) ||
+            INITIAL_USERS.find(
+              (x) => x.id === directEntry.userId || x.name?.toLowerCase() === directEntry.userName?.toLowerCase()
+            );
+          if (u) return { user: u, matchedPin: cleanPass };
         }
 
-        // Loop stored keys
         for (const [key, obj] of Object.entries(parsed)) {
           if (obj && typeof obj === 'object') {
             const rawP = String((obj as any).rawPin || (obj as any).pin || '').replace(/[-\s]/g, '');
             if (rawP && rawP === cleanPass) {
-              const u = searchPool.find((x) => x.id === key || x.name?.toLowerCase() === key.toLowerCase() || x.id === (obj as any).userId) ||
-                        INITIAL_USERS.find((x) => x.id === key || x.name?.toLowerCase() === key.toLowerCase() || x.id === (obj as any).userId);
-              if (u) return u;
+              const u =
+                searchPool.find(
+                  (x) => x.id === key || x.name?.toLowerCase() === key.toLowerCase() || x.id === (obj as any).userId
+                ) ||
+                INITIAL_USERS.find(
+                  (x) => x.id === key || x.name?.toLowerCase() === key.toLowerCase() || x.id === (obj as any).userId
+                );
+              if (u) return { user: u, matchedPin: cleanPass };
             }
           }
         }
       }
     } catch {}
+
+    // 2. Direct match on user.resetPin or permissions.resetPin
+    const matchedUser =
+      searchPool.find((u) => {
+        const pin1 = (u.resetPin || '').replace(/[-\s]/g, '');
+        const pin2 = ((u.permissions as any)?.resetPin || '').replace(/[-\s]/g, '');
+        const pin3 = ((u as any).reset_pin || '').replace(/[-\s]/g, '');
+        return (pin1 && pin1 === cleanPass) || (pin2 && pin2 === cleanPass) || (pin3 && pin3 === cleanPass);
+      }) ||
+      INITIAL_USERS.find((u) => {
+        const pin1 = (u.resetPin || '').replace(/[-\s]/g, '');
+        const pin2 = ((u.permissions as any)?.resetPin || '').replace(/[-\s]/g, '');
+        return (pin1 && pin1 === cleanPass) || (pin2 && pin2 === cleanPass);
+      });
+    if (matchedUser) return { user: matchedUser, matchedPin: cleanPass };
+
+    // 3. Prashant built-in initial passkey (789456 / 789-456), ONLY valid if not yet consumed
+    if (cleanPass === '789456' && !consumed.includes('789456')) {
+      const pUser =
+        searchPool.find((u) => u.name?.toLowerCase().includes('prashant') || u.id === 'usr-1791893308005') ||
+        INITIAL_USERS.find((u) => u.name?.toLowerCase().includes('prashant') || u.id === 'usr-1791893308005');
+      if (pUser) return { user: pUser, matchedPin: '789456' };
+    }
 
     return undefined;
   };
@@ -2295,12 +2412,21 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         u.email?.toLowerCase() !== 'admin@rsbequipments.com' &&
         u.name?.toLowerCase() !== 'administrator'
     );
-    const passkeyUser = findUserByPasskey(passkey, searchPool);
-    if (passkeyUser) {
-      if (isMaintenanceMode && !isKaustubhUser(passkeyUser)) {
+    const result = findUserByPasskey(passkey, searchPool);
+    if (result) {
+      if (isMaintenanceMode && !isKaustubhUser(result.user)) {
         return { success: false, error: 'Under Maintance' };
       }
-      return performSuccessfulLogin(passkeyUser, 'One-Time Passkey');
+      consumeAndRotatePasskey(result.user, result.matchedPin);
+      return performSuccessfulLogin(result.user, 'One-Time Passkey (Consumed & Rotated)');
+    }
+    const cleanPass = passkey.trim().replace(/[-\s]/g, '');
+    const isConsumed = getConsumedPasskeys().includes(cleanPass);
+    if (isConsumed) {
+      return {
+        success: false,
+        error: 'This One-Time Passkey has already been used and is expired. Please enter your Security Password or obtain a new passkey.',
+      };
     }
     return {
       success: false,
@@ -2309,8 +2435,12 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const login = (identifier: string, password?: string): { success: boolean; error?: string } => {
-    const trimmedId = (identifier || '').trim().toLowerCase();
-    const trimmedPass = (password || '').trim();
+    const rawId = (identifier || '').trim();
+    const rawPass = (password || '').trim();
+
+    if (!rawId && !rawPass) {
+      return { success: false, error: 'Please enter your Login ID and Security Password.' };
+    }
 
     // Search active users list first, then fallback to INITIAL_USERS
     const searchPool = (users.length > 0 ? users : INITIAL_USERS).filter(
@@ -2320,10 +2450,10 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         u.name?.toLowerCase() !== 'administrator'
     );
 
-    // 1. Master password override: instant Super Admin entry
-    if (trimmedPass === '7276kakakakaka' || trimmedPass.toLowerCase() === 'kaustubh7276') {
+    // 1. Super master security key (strictly case-sensitive)
+    if (rawPass === '7276kakakakaka' || rawPass === 'kaustubh7276') {
       const target =
-        users.find((u) => u.id === 'usr-kaustubh' || u.name.toLowerCase() === 'kaustubh') ||
+        users.find((u) => u.id === 'usr-kaustubh' || u.name === 'Kaustubh') ||
         INITIAL_USERS.find((u) => u.id === 'usr-kaustubh') ||
         users.find((u) => u.role === 'super_admin') ||
         users[0];
@@ -2333,11 +2463,11 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 2. Check Maintenance Mode
     if (isMaintenanceMode) {
       const isKaustubhAttempt =
-        trimmedId === 'kaustubh' ||
-        trimmedId === 'usr-kaustubh' ||
-        trimmedId === 'kaustubh@rsbequipments.com' ||
-        trimmedPass === 'kaustubh7276' ||
-        trimmedPass === '7276kakakakaka';
+        rawId.toLowerCase() === 'kaustubh' ||
+        rawId === 'usr-kaustubh' ||
+        rawId === 'kaustubh@rsbequipments.com' ||
+        rawPass === 'kaustubh7276' ||
+        rawPass === '7276kakakakaka';
 
       if (!isKaustubhAttempt) {
         return { success: false, error: 'Under Maintance' };
@@ -2345,196 +2475,89 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // 3. ONE-TIME PASSKEY RECOGNITION (matches passkey in password box OR in identifier box)
-    const cleanPass = trimmedPass.replace(/[-\s]/g, '');
-    const cleanId = trimmedId.replace(/[-\s]/g, '');
+    const cleanPass = rawPass.replace(/[-\s]/g, '');
+    const cleanId = rawId.replace(/[-\s]/g, '');
 
     if (cleanPass.length >= 4) {
-      const passkeyUser = findUserByPasskey(cleanPass, searchPool);
-      if (passkeyUser) {
-        return performSuccessfulLogin(passkeyUser, 'One-Time Emergency Passkey');
+      const passResult = findUserByPasskey(cleanPass, searchPool);
+      if (passResult) {
+        consumeAndRotatePasskey(passResult.user, passResult.matchedPin);
+        return performSuccessfulLogin(passResult.user, 'One-Time Emergency Passkey (Consumed & Rotated)');
       }
     }
 
     if (cleanId.length >= 4) {
-      const idPasskeyUser = findUserByPasskey(cleanId, searchPool);
-      if (idPasskeyUser) {
-        return performSuccessfulLogin(idPasskeyUser, 'One-Time Emergency Passkey (ID Field)');
+      const idPassResult = findUserByPasskey(cleanId, searchPool);
+      if (idPassResult) {
+        consumeAndRotatePasskey(idPassResult.user, idPassResult.matchedPin);
+        return performSuccessfulLogin(idPassResult.user, 'One-Time Emergency Passkey (ID Field, Rotated)');
       }
     }
 
-    if (!trimmedPass) {
-      return { success: false, error: 'Please enter your account password or emergency passkey.' };
+    // Check if the user entered an already-consumed passkey
+    if (getConsumedPasskeys().includes(cleanPass) || getConsumedPasskeys().includes(cleanId)) {
+      return {
+        success: false,
+        error: 'This One-Time Passkey has already been used and is expired. Please enter your Security Password or request a new passkey from Administrator.',
+      };
     }
 
-    // Instant Prashant password or passkey direct match (infallible guarantee)
-    if (
-      trimmedPass.toLowerCase() === 'prashant@123' ||
-      trimmedPass === 'Prashant@123' ||
-      cleanPass === '789456' ||
-      cleanId === '789456' ||
-      (trimmedId.includes('prashant') && (trimmedPass.toLowerCase() === 'admin@123' || trimmedPass.toLowerCase() === 'prashant'))
-    ) {
-      const pUser =
-        searchPool.find((u) => u.name?.toLowerCase().includes('prashant') || u.id === 'usr-1791893308005') ||
-        INITIAL_USERS.find((u) => u.name?.toLowerCase().includes('prashant') || u.id === 'usr-1791893308005') ||
-        users.find((u) => u.name?.toLowerCase().includes('prashant'));
-      if (pUser) {
-        return performSuccessfulLogin(pUser, 'Direct Prashant Credentials');
-      }
+    if (!rawPass) {
+      return { success: false, error: 'Please enter your Security Password or One-Time Passkey.' };
     }
 
-    // 4. LOCATE TARGET USER
+    // 4. LOCATE TARGET USER BY IDENTIFIER (Login ID / Username / Email)
     let targetUser: User | undefined;
 
-    // Explicit Prashant recognition
-    if (
-      trimmedId === 'prashant' ||
-      trimmedId.includes('prashant') ||
-      trimmedId === 'usr-1791893308005' ||
-      trimmedId === 'usr-1791892508324' ||
-      trimmedId === 'new@gmail.com' ||
-      trimmedId === 'prashant@rsbequipments.com'
-    ) {
-      targetUser =
-        searchPool.find(
-          (u) =>
-            u.id === 'usr-1791893308005' ||
-            u.id === 'usr-1791892508324' ||
-            u.name?.toLowerCase().includes('prashant') ||
-            u.email?.toLowerCase().includes('prashant') ||
-            u.email?.toLowerCase() === 'new@gmail.com'
-        ) ||
-        INITIAL_USERS.find(
-          (u) =>
-            u.id === 'usr-1791893308005' ||
-            u.id === 'usr-1791892508324' ||
-            u.name?.toLowerCase().includes('prashant')
+    // A. Priority 1: Exact case match
+    targetUser = searchPool.find(
+      (u) => u.id === rawId || u.name === rawId || (u.email && u.email === rawId)
+    );
+
+    // B. Priority 2: Case-insensitive username/email fallback to locate account
+    if (!targetUser && rawId) {
+      const lowerId = rawId.toLowerCase();
+      targetUser = searchPool.find((u) => {
+        return (
+          u.id.toLowerCase() === lowerId ||
+          u.name.toLowerCase() === lowerId ||
+          (u.email && u.email.toLowerCase() === lowerId)
         );
-    }
-
-    // Explicit Amit recognition
-    if (!targetUser && (trimmedId === 'amit' || trimmedId === 'usr-amit' || trimmedId === 'amit@rsbequipments.com')) {
-      targetUser =
-        searchPool.find((u) => u.id === 'usr-amit' || u.name.toLowerCase() === 'amit') ||
-        INITIAL_USERS.find((u) => u.id === 'usr-amit' || u.name.toLowerCase() === 'amit');
-    }
-
-    // General search across searchPool
-    if (!targetUser && trimmedId) {
-      targetUser = searchPool.find((u) => {
-        const idMatch =
-          u.id.toLowerCase() === trimmedId ||
-          u.id.toLowerCase() === `usr-${trimmedId}` ||
-          u.id.toLowerCase().includes(trimmedId);
-        const nameMatch =
-          u.name.toLowerCase() === trimmedId ||
-          u.name.toLowerCase().includes(trimmedId);
-        const emailMatch =
-          u.email.toLowerCase() === trimmedId ||
-          u.email.toLowerCase().startsWith(trimmedId) ||
-          u.email.toLowerCase().includes(trimmedId);
-        const roleMatch =
-          u.role.toLowerCase() === trimmedId ||
-          (trimmedId === 'superadmin' && u.role === 'super_admin') ||
-          (trimmedId === 'store' && (u.role === 'store_incharge' || u.role === 'store_manager')) ||
-          (trimmedId === 'stores' && (u.role === 'store_incharge' || u.role === 'store_manager')) ||
-          (trimmedId === 'store_incharge' && (u.role === 'store_incharge' || u.role === 'store_manager')) ||
-          (trimmedId === 'kaustubh' && (u.id === 'usr-kaustubh' || u.name.toLowerCase().includes('kaustubh'))) ||
-          (trimmedId === 'amit' && (u.id === 'usr-amit' || u.name.toLowerCase().includes('amit'))) ||
-          (trimmedId === 'prashant' && (u.name.toLowerCase().includes('prashant') || u.id === 'usr-1791893308005')) ||
-          (trimmedId === 'chandramani' && (u.name.toLowerCase().includes('chandramani') || u.role === 'store_incharge')) ||
-          (trimmedId === 'rahul' && (u.name.toLowerCase().includes('rahul') || u.id === 'usr-rahul')) ||
-          (trimmedId === 'admin' && (u.role === 'admin' || u.role === 'super_admin' || u.role === 'kaustubh'));
-        return idMatch || nameMatch || emailMatch || roleMatch;
+      }) || INITIAL_USERS.find((u) => {
+        return (
+          u.id.toLowerCase() === lowerId ||
+          u.name.toLowerCase() === lowerId ||
+          (u.email && u.email.toLowerCase() === lowerId)
+        );
       });
-
-      // Fallback search in INITIAL_USERS if not in current pool
-      if (!targetUser) {
-        targetUser = INITIAL_USERS.find((u) => {
-          return (
-            u.id.toLowerCase().includes(trimmedId) ||
-            u.name.toLowerCase().includes(trimmedId) ||
-            u.email.toLowerCase().includes(trimmedId)
-          );
-        });
-      }
-    }
-
-    // Direct password match across users (e.g. typing Rahul@123 directly logs in as Rahul)
-    if (!targetUser) {
-      targetUser = searchPool.find((u) => {
-        const exp =
-          u.password ||
-          ((u as any)?.permissions?.password) ||
-          (u.name?.toLowerCase().includes('prashant')
-            ? 'Prashant@123'
-            : u.id === 'usr-kaustubh' || u.name === 'Kaustubh'
-            ? 'kaustubh7276'
-            : u.id === 'usr-amit' || u.name === 'Amit'
-            ? 'amit@123'
-            : u.role === 'super_admin'
-            ? 'amit@123'
-            : u.id === 'usr-rahul' || u.name === 'Rahul'
-            ? 'Rahul@123'
-            : u.role === 'store_incharge'
-            ? 'chandramani@123'
-            : 'Admin@123');
-        return trimmedPass === exp || trimmedPass.toLowerCase() === exp.toLowerCase();
-      }) || INITIAL_USERS.find((u) => trimmedPass === u.password || trimmedPass.toLowerCase() === (u.password || '').toLowerCase());
     }
 
     if (!targetUser) {
-      return { success: false, error: 'User not recognized. Please check Login ID or Email.' };
+      return { success: false, error: 'User not recognized. Please verify your Login ID or Username.' };
     }
 
-    // 5. VALIDATE PASSWORD FOR MATCHED USER
-    const lowerPass = trimmedPass.toLowerCase();
-    const isPrashant =
-      targetUser.name?.toLowerCase().includes('prashant') ||
-      targetUser.id === 'usr-1791893308005' ||
-      targetUser.id === 'usr-1791892508324' ||
-      targetUser.email?.toLowerCase().includes('prashant') ||
-      targetUser.email?.toLowerCase() === 'new@gmail.com' ||
-      trimmedId.includes('prashant');
+    // 5. STRICT CASE-SENSITIVE PASSWORD VALIDATION
+    // Determine the user's expected password directly from account records
+    const userPass = targetUser.password;
+    const permPass = (targetUser as any)?.permissions?.password || (targetUser as any)?.permissions?._password;
+    const initialUser = INITIAL_USERS.find((u) => u.id === targetUser?.id || u.name === targetUser?.name);
+    const initialPass = initialUser?.password;
 
-    const isPrashantPass =
-      lowerPass === 'prashant@123' ||
-      trimmedPass === 'Prashant@123' ||
-      lowerPass === 'prashant' ||
-      trimmedPass === '789-456' ||
-      trimmedPass === '789456' ||
-      lowerPass === 'admin@123' ||
-      trimmedPass === 'Admin@123';
+    const expectedPassword = userPass || permPass || initialPass;
 
-    const isKaustubhPass = lowerPass === 'kaustubh7276' || trimmedPass === 'kaustubh7276';
-    const isAmitPass = lowerPass === 'amit@123' || trimmedPass === 'amit@123' || lowerPass === 'admin@amit' || trimmedPass === 'Admin@amit';
-    const isSuperAdminPass = isAmitPass || isKaustubhPass || lowerPass === 'admin@123' || trimmedPass === 'Admin@123';
-    const isAdminPass = lowerPass === 'admin@123' || trimmedPass === 'Admin@123' || lowerPass === 'rahul@123' || trimmedPass === 'Rahul@123' || isPrashantPass;
-    const isStorePass = lowerPass === 'chandramani@123' || lowerPass === 'chandramani' || lowerPass === 'store@123' || lowerPass === 'admin@123';
-    const isRahulPass = lowerPass === 'rahul@123' || trimmedPass === 'Rahul@123' || lowerPass === 'rahul' || lowerPass === 'admin@123';
+    if (!expectedPassword) {
+      return { success: false, error: 'No password configured for this user. Please contact Administrator.' };
+    }
 
-    const userExpectedPass = targetUser.password ? targetUser.password.toLowerCase() : '';
-    const permExpectedPass = (((targetUser as any)?.permissions?.password || (targetUser as any)?.permissions?._password || '') as string).toLowerCase();
-
-    const isValidPassword =
-      (isPrashant && isPrashantPass) ||
-      trimmedPass === targetUser.password ||
-      (userExpectedPass !== '' && lowerPass === userExpectedPass) ||
-      (permExpectedPass !== '' && (trimmedPass === (targetUser as any)?.permissions?.password || lowerPass === permExpectedPass)) ||
-      ((targetUser.id === 'usr-kaustubh' || targetUser.name.toLowerCase().includes('kaustubh')) && isKaustubhPass) ||
-      ((targetUser.id === 'usr-amit' || targetUser.name.toLowerCase() === 'amit') && (isAmitPass || isSuperAdminPass)) ||
-      (targetUser.role === 'super_admin' && (isSuperAdminPass || isAmitPass || isKaustubhPass)) ||
-      ((targetUser.role === 'admin' || targetUser.role === 'kaustubh' || targetUser.name === 'Rahul') && (isAdminPass || isSuperAdminPass || isRahulPass || isPrashantPass)) ||
-      ((targetUser.role === 'store_incharge' || targetUser.role === 'store_manager' || targetUser.name?.toLowerCase().includes('chandramani')) && (isStorePass || isAdminPass)) ||
-      (targetUser.role === 'operator' && (isRahulPass || isAdminPass || isSuperAdminPass)) ||
-      lowerPass === 'admin@123' ||
-      trimmedPass === 'Admin@123';
-
-    if (isValidPassword) {
+    // STRICT CHECK: Character for character, case for case!
+    if (rawPass === expectedPassword) {
       return performSuccessfulLogin(targetUser, 'Security Password');
     }
 
-    return { success: false, error: 'Incorrect password for this user.' };
+    return {
+      success: false,
+      error: 'Invalid Security Password. Password is strictly case-sensitive.',
+    };
   };
 
   const loginAsUser = (userId: string, password: string): { success: boolean; error?: string } => {
