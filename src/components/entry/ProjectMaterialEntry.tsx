@@ -1584,14 +1584,9 @@ export const ProjectMaterialEntry: React.FC = () => {
 
   // Keyboard Shortcuts for Toolbar Actions:
   // - Ctrl+S / Cmd+S: SAVE ORDER (Saves directly to DB & Cloud)
-  // - Alt+I / Ctrl+Alt+I: Import Excel file
-  // - Alt+E / Ctrl+Alt+E: Export Excel file
   // - Alt+A / Ctrl+Alt+A: All Materials (Resets material filter)
   const handleSaveProjectRef = useRef(handleSaveProject);
   handleSaveProjectRef.current = handleSaveProject;
-
-  const handleExportExcelRef = useRef(handleExportExcel);
-  handleExportExcelRef.current = handleExportExcel;
 
   useEffect(() => {
     const handleGlobalSaveOrder = () => {
@@ -1610,23 +1605,7 @@ export const ProjectMaterialEntry: React.FC = () => {
         return;
       }
 
-      // 2. IMPORT EXCEL: Alt+I or Ctrl+Alt+I
-      if ((e.altKey && !isCmdOrCtrl && key === 'i') || (isCmdOrCtrl && e.altKey && key === 'i')) {
-        e.preventDefault();
-        e.stopPropagation();
-        fileInputRef.current?.click();
-        return;
-      }
-
-      // 3. EXPORT EXCEL: Alt+E or Ctrl+Alt+E or Alt+X
-      if ((e.altKey && !isCmdOrCtrl && (key === 'e' || key === 'x')) || (isCmdOrCtrl && e.altKey && (key === 'e' || key === 'x'))) {
-        e.preventDefault();
-        e.stopPropagation();
-        handleExportExcelRef.current();
-        return;
-      }
-
-      // 4. ALL MATERIALS (Reset Material Filter): Alt+A or Alt+M or Ctrl+Alt+A
+      // 2. ALL MATERIALS (Reset Material Filter): Alt+A or Alt+M or Ctrl+Alt+A
       if ((e.altKey && !isCmdOrCtrl && (key === 'a' || key === 'm')) || (isCmdOrCtrl && e.altKey && key === 'a')) {
         e.preventDefault();
         e.stopPropagation();
@@ -2556,26 +2535,20 @@ export const ProjectMaterialEntry: React.FC = () => {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             className="px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
-            title="Import 10-column table from Excel (Shortcut: Alt+I)"
+            title="Import 10-column table from Excel"
           >
             <Upload className="w-3.5 h-3.5 text-amber-600" />
             <span>Import Excel</span>
-            <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[9px] font-mono font-semibold rounded bg-amber-100 border border-amber-300 text-amber-800">
-              Alt+I
-            </kbd>
           </button>
 
           <button
             type="button"
             onClick={handleExportExcel}
             className="px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-900 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
-            title="Export 10-column table to Excel (Shortcut: Alt+E)"
+            title="Export 10-column table to Excel"
           >
             <Download className="w-3.5 h-3.5 text-emerald-600" />
             <span>Export Excel</span>
-            <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[9px] font-mono font-semibold rounded bg-emerald-100 border border-emerald-300 text-emerald-800">
-              Alt+E
-            </kbd>
           </button>
 
           <button
