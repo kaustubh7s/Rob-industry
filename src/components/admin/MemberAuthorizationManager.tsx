@@ -476,7 +476,7 @@ export const MemberAuthorizationManager: React.FC = () => {
             <div>
               <div className="text-[10px] uppercase font-mono text-slate-400">Active Operators</div>
               <div className="text-lg font-black text-emerald-400 font-mono mt-0.5">
-                {visibleUsers.filter((u) => u.id === currentUser.id || u.role === currentUser.role || u.email === currentUser.email).length} Online
+                {visibleUsers.filter((u) => u.id === currentUser.id || u.email === currentUser.email).length} Online
               </div>
             </div>
             <Activity className="w-5 h-5 text-emerald-400 opacity-60" />

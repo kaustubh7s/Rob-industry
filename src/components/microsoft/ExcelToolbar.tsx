@@ -306,10 +306,10 @@ export const ExcelToolbar: React.FC<ExcelToolbarProps> = ({
           {/* Simple Clean User Online Status Indicator */}
           <div
             className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200/80 rounded-md text-[11px] font-semibold text-emerald-800 shadow-2xs"
-            title="3 users currently collaborating in real-time"
+            title="1 user currently active in real-time"
           >
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>3 Online</span>
+            <span>1 Online</span>
           </div>
 
           {/* Full Screen Toggle Button */}
