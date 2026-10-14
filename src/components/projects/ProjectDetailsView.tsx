@@ -35,6 +35,7 @@ import {
   Send,
   MoreVertical,
   ChevronDown,
+  X,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 import { ProjectItem, ProjectMaterialRequirementItem, MaterialType, MachineCategory } from '../../types/erp';
@@ -136,7 +137,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     sizeSpecs: '',
     quantity: 1,
     unit: 'Nos',
-    vendor: project.vendor || 'Manav Metal',
+    vendor: project.vendor || project.vendorName || '',
     machineType: project.machineName || project.machineType || project.name,
     orderSource: project.orderSource || 'Customer PO',
     poNumber: project.poNumber || '36',
@@ -231,22 +232,67 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     return { totalItems, totalQty, arrivedCount, pendingCount, progressPct };
   }, [materialsInFolder]);
 
-  // Filtered materials for table display
+  // Filtered materials for table display with Intelligent Deep Search:
+  // - "sr no 35" / "sr 35" / "sr. no 35" / "#35" -> Matches ONLY Sr. No. = 35
+  // - "po no 35" / "po 35" / "po# 35" -> Matches ONLY PO No 35
+  // - "vendor: Manav" / "v: Manav" -> Matches ONLY vendor
+  // - General query (e.g. "35" or "304 pipe") -> Deep multi-token search across ALL columns
   const filteredMaterials = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+
     const filtered = materialsInFolder.filter((m) => {
-      const matchSearch =
-        searchTerm === '' ||
-        m.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        m.sizeSpecs.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        m.materialType.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (m.vendor || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (m.machineType || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (m.receivedBy || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (m.receivedByInitials || '').toLowerCase().includes(searchTerm.toLowerCase());
+      let matchSearch = true;
+
+      if (q !== '') {
+        // 1. Check for specific Sr No pattern
+        const srMatch = q.match(/^(?:sr\.?\s*no\.?|sr|sr#|sr\s*#|#)\s*[:=\-]?\s*(\d+)$/i);
+        if (srMatch) {
+          const targetSr = srMatch[1];
+          const rowSr = String(m.srNo ?? '').trim();
+          matchSearch = rowSr === targetSr;
+        } else {
+          // 2. Check for specific PO pattern
+          const poMatch = q.match(/^(?:po\.?\s*no\.?|po|po#|po\s*#)\s*[:=\-]?\s*([a-z0-9\-_\/]+)$/i);
+          if (poMatch) {
+            const targetPo = poMatch[1];
+            const rowPo = (m.poNo || m.poNumber || '').toLowerCase().trim();
+            matchSearch = rowPo.includes(targetPo);
+          } else {
+            // 3. Check for specific Vendor pattern
+            const vendorMatch = q.match(/^(?:vendor|v)\s*[:=\-]\s*(.+)$/i);
+            if (vendorMatch) {
+              const targetV = vendorMatch[1].trim();
+              matchSearch = (m.vendorName || m.vendor || '').toLowerCase().includes(targetV);
+            } else {
+              // 4. Universal multi-token search across all fields
+              const tokens = q.split(/\s+/).filter(Boolean);
+              const allFieldValues = [
+                String(m.srNo ?? ''),
+                m.poNo || m.poNumber || '',
+                m.machineName || m.machineType || '',
+                m.date || m.poDate || '',
+                m.materialType || '',
+                m.sizeSpecs || '',
+                m.quantity !== undefined ? String(m.quantity) : '',
+                m.unit || '',
+                m.description || '',
+                m.vendorName || m.vendor || '',
+                m.orderedBy || '',
+                m.receivedBy || '',
+                m.receivedByInitials || '',
+              ].map((val) => val.toLowerCase());
+
+              matchSearch = tokens.every((token) =>
+                allFieldValues.some((fieldStr) => fieldStr.includes(token))
+              );
+            }
+          }
+        }
+      }
 
       const matchMat = filterMaterialType === 'ALL' || m.materialType === filterMaterialType;
-      const matchMch = filterMachine === 'ALL' || m.machineType === filterMachine;
-      const matchVnd = filterVendor === 'ALL' || m.vendor === filterVendor;
+      const matchMch = filterMachine === 'ALL' || (m.machineName || m.machineType || '') === filterMachine;
+      const matchVnd = filterVendor === 'ALL' || (m.vendorName || m.vendor || '') === filterVendor;
       const matchRecv =
         filterReceived === 'ALL'
           ? true
@@ -286,16 +332,20 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     e.preventDefault();
     if (editingItem) {
       updateProjectRequirement(editingItem.id, {
+        projectName: project.name,
         description: matForm.description,
         materialType: matForm.materialType,
         materialGrade: matForm.materialGrade,
         sizeSpecs: matForm.sizeSpecs,
         quantity: Number(matForm.quantity) || 1,
         unit: matForm.unit,
-        vendor: matForm.vendor,
+        vendor: matForm.vendor || '',
+        vendorName: matForm.vendor || '',
         machineType: matForm.machineType,
+        machineName: matForm.machineType,
         orderSource: matForm.orderSource,
         poNumber: matForm.poNumber,
+        poNo: matForm.poNumber,
         notes: matForm.notes,
       });
       setEditingItem(null);
@@ -316,11 +366,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         projectName: project.name,
         customerName: project.customer,
         poNumber: matForm.poNumber,
+        poNo: matForm.poNumber,
         poDate: project.startDate || new Date().toISOString().split('T')[0],
         machineType: matForm.machineType,
+        machineName: matForm.machineType,
         orderSource: matForm.orderSource,
         deliveryDate: project.targetCompletionDate || new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
-        vendor: matForm.vendor,
+        vendor: matForm.vendor || '',
+        vendorName: matForm.vendor || '',
         bomRef: `BOM-${project.name.substring(0, 4)}`,
         stockStatus: 'Available',
         availableStock: 25,
@@ -344,7 +397,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       sizeSpecs: '',
       quantity: 1,
       unit: 'Nos',
-      vendor: project.vendor || 'Manav Metal',
+      vendor: project.vendor || project.vendorName || '',
       machineType: project.machineName || project.machineType || project.name,
       orderSource: project.orderSource || 'Customer PO',
       poNumber: project.poNumber || '36',
@@ -361,10 +414,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       sizeSpecs: item.sizeSpecs,
       quantity: item.quantity,
       unit: item.unit,
-      vendor: item.vendor || project.vendor || 'Manav Metal',
+      vendor: item.vendor || (item as any).vendorName || project.vendor || project.vendorName || '',
       machineType: item.machineName || item.machineType || project.machineName || project.machineType || project.name,
       orderSource: item.orderSource || project.orderSource || 'Customer PO',
-      poNumber: item.poNumber || project.poNumber || '36',
+      poNumber: item.poNumber || (item as any).poNo || project.poNumber || '36',
       notes: item.notes || '',
     });
     setIsAddMaterialModalOpen(true);
@@ -1261,13 +1314,23 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             type="text"
             placeholder={
               selectedMachineFolder !== 'ALL'
-                ? `Search within ${selectedMachineFolder} materials (size, part, vendor)...`
-                : "Search material type, size specs, description, vendor, verified initials in this project..."
+                ? `Search within ${selectedMachineFolder} (try 'sr no 35', 'po 35', vendor, size)...`
+                : "Search everything (try 'sr no 35', 'po 35', 'vendor: Manav', size, machine)..."
             }
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-900 placeholder-slate-400 focus:outline-hidden focus:border-blue-500 focus:bg-white"
+            className="w-full pl-9 pr-8 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-900 placeholder-slate-400 focus:outline-hidden focus:border-blue-500 focus:bg-white"
           />
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => setSearchTerm('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded cursor-pointer"
+              title="Clear search"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
         {/* Quick Filter Inward Status */}
@@ -1469,16 +1532,16 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     Material Arrived (आवक)
                   </th>
                   <th className="p-3 whitespace-nowrap">Machine Name</th>
-                  <th className="p-3 whitespace-nowrap">Date</th>
-                  <th className="p-3 whitespace-nowrap">PO No</th>
-                  <th className="p-3 w-14 text-center whitespace-nowrap font-black text-slate-900 bg-slate-200/80 border-x border-slate-200">Sr No</th>
+                  <th className="p-3 w-28 min-w-[90px] max-w-[110px] whitespace-nowrap">Date</th>
+                  <th className="p-3 w-24 min-w-[75px] max-w-[95px] whitespace-nowrap">PO No</th>
+                  <th className="p-3 w-12 min-w-[44px] max-w-[50px] text-center whitespace-nowrap font-black text-slate-900 bg-slate-200/80 border-x border-slate-200">Sr No</th>
                   <th className="p-3 min-w-[130px] whitespace-nowrap">Material Type</th>
                   <th className="p-3 min-w-[160px] whitespace-nowrap">Size Specification</th>
                   <th className="p-3 min-w-[85px] text-center whitespace-nowrap">Qty</th>
                   <th className="p-3 min-w-[110px] text-center whitespace-nowrap bg-emerald-50/60 text-emerald-900 border-x border-emerald-200/60">Arrived Qty</th>
                   <th className="p-3 min-w-[100px] text-center whitespace-nowrap bg-amber-50/60 text-amber-900 border-r border-amber-200/60">Pending Qty</th>
-                  <th className="p-3 min-w-[140px] whitespace-nowrap">Vendor Name</th>
                   <th className="p-3 min-w-[180px] whitespace-nowrap">Description</th>
+                  <th className="p-3 min-w-[140px] whitespace-nowrap">Vendor Name</th>
                   <th className="p-3 min-w-[120px] whitespace-nowrap">Ordered By</th>
                   <th className="p-3 w-28 text-center whitespace-nowrap">Actions</th>
                 </tr>
@@ -1528,17 +1591,17 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     </td>
 
                     {/* 2. Date */}
-                    <td className="p-3 font-mono text-slate-700 whitespace-nowrap">
+                    <td className="p-3 w-28 min-w-[90px] max-w-[110px] font-mono text-slate-700 whitespace-nowrap">
                       {formatDate(m.date || project.date || project.startDate)}
                     </td>
 
                     {/* 3. PO No */}
-                    <td className="p-3 font-mono font-bold text-indigo-700 whitespace-nowrap">
+                    <td className="p-3 w-24 min-w-[75px] max-w-[95px] font-mono font-bold text-indigo-700 whitespace-nowrap">
                       {m.poNo || m.poNumber || project.poNo || project.poNumber || '36'}
                     </td>
 
                     {/* 4. Sr No (Option 3: Vertical Lane Shading) */}
-                    <td className="p-3 text-center whitespace-nowrap bg-slate-100/70 border-x border-slate-200">
+                    <td className="p-3 w-12 min-w-[44px] max-w-[50px] text-center whitespace-nowrap bg-slate-100/70 border-x border-slate-200">
                       <span className="font-mono font-black text-slate-950 text-xs">
                         {(m.srNo !== undefined && m.srNo !== null && String(m.srNo).trim() !== '') ? m.srNo : idx + 1}
                       </span>
@@ -1596,17 +1659,53 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       </span>
                     </td>
 
-                    {/* 8. Vendor Name */}
-                    <td className="p-3 font-semibold text-amber-800 whitespace-nowrap">
-                      {m.vendorName || m.vendor || project.vendorName || project.vendor || 'Manav Metal'}
-                    </td>
-
-                    {/* 9. Description */}
+                    {/* 10. Description */}
                     <td className="p-3 font-semibold text-slate-900 min-w-[180px]">
                       {m.description}
                     </td>
 
-                    {/* 10. Ordered By */}
+                    {/* 11. Vendor Name (Between Description and Ordered By) */}
+                    <td className="p-3 whitespace-nowrap min-w-[150px]">
+                      {(() => {
+                        const vName = (m.vendorName || m.vendor || '').trim();
+                        const isUnassigned = !vName || vName.toLowerCase() === 'not assigned';
+                        if (isStoreIncharge) {
+                          return isUnassigned ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300">
+                              Not Assigned
+                            </span>
+                          ) : (
+                            <span className="font-bold text-slate-900">{vName}</span>
+                          );
+                        }
+                        return (
+                          <div className="relative flex items-center">
+                            <input
+                              type="text"
+                              list="details-vendor-suggestions"
+                              value={vName}
+                              placeholder="Not Assigned"
+                              onChange={(e) => {
+                                const newV = e.target.value;
+                                updateProjectRequirement(m.id, {
+                                  projectName: project.name,
+                                  vendor: newV,
+                                  vendorName: newV,
+                                });
+                              }}
+                              className={`w-full px-2 py-1 rounded text-xs transition-colors border ${
+                                isUnassigned
+                                  ? 'bg-amber-50/70 text-amber-900 border-amber-300/80 placeholder:text-amber-700 placeholder:font-black placeholder:italic hover:border-amber-400 focus:bg-white focus:border-slate-900 focus:text-slate-900'
+                                  : 'bg-transparent border-transparent hover:border-slate-300 focus:border-slate-900 focus:bg-white text-slate-900 font-bold'
+                              }`}
+                              title={isUnassigned ? 'Vendor not assigned yet. Click or select from dropdown.' : `Vendor: ${vName}`}
+                            />
+                          </div>
+                        );
+                      })()}
+                    </td>
+
+                    {/* 12. Ordered By */}
                     <td className="p-3 whitespace-nowrap">
                       <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-black">
                         <Lock className="w-3 h-3 text-emerald-600" />
@@ -1756,7 +1855,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               </label>
               <input
                 type="text"
-                value={matForm.vendor}
+                list="details-vendor-suggestions"
+                value={matForm.vendor || ''}
+                placeholder="Enter or select vendor..."
                 onChange={(e) => setMatForm({ ...matForm, vendor: e.target.value })}
                 className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium"
               />
@@ -1871,6 +1972,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           </div>
         </div>
       </Modal>
+
+      {/* Datalist for Vendor Suggestions */}
+      <datalist id="details-vendor-suggestions">
+        {vendors.map((v) => (
+          <option key={v.id || v.name} value={v.name} />
+        ))}
+      </datalist>
     </div>
   );
 };

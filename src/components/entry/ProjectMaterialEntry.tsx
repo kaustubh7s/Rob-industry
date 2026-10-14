@@ -39,6 +39,7 @@ import {
   Globe,
   ShoppingCart,
   RefreshCw,
+  X,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useERP } from '../../context/ERPContext';
@@ -1165,7 +1166,7 @@ export const ProjectMaterialEntry: React.FC = () => {
       sizeSpecs: quickSize.trim() || 'Custom Spec',
       quantity: Number(quickQty) || 1,
       unit: quickUnit,
-      vendorName: vendorName || 'Manav Metal',
+      vendorName: vendorName || '',
       description: quickDesc.trim(),
       orderedBy: activeOrderedBy,
       projectName: targetProject,
@@ -1562,18 +1563,86 @@ export const ProjectMaterialEntry: React.FC = () => {
     setTimeout(() => setSaveToast(null), 3500);
   };
 
-  // Filtered rows for table (Arranged strictly in ascending order of Sr. No. - NOT project-wise)
+  // Filtered rows for table with Intelligent Deep Search:
+  // - "sr no 35" / "sr 35" / "sr. no 35" / "#35" -> Matches ONLY rows with Sr No = 35 (excludes PO 35, etc.)
+  // - "po no 35" / "po 35" / "po# 35" -> Matches ONLY rows with PO No matching 35
+  // - "vendor: Manav" / "v: Manav" -> Matches ONLY vendor
+  // - "machine: Washing" / "m: Washing" -> Matches ONLY machine
+  // - "project: Kaustubh" / "p: Kaustubh" -> Matches ONLY project
+  // - "size: 80 x 6" -> Matches ONLY size specification
+  // - General query (e.g. "35" or "304 pipe") -> Deep multi-token search across ALL columns
   const filteredRows = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+
     const list = rows.filter((r) => {
-      const matchSearch =
-        searchTerm === '' ||
-        (r.projectName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.sizeSpecs.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.machineName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.vendorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.poNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.orderedBy.toLowerCase().includes(searchTerm.toLowerCase());
+      let matchSearch = true;
+
+      if (q !== '') {
+        // 1. Check for specific Sr No pattern (e.g. "sr no 35", "sr 35", "sr. no 35", "sr: 35", "#35", "sr#35")
+        const srMatch = q.match(/^(?:sr\.?\s*no\.?|sr|sr#|sr\s*#|#)\s*[:=\-]?\s*(\d+)$/i);
+        if (srMatch) {
+          const targetSr = srMatch[1];
+          const rowSr = String(r.srNo ?? '').trim();
+          matchSearch = rowSr === targetSr;
+        } else {
+          // 2. Check for specific PO pattern (e.g. "po no 35", "po 35", "po: 35", "po# 35")
+          const poMatch = q.match(/^(?:po\.?\s*no\.?|po|po#|po\s*#)\s*[:=\-]?\s*([a-z0-9\-_\/]+)$/i);
+          if (poMatch) {
+            const targetPo = poMatch[1];
+            const rowPo = (r.poNo || '').toLowerCase().trim();
+            matchSearch = rowPo.includes(targetPo);
+          } else {
+            // 3. Check for specific Vendor pattern (e.g. "vendor: Manav", "v: Manav")
+            const vendorMatch = q.match(/^(?:vendor|v)\s*[:=\-]\s*(.+)$/i);
+            if (vendorMatch) {
+              const targetV = vendorMatch[1].trim();
+              matchSearch = (r.vendorName || '').toLowerCase().includes(targetV);
+            } else {
+              // 4. Check for specific Machine pattern (e.g. "machine: Washing", "m: Washing")
+              const machineMatch = q.match(/^(?:machine|mch|m)\s*[:=\-]\s*(.+)$/i);
+              if (machineMatch) {
+                const targetM = machineMatch[1].trim();
+                matchSearch = (r.machineName || '').toLowerCase().includes(targetM);
+              } else {
+                // 5. Check for specific Project pattern (e.g. "project: Kaustubh", "p: Kaustubh")
+                const projectMatch = q.match(/^(?:project|prj|p)\s*[:=\-]\s*(.+)$/i);
+                if (projectMatch) {
+                  const targetP = projectMatch[1].trim();
+                  matchSearch = (r.projectName || '').toLowerCase().includes(targetP);
+                } else {
+                  // 6. Check for specific Size pattern (e.g. "size: 80 x 6")
+                  const sizeMatch = q.match(/^(?:size|spec|specs)\s*[:=\-]\s*(.+)$/i);
+                  if (sizeMatch) {
+                    const targetS = sizeMatch[1].trim();
+                    matchSearch = (r.sizeSpecs || '').toLowerCase().includes(targetS);
+                  } else {
+                    // 7. Universal multi-token search across ALL row fields
+                    const tokens = q.split(/\s+/).filter(Boolean);
+                    const allFieldValues = [
+                      String(r.srNo ?? ''),
+                      r.poNo || '',
+                      r.projectName || '',
+                      r.machineName || '',
+                      r.date || '',
+                      r.materialType || '',
+                      r.sizeSpecs || '',
+                      r.quantity !== undefined ? String(r.quantity) : '',
+                      r.unit || '',
+                      r.description || '',
+                      r.vendorName || '',
+                      r.orderedBy || '',
+                    ].map((val) => val.toLowerCase());
+
+                    matchSearch = tokens.every((token) =>
+                      allFieldValues.some((fieldStr) => fieldStr.includes(token))
+                    );
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
 
       const matchMat = filterMaterialType === 'ALL' || r.materialType === filterMaterialType;
       return matchSearch && matchMat;
@@ -2494,11 +2563,21 @@ export const ProjectMaterialEntry: React.FC = () => {
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search in 10-column table (machine, po, description, size, vendor, ordered by)..."
+              placeholder="Search everything (e.g. 'sr no 35', 'po 35', 'vendor: Manav', machine, size, description)..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-slate-50 border border-slate-300 text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white shadow-2xs font-medium"
+              className="w-full pl-8 pr-8 py-1.5 rounded-lg bg-slate-50 border border-slate-300 text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white shadow-2xs font-medium"
             />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded cursor-pointer"
+                title="Clear search"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
           <div className="relative">
@@ -2578,8 +2657,8 @@ export const ProjectMaterialEntry: React.FC = () => {
       </div>
 
       {/* ========================================================================= */}
-      {/* 7. EXACT 10-COLUMN PROJECT MATERIAL DATA GRID */}
-      {/* | Machine Name | Date | PO No | Sr No | Material Type | Size Specification | Qty | Vendor Name | Description | Ordered By | */}
+      {/* 7. PROJECT MATERIAL SPECIFICATION DATA GRID */}
+      {/* | Project Name | Machine Name | Date | PO No | Sr No | Material Type | Size Specification | Qty | Description | Vendor | Ordered By | Actions | */}
       {/* ========================================================================= */}
       <div data-tour="tour-material-grid" className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
         <div className="p-3.5 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-2">
@@ -2623,21 +2702,23 @@ export const ProjectMaterialEntry: React.FC = () => {
                 {/* 2. Machine Name */}
                 <th className="p-2.5 min-w-[130px] whitespace-nowrap">Machine Name</th>
                 {/* 3. Date */}
-                <th className="p-2.5 min-w-[100px] whitespace-nowrap">Date</th>
+                <th className="p-2.5 w-28 min-w-[90px] max-w-[110px] whitespace-nowrap">Date</th>
                 {/* 4. PO No */}
-                <th className="py-2.5 pl-2.5 pr-0.5 min-w-[85px] whitespace-nowrap">PO No</th>
+                <th className="py-2.5 px-2 w-24 min-w-[75px] max-w-[95px] whitespace-nowrap">PO No</th>
                 {/* 5. Sr No (Option 3: Vertical Lane Shading) */}
-                <th className="py-2.5 px-0.5 w-12 text-center whitespace-nowrap font-black text-slate-900 bg-slate-200/80 border-x border-slate-200">Sr No</th>
+                <th className="py-2.5 px-1 w-12 min-w-[44px] max-w-[50px] text-center whitespace-nowrap font-black text-slate-900 bg-slate-200/80 border-x border-slate-200">Sr No</th>
                 {/* 6. Material Type */}
-                <th className="p-2.5 min-w-[130px] whitespace-nowrap">Material Type</th>
+                <th className="p-2.5 min-w-[125px] whitespace-nowrap">Material Type</th>
                 {/* 7. Size Specification */}
-                <th className="p-2.5 min-w-[260px] whitespace-nowrap">Size Specification</th>
+                <th className="p-2.5 min-w-[220px] whitespace-nowrap">Size Specification</th>
                 {/* 8. Qty */}
-                <th className="p-2.5 min-w-[85px] text-center whitespace-nowrap">Qty</th>
+                <th className="p-2.5 w-20 min-w-[75px] max-w-[85px] text-center whitespace-nowrap">Qty</th>
                 {/* 9. Description */}
                 <th className="p-2.5 min-w-[180px] whitespace-nowrap">Description</th>
-                {/* 10. Ordered By (NON-EDITABLE) */}
-                <th className="p-2.5 w-20 text-center whitespace-nowrap">Ordered By</th>
+                {/* 10. Vendor (Between Description and Ordered By) */}
+                <th className="p-2.5 min-w-[150px] whitespace-nowrap">Vendor</th>
+                {/* 11. Ordered By (NON-EDITABLE) */}
+                <th className="p-2.5 w-24 text-center whitespace-nowrap">Ordered By</th>
                 {/* Actions */}
                 <th className="p-2.5 w-20 text-center whitespace-nowrap">Actions</th>
               </tr>
@@ -2645,7 +2726,7 @@ export const ProjectMaterialEntry: React.FC = () => {
             <tbody className="divide-y divide-slate-200 font-medium">
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="p-8 text-center text-slate-500 font-medium">
+                  <td colSpan={13} className="p-8 text-center text-slate-500 font-medium">
                     No material rows found. Click "Add Material" or choose a smart suggestion above.
                   </td>
                 </tr>
@@ -2696,8 +2777,8 @@ export const ProjectMaterialEntry: React.FC = () => {
                         />
                       </td>
 
-                      {/* 2. Date */}
-                      <td className="p-2">
+                      {/* 3. Date */}
+                      <td className="p-2 w-28 min-w-[90px] max-w-[110px]">
                         <input
                           type="text"
                           value={row.date}
@@ -2706,8 +2787,8 @@ export const ProjectMaterialEntry: React.FC = () => {
                         />
                       </td>
 
-                      {/* 3. PO No */}
-                      <td className="py-2 pl-2 pr-0.5">
+                      {/* 4. PO No */}
+                      <td className="py-2 px-2 w-24 min-w-[75px] max-w-[95px]">
                         <input
                           type="text"
                           value={row.poNo}
@@ -2716,8 +2797,8 @@ export const ProjectMaterialEntry: React.FC = () => {
                         />
                       </td>
 
-                      {/* 4. Sr No (Option 3: Vertical Lane Shading) */}
-                      <td className="py-2 px-0.5 text-center whitespace-nowrap bg-slate-100/70 border-x border-slate-200">
+                      {/* 5. Sr No (Option 3: Vertical Lane Shading) */}
+                      <td className="py-2 px-1 w-12 min-w-[44px] max-w-[50px] text-center whitespace-nowrap bg-slate-100/70 border-x border-slate-200">
                         <input
                           type="number"
                           min="1"
@@ -2727,7 +2808,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                         />
                       </td>
 
-                      {/* 5. Material Type */}
+                      {/* 6. Material Type */}
                       <td className="p-2">
                         <select
                           value={row.materialType}
@@ -2742,20 +2823,20 @@ export const ProjectMaterialEntry: React.FC = () => {
                         </select>
                       </td>
 
-                      {/* 6. Size Specification */}
-                      <td className="p-2 min-w-[260px]">
+                      {/* 7. Size Specification */}
+                      <td className="p-2 min-w-[220px]">
                         <input
                           type="text"
                           list="size-suggestions"
                           value={row.sizeSpecs}
                           onChange={(e) => handleCellChange(row.id, 'sizeSpecs', e.target.value)}
-                          className="w-full min-w-[250px] bg-transparent px-2 py-1 rounded border border-transparent hover:border-slate-300 focus:border-slate-900 focus:bg-white text-xs font-mono font-bold text-blue-700 transition-colors whitespace-nowrap"
+                          className="w-full min-w-[210px] bg-transparent px-2 py-1 rounded border border-transparent hover:border-slate-300 focus:border-slate-900 focus:bg-white text-xs font-mono font-bold text-blue-700 transition-colors whitespace-nowrap"
                           placeholder="e.g. 80 x 6 x 485"
                         />
                       </td>
 
-                      {/* 7. Qty */}
-                      <td className="p-2 text-center">
+                      {/* 8. Qty */}
+                      <td className="p-2 w-20 min-w-[75px] max-w-[85px] text-center">
                         <div className="flex items-center justify-center gap-1">
                           <input
                             type="number"
@@ -2769,7 +2850,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                         </div>
                       </td>
 
-                      {/* 8. Description */}
+                      {/* 9. Description */}
                       <td className="p-2">
                         <input
                           type="text"
@@ -2780,8 +2861,32 @@ export const ProjectMaterialEntry: React.FC = () => {
                         />
                       </td>
 
-                      {/* 10. Ordered By (AUTO-FILLED, READ-ONLY, LOCKED) */}
-                      <td className="p-2 text-center whitespace-nowrap">
+                      {/* 10. Vendor (Between Description and Ordered By) */}
+                      <td className="p-2 min-w-[150px]">
+                        {(() => {
+                          const isUnassigned = !row.vendorName || row.vendorName.trim() === '' || row.vendorName.trim().toLowerCase() === 'not assigned';
+                          return (
+                            <div className="relative flex items-center">
+                              <input
+                                type="text"
+                                list="vendor-suggestions"
+                                value={row.vendorName || ''}
+                                placeholder="Not Assigned"
+                                onChange={(e) => handleCellChange(row.id, 'vendorName', e.target.value)}
+                                className={`w-full px-2 py-1 rounded text-xs transition-colors border ${
+                                  isUnassigned
+                                    ? 'bg-amber-50/70 text-amber-900 border-amber-300/80 placeholder:text-amber-700 placeholder:font-black placeholder:italic hover:border-amber-400 focus:bg-white focus:border-slate-900 focus:text-slate-900'
+                                    : 'bg-transparent border-transparent hover:border-slate-300 focus:border-slate-900 focus:bg-white text-slate-900 font-bold'
+                                }`}
+                                title={isUnassigned ? 'Vendor not assigned yet. Click or select from dropdown.' : `Vendor: ${row.vendorName}`}
+                              />
+                            </div>
+                          );
+                        })()}
+                      </td>
+
+                      {/* 11. Ordered By (AUTO-FILLED, READ-ONLY, LOCKED) */}
+                      <td className="p-2 w-24 text-center whitespace-nowrap">
                         {(() => {
                           const userStr = (row.orderedBy || activeOrderedBy || 'Admin').trim();
                           const initial = (userStr[0] || 'A').toUpperCase();
@@ -2857,7 +2962,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                   sizeSpecs: 'Custom Spec',
                   quantity: 1,
                   unit: 'Nos',
-                  vendorName: vendorName || 'Manav Metal',
+                  vendorName: vendorName || '',
                   description: 'New Component',
                   orderedBy: activeOrderedBy,
                   projectName: targetProject,
