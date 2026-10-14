@@ -2626,8 +2626,8 @@ export const ProjectMaterialEntry: React.FC = () => {
                 <th className="p-2.5 min-w-[100px] whitespace-nowrap">Date</th>
                 {/* 4. PO No */}
                 <th className="py-2.5 pl-2.5 pr-0.5 min-w-[85px] whitespace-nowrap">PO No</th>
-                {/* 5. Sr No */}
-                <th className="py-2.5 px-0.5 w-10 text-center whitespace-nowrap font-black">Sr No</th>
+                {/* 5. Sr No (Option 3: Vertical Lane Shading) */}
+                <th className="py-2.5 px-0.5 w-12 text-center whitespace-nowrap font-black text-slate-900 bg-slate-200/80 border-x border-slate-200">Sr No</th>
                 {/* 6. Material Type */}
                 <th className="p-2.5 min-w-[130px] whitespace-nowrap">Material Type</th>
                 {/* 7. Size Specification */}
@@ -2716,14 +2716,14 @@ export const ProjectMaterialEntry: React.FC = () => {
                         />
                       </td>
 
-                      {/* 4. Sr No */}
-                      <td className="py-2 px-0.5 text-center">
+                      {/* 4. Sr No (Option 3: Vertical Lane Shading) */}
+                      <td className="py-2 px-0.5 text-center whitespace-nowrap bg-slate-100/70 border-x border-slate-200">
                         <input
                           type="number"
                           min="1"
                           value={row.srNo || ''}
                           onChange={(e) => handleCellChange(row.id, 'srNo', parseInt(e.target.value, 10) || 1)}
-                          className="w-10 text-center bg-transparent hover:bg-white focus:bg-white px-0.5 py-1 rounded border border-transparent hover:border-slate-300 focus:border-slate-900 text-xs font-mono font-black text-slate-900 transition-colors no-spin [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          className="w-10 text-center bg-transparent hover:bg-white focus:bg-white px-0.5 py-1 rounded border border-transparent hover:border-slate-300 focus:border-slate-900 text-xs font-mono font-black text-slate-950 transition-colors no-spin [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
                       </td>
 

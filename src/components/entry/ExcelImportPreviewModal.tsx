@@ -17,6 +17,7 @@ import {
   ParsedImportRow,
   analyzeWorksheet,
 } from '../../utils/excelImportEngine';
+import { sortRowsByAscendingSrNo } from '../../utils/projectMaterialsHelper';
 
 interface ExcelImportPreviewModalProps {
   isOpen: boolean;
@@ -111,7 +112,7 @@ export const ExcelImportPreviewModal: React.FC<ExcelImportPreviewModalProps> = (
       }
     });
 
-    return analysis.parsedRows.map((origRow) => {
+    const mapped = analysis.parsedRows.map((origRow) => {
       const copy: ParsedImportRow = { ...origRow };
       const raw = origRow.rawSourceData;
 
@@ -153,6 +154,8 @@ export const ExcelImportPreviewModal: React.FC<ExcelImportPreviewModalProps> = (
 
       return copy;
     });
+
+    return sortRowsByAscendingSrNo(mapped);
   }, [analysis, customMappings, targetProject, targetMachine, targetVendor, targetPoNo]);
 
   const handleConfirm = () => {

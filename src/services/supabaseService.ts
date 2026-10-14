@@ -31,6 +31,7 @@ import {
   getDeletedVendorTombstones,
   addVendorTombstone,
 } from '../utils/tombstones';
+import { sortRowsByAscendingSrNo } from '../utils/projectMaterialsHelper';
 
 export interface DbMutationMessage {
   action: 'UPSERT' | 'DELETE' | 'BULK_UPSERT' | 'BULK_DELETE';
@@ -1001,7 +1002,7 @@ export const pullAllDataFromSupabase = async (): Promise<{
       success: true,
       data: {
         projects: parsedProjects,
-        requirements: parsedRequirements,
+        requirements: sortRowsByAscendingSrNo(parsedRequirements),
         materials: parsedMaterials,
         vendors: parsedVendors,
         customers: parsedCustomers,

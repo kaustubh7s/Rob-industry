@@ -44,7 +44,7 @@ import { StatusBadge } from '../common/StatusBadge';
 import { Modal } from '../common/Modal';
 import { dbBulkUpsertRequirements } from '../../services/supabaseService';
 import { MATERIAL_TYPES } from '../../data/materialTypes';
-import { getMaterialsForProject } from '../../utils/projectMaterialsHelper';
+import { getMaterialsForProject, sortRowsByAscendingSrNo } from '../../utils/projectMaterialsHelper';
 import {
   formatWhatsAppPOMessage,
   createWhatsAppUrl,
@@ -233,7 +233,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
   // Filtered materials for table display
   const filteredMaterials = useMemo(() => {
-    return materialsInFolder.filter((m) => {
+    const filtered = materialsInFolder.filter((m) => {
       const matchSearch =
         searchTerm === '' ||
         m.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -256,6 +256,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
       return matchSearch && matchMat && matchMch && matchVnd && matchRecv;
     });
+
+    return sortRowsByAscendingSrNo(filtered);
   }, [materialsInFolder, searchTerm, filterMaterialType, filterMachine, filterVendor, filterReceived]);
 
   // Aggregated Summary Statistics for this project
@@ -1469,7 +1471,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   <th className="p-3 whitespace-nowrap">Machine Name</th>
                   <th className="p-3 whitespace-nowrap">Date</th>
                   <th className="p-3 whitespace-nowrap">PO No</th>
-                  <th className="p-3 w-12 text-center whitespace-nowrap">Sr No</th>
+                  <th className="p-3 w-14 text-center whitespace-nowrap font-black text-slate-900 bg-slate-200/80 border-x border-slate-200">Sr No</th>
                   <th className="p-3 min-w-[130px] whitespace-nowrap">Material Type</th>
                   <th className="p-3 min-w-[160px] whitespace-nowrap">Size Specification</th>
                   <th className="p-3 min-w-[85px] text-center whitespace-nowrap">Qty</th>
@@ -1535,9 +1537,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       {m.poNo || m.poNumber || project.poNo || project.poNumber || '36'}
                     </td>
 
-                    {/* 4. Sr No */}
-                    <td className="p-3 text-center font-mono font-bold text-slate-400 whitespace-nowrap">
-                      {(m.srNo !== undefined && m.srNo !== null && String(m.srNo).trim() !== '') ? m.srNo : idx + 1}
+                    {/* 4. Sr No (Option 3: Vertical Lane Shading) */}
+                    <td className="p-3 text-center whitespace-nowrap bg-slate-100/70 border-x border-slate-200">
+                      <span className="font-mono font-black text-slate-950 text-xs">
+                        {(m.srNo !== undefined && m.srNo !== null && String(m.srNo).trim() !== '') ? m.srNo : idx + 1}
+                      </span>
                     </td>
 
                     {/* 5. Material Type */}

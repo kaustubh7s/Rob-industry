@@ -131,6 +131,25 @@ export function isRequirementMatchedToProject(reqProjectName: string, project: P
 
 
 /**
+ * Sorts any list of items strictly in ascending order of their original Sr No (1, 2, 3...)
+ * Preserves the original serial numbers without altering them.
+ */
+export const sortRowsByAscendingSrNo = <T extends { srNo?: any }>(rowList: T[]): T[] => {
+  return [...rowList].sort((a, b) => {
+    const parseSr = (val: any) => {
+      if (val === undefined || val === null || val === '') return 99999999;
+      const clean = String(val).trim();
+      const num = parseFloat(clean.replace(/[^0-9.]/g, ''));
+      return isNaN(num) ? 99999999 : num;
+    };
+    const numA = parseSr(a.srNo);
+    const numB = parseSr(b.srNo);
+    if (numA !== numB) return numA - numB;
+    return String(a.srNo || '').localeCompare(String(b.srNo || ''), undefined, { numeric: true });
+  });
+};
+
+/**
  * Retrieves all materials strictly belonging to a project.
  * Returns an empty array [] if no materials have been added yet, ensuring real and authentic project state.
  */
@@ -195,11 +214,11 @@ export function getMaterialsForProject(
     // If order items have unique specs not in matchedReqs, merge them
     const reqSignatures = new Set(matchedReqs.map((r) => (r.description + '::' + r.sizeSpecs).toLowerCase()));
     const extraOrders = orderReqs.filter((o) => !reqSignatures.has((o.description + '::' + o.sizeSpecs).toLowerCase()));
-    return [...matchedReqs, ...extraOrders];
+    return sortRowsByAscendingSrNo([...matchedReqs, ...extraOrders]);
   }
 
   if (orderReqs.length > 0) {
-    return orderReqs;
+    return sortRowsByAscendingSrNo(orderReqs);
   }
 
   return [];

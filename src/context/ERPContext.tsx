@@ -95,7 +95,7 @@ import {
   addVendorTombstones,
   removeVendorTombstone,
 } from '../utils/tombstones';
-import { isRequirementMatchingProjectName, isRequirementMatchedToProject } from '../utils/projectMaterialsHelper';
+import { isRequirementMatchingProjectName, isRequirementMatchedToProject, sortRowsByAscendingSrNo } from '../utils/projectMaterialsHelper';
 
 interface ERPContextType {
   // Authentication & Role
@@ -609,13 +609,13 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const parsed: ProjectMaterialRequirementItem[] = JSON.parse(saved);
         if (Array.isArray(parsed)) {
           const reqTombstones = getDeletedRequirementTombstones();
-          return parsed.filter((r) => !reqTombstones.has(r.id));
+          return sortRowsByAscendingSrNo(parsed.filter((r) => !reqTombstones.has(r.id)));
         }
       } catch (e) {
         console.error(e);
       }
     }
-    return INITIAL_PROJECT_REQUIREMENTS;
+    return sortRowsByAscendingSrNo(INITIAL_PROJECT_REQUIREMENTS);
   });
 
   const [vendors, setVendors] = useState<VendorItem[]>(() => {
@@ -3342,7 +3342,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           !tombstones.has(r.id) &&
           !isRequirementMatchingProjectName(r.projectName, projectName)
       );
-      const nextReqs = [...remaining, ...mapped].filter((r) => !tombstones.has(r.id));
+      const nextReqs = sortRowsByAscendingSrNo([...remaining, ...mapped].filter((r) => !tombstones.has(r.id)));
       try {
         localStorage.setItem(LOCAL_STORAGE_KEY + '_requirements', JSON.stringify(nextReqs));
       } catch (e) {}

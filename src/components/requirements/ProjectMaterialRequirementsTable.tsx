@@ -43,6 +43,7 @@ import { exportToExcel, exportToPdfReport, parseExcelFile } from '../../utils/ex
 import { StatusBadge } from '../common/StatusBadge';
 import { Modal } from '../common/Modal';
 import { MATERIAL_TYPES } from '../../data/materialTypes';
+import { sortRowsByAscendingSrNo } from '../../utils/projectMaterialsHelper';
 
 export const ProjectMaterialRequirementsTable: React.FC = () => {
   const {
@@ -130,7 +131,7 @@ export const ProjectMaterialRequirementsTable: React.FC = () => {
 
   // Filtered dataset
   const filteredRequirements = useMemo(() => {
-    return projectRequirements.filter((req) => {
+    const list = projectRequirements.filter((req) => {
       const matchSearch =
         req.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
         req.sizeSpecs.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -148,6 +149,8 @@ export const ProjectMaterialRequirementsTable: React.FC = () => {
 
       return matchSearch && matchProject && matchMachine && matchMatType && matchStock && matchProd;
     });
+
+    return sortRowsByAscendingSrNo(list);
   }, [projectRequirements, searchTerm, filterProject, filterMachine, filterMaterialType, filterStockStatus, filterProdStatus]);
 
   // Dashboard Aggregates
@@ -514,7 +517,7 @@ export const ProjectMaterialRequirementsTable: React.FC = () => {
                     className="rounded-sm border-slate-700 bg-slate-800 text-blue-600"
                   />
                 </th>
-                <th className="p-3 text-center w-12">Sr No</th>
+                <th className="p-3 text-center w-14 font-black text-slate-100 bg-slate-800/80">Sr No</th>
                 <th className="p-3">Description</th>
                 <th className="p-3">Material Type</th>
                 <th className="p-3">Size Specification</th>
@@ -554,8 +557,10 @@ export const ProjectMaterialRequirementsTable: React.FC = () => {
                     </td>
 
                     {/* Sr No */}
-                    <td className="p-3 text-center font-mono font-bold text-slate-400">
-                      {req.srNo}
+                    <td className="p-3 text-center whitespace-nowrap">
+                      <span className="inline-flex items-center justify-center min-w-[34px] px-2 py-1 font-mono font-black text-xs text-slate-100 bg-slate-800 rounded-md border border-slate-700 shadow-2xs">
+                        {req.srNo}
+                      </span>
                     </td>
 
                     {/* Description */}

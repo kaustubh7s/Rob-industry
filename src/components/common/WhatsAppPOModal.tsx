@@ -23,6 +23,7 @@ import {
   WhatsAppPOMessageOptions,
   WhatsAppPOItem,
 } from '../../utils/whatsappHelper';
+import { sortRowsByAscendingSrNo } from '../../utils/projectMaterialsHelper';
 import { formatDate } from '../../utils/calculations';
 
 interface WhatsAppPOModalProps {
@@ -95,16 +96,16 @@ export const WhatsAppPOModal: React.FC<WhatsAppPOModalProps> = ({
 
     // If items specifically matching this vendor are found, use them
     if (vendorSpecific.length > 0) {
-      return vendorSpecific;
+      return sortRowsByAscendingSrNo(vendorSpecific);
     }
 
     // If no vendor property is set on items (e.g. single PO selection), fallback to all items
     const unassignedItems = options.items.filter((item) => !item.vendor && !item.vendorName);
     if (unassignedItems.length > 0) {
-      return unassignedItems;
+      return sortRowsByAscendingSrNo(unassignedItems);
     }
 
-    return options.items;
+    return sortRowsByAscendingSrNo(options.items);
   }, [options.items, selectedVendorName]);
 
   // Compute live options with selected vendor and filtered items
@@ -385,8 +386,10 @@ export const WhatsAppPOModal: React.FC<WhatsAppPOModalProps> = ({
                 ) : (
                   syncedVendorItems.map((item, idx) => (
                     <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                      <td className="py-2 px-2 text-center font-mono font-bold text-slate-400">
-                        {(item.srNo !== undefined && item.srNo !== null && String(item.srNo).trim() !== '') ? item.srNo : idx + 1}
+                      <td className="py-2 px-2 text-center whitespace-nowrap">
+                        <span className="inline-flex items-center justify-center min-w-[28px] px-2 py-0.5 font-mono font-black text-xs text-slate-900 bg-slate-100 rounded border border-slate-300 shadow-2xs">
+                          {(item.srNo !== undefined && item.srNo !== null && String(item.srNo).trim() !== '') ? item.srNo : idx + 1}
+                        </span>
                       </td>
                       <td className="py-2 px-2.5 font-bold text-slate-900">
                         {item.projectName || currentOptions.projectName || 'Mahalaxmi 3'}

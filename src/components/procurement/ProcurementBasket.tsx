@@ -55,6 +55,7 @@ import {
   cleanVendorName,
   WhatsAppPOMessageOptions,
 } from '../../utils/whatsappHelper';
+import { sortRowsByAscendingSrNo } from '../../utils/projectMaterialsHelper';
 
 interface ProcurementBasketProps {
   initialProjectFilter?: string;
@@ -473,7 +474,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
     const activeProjectNames = new Set(projects.map((p) => (p.name || '').trim().toLowerCase()));
     const activeProjectNumbers = new Set(projects.map((p) => (p.projectNumber || '').trim().toLowerCase()));
 
-    return projectRequirements.filter((r) => {
+    const matched = projectRequirements.filter((r) => {
       // Once an item is already ordered / PO issued, it does not need to be ordered again
       const isAlreadyOrdered = r.poStatus === 'Issued' || Boolean(r.poNumberAssigned);
       if (isAlreadyOrdered) return false;
@@ -482,6 +483,8 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
       if (activeProjectNames.has(rName) || activeProjectNumbers.has(rName)) return true;
       return projects.some((p) => isRequirementMatchedToProject(r.projectName, p));
     });
+
+    return sortRowsByAscendingSrNo(matched);
   }, [projectRequirements, projects]);
 
   // Extract all unique project names from active list
@@ -505,7 +508,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
 
   // Filtered Requirements List
   const filteredItems = useMemo(() => {
-    return activeRequirements.filter((item) => {
+    const filtered = activeRequirements.filter((item) => {
       // Search
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -542,6 +545,8 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
 
       return true;
     });
+
+    return sortRowsByAscendingSrNo(filtered);
   }, [activeRequirements, searchQuery, filterProject, filterMaterialType, filterVendorStatus, filterPOStatus]);
 
   // Unassigned vs Assigned Counts
