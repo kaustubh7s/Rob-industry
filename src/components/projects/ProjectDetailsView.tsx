@@ -46,7 +46,7 @@ import { Modal } from '../common/Modal';
 import { TableWithTopScroll } from '../common/TableWithTopScroll';
 import { dbBulkUpsertRequirements } from '../../services/supabaseService';
 import { MATERIAL_TYPES } from '../../data/materialTypes';
-import { getMaterialsForProject, sortRowsByAscendingSrNo } from '../../utils/projectMaterialsHelper';
+import { getMaterialsForProject, sortRowsByAscendingSrNo, sortRowsByDescendingSrNo } from '../../utils/projectMaterialsHelper';
 import {
   formatWhatsAppPOMessage,
   createWhatsAppUrl,
@@ -171,6 +171,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const [filterMachine, setFilterMachine] = useState('ALL');
   const [filterVendor, setFilterVendor] = useState('ALL');
   const [filterReceived, setFilterReceived] = useState<'ALL' | 'RECEIVED' | 'PENDING'>('ALL');
+  const [srSortOrder, setSrSortOrder] = useState<'desc' | 'asc'>('desc');
 
   // Dedicated Machine Folder Navigation State: 'ALL' or specific machine type like '16 HD', '20 HD'
   const [selectedMachineFolder, setSelectedMachineFolder] = useState<string>('ALL');
@@ -470,8 +471,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       return matchSearch && matchMat && matchMch && matchVnd && matchRecv;
     });
 
-    return sortRowsByAscendingSrNo(filtered);
-  }, [materialsInFolder, searchTerm, filterMaterialType, filterMachine, filterVendor, filterReceived]);
+    return srSortOrder === 'desc'
+      ? sortRowsByDescendingSrNo(filtered)
+      : sortRowsByAscendingSrNo(filtered);
+  }, [materialsInFolder, searchTerm, filterMaterialType, filterMachine, filterVendor, filterReceived, srSortOrder]);
 
   // Aggregated Summary Statistics for this project
   const projectSummary = useMemo(() => {
@@ -1901,7 +1904,18 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   <th className="p-3 whitespace-nowrap">Machine Name</th>
                   <th className="p-3 w-28 min-w-[90px] max-w-[110px] whitespace-nowrap">Date</th>
                   <th className="p-3 w-24 min-w-[75px] max-w-[95px] whitespace-nowrap">PO No</th>
-                  <th className="p-3 w-12 min-w-[44px] max-w-[50px] text-center whitespace-nowrap font-black text-slate-900 bg-slate-200/80 border-x border-slate-200">Sr No</th>
+                  <th
+                    onClick={() => setSrSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
+                    title={`Click to sort (${srSortOrder === 'desc' ? 'Currently Descending: High to Low - click for Ascending' : 'Currently Ascending: Low to High - click for Descending'})`}
+                    className="p-3 w-14 min-w-[50px] text-center whitespace-nowrap font-black text-slate-900 bg-slate-200/80 hover:bg-slate-300 border-x border-slate-200 cursor-pointer select-none transition-colors"
+                  >
+                    <div className="flex items-center justify-center gap-1">
+                      <span>Sr No</span>
+                      <span className="text-[11px] font-black text-blue-700">
+                        {srSortOrder === 'desc' ? '▼' : '▲'}
+                      </span>
+                    </div>
+                  </th>
                   <th className="p-3 min-w-[130px] whitespace-nowrap">Material Type</th>
                   <th className="p-3 min-w-[160px] whitespace-nowrap">Size Specification</th>
                   <th className="p-3 min-w-[85px] text-center whitespace-nowrap">Qty</th>
