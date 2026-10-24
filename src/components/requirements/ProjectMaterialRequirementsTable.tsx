@@ -42,6 +42,7 @@ import { formatINR, formatCompactINR, formatDate } from '../../utils/calculation
 import { exportToExcel, exportToPdfReport, parseExcelFile } from '../../utils/excelIntegration';
 import { StatusBadge } from '../common/StatusBadge';
 import { Modal } from '../common/Modal';
+import { TableWithTopScroll } from '../common/TableWithTopScroll';
 import { MATERIAL_TYPES } from '../../data/materialTypes';
 import { sortRowsByAscendingSrNo } from '../../utils/projectMaterialsHelper';
 
@@ -505,7 +506,7 @@ export const ProjectMaterialRequirementsTable: React.FC = () => {
 
       {/* 4. MASTER TABLE: Exact Schema Requested */}
       <div className="rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden shadow-xl">
-        <div className="overflow-x-auto">
+        <TableWithTopScroll>
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-850 text-slate-400 font-bold uppercase text-[10px] border-b border-slate-800 tracking-wider select-none">
               <tr>
@@ -716,7 +717,7 @@ export const ProjectMaterialRequirementsTable: React.FC = () => {
               })}
             </tbody>
           </table>
-        </div>
+        </TableWithTopScroll>
       </div>
 
       {/* MODAL 1: 360° COMPREHENSIVE COMPONENT DETAILS DRAWER */}

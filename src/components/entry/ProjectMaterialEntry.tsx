@@ -47,6 +47,7 @@ import { MaterialType, MachineCategory, ProjectItem, ProjectMaterialRequirementI
 import { exportToExcel, parseExcelFile } from '../../utils/excelIntegration';
 import { formatDate, getTodayFormatted } from '../../utils/calculations';
 import { Modal } from '../common/Modal';
+import { TableWithTopScroll } from '../common/TableWithTopScroll';
 import { ProjectsDirectory } from '../projects/ProjectsDirectory';
 import { ProjectDetailsView } from '../projects/ProjectDetailsView';
 import { MemberAuthorizationManager } from '../admin/MemberAuthorizationManager';
@@ -2864,21 +2865,6 @@ export const ProjectMaterialEntry: React.FC = () => {
             <span className="text-xs font-black uppercase tracking-wider">
               Master Material Specification Matrix • All Projects ({filteredRows.length} Items)
             </span>
-            <span className="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/90 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-              <ShieldCheck className="w-3 h-3 text-emerald-400" />
-              Permanent Storage • 1500+ Scale
-            </span>
-            <button
-              type="button"
-              onClick={() => setSrSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
-              className="ml-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-              title="Click to toggle sorting between descending and ascending order"
-            >
-              <span className="text-slate-400">Sort:</span>
-              <span className="text-amber-300 font-black">
-                {srSortOrder === 'desc' ? 'Sr No Descending (High→Low) ↓' : 'Sr No Ascending (1→High) ↑'}
-              </span>
-            </button>
           </div>
           <div className="flex items-center gap-3 text-[11px] text-slate-400 font-mono">
             {selectedProjectName && (
@@ -2890,7 +2876,7 @@ export const ProjectMaterialEntry: React.FC = () => {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <TableWithTopScroll>
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="bg-slate-100 text-slate-800 font-black border-b border-slate-200 text-[11px] uppercase tracking-wider">
@@ -3155,7 +3141,7 @@ export const ProjectMaterialEntry: React.FC = () => {
               )}
             </tbody>
           </table>
-        </div>
+        </TableWithTopScroll>
 
         {/* Footer Summary */}
         <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-600 gap-2">
