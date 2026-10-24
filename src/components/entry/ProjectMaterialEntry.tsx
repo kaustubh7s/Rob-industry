@@ -97,6 +97,25 @@ export const sortRowsByAscendingSrNo = <T extends { srNo?: any }>(rowList: T[]):
   });
 };
 
+/**
+ * Sorts materials strictly in descending order of Sr. No. (e.g. 49, 48, 47... down to 1)
+ * Preserves the original serial numbers without altering them.
+ */
+export const sortRowsByDescendingSrNo = <T extends { srNo?: any }>(rowList: T[]): T[] => {
+  return [...rowList].sort((a, b) => {
+    const parseSr = (val: any) => {
+      if (val === undefined || val === null || val === '') return -99999999;
+      const clean = String(val).trim();
+      const num = parseFloat(clean.replace(/[^0-9.]/g, ''));
+      return isNaN(num) ? -99999999 : num;
+    };
+    const numA = parseSr(a.srNo);
+    const numB = parseSr(b.srNo);
+    if (numA !== numB) return numB - numA;
+    return String(b.srNo || '').localeCompare(String(a.srNo || ''), undefined, { numeric: true });
+  });
+};
+
 const MACHINE_SUGGESTIONS: string[] = [];
 
 const COMMON_VENDORS: string[] = [];
@@ -475,6 +494,8 @@ export const ProjectMaterialEntry: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterMaterialType, setFilterMaterialType] = useState('ALL');
   const [filterVendor, setFilterVendor] = useState('ALL');
+  // Default sorting order: descending order of Sr No as requested
+  const [srSortOrder, setSrSortOrder] = useState<'desc' | 'asc'>('desc');
   const [saveToast, setSaveToast] = useState<string | null>(null);
   const [lastAutoSavedTime, setLastAutoSavedTime] = useState<string>('Just now');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -1683,8 +1704,10 @@ export const ProjectMaterialEntry: React.FC = () => {
       return matchSearch && matchMat;
     });
 
-    return sortRowsByAscendingSrNo(list);
-  }, [rows, searchTerm, filterMaterialType]);
+    return srSortOrder === 'desc'
+      ? sortRowsByDescendingSrNo(list)
+      : sortRowsByAscendingSrNo(list);
+  }, [rows, searchTerm, filterMaterialType, srSortOrder]);
 
   // Keyboard Shortcuts for Toolbar Actions:
   // - Ctrl+S / Cmd+S: SAVE ORDER (Saves directly to DB & Cloud)
@@ -2845,6 +2868,17 @@ export const ProjectMaterialEntry: React.FC = () => {
               <ShieldCheck className="w-3 h-3 text-emerald-400" />
               Permanent Storage • 1500+ Scale
             </span>
+            <button
+              type="button"
+              onClick={() => setSrSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
+              className="ml-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+              title="Click to toggle sorting between descending and ascending order"
+            >
+              <span className="text-slate-400">Sort:</span>
+              <span className="text-amber-300 font-black">
+                {srSortOrder === 'desc' ? 'Sr No Descending (High→Low) ↓' : 'Sr No Ascending (1→High) ↑'}
+              </span>
+            </button>
           </div>
           <div className="flex items-center gap-3 text-[11px] text-slate-400 font-mono">
             {selectedProjectName && (
@@ -2880,7 +2914,18 @@ export const ProjectMaterialEntry: React.FC = () => {
                 {/* 4. PO No */}
                 <th className="py-2.5 px-2 w-24 min-w-[75px] max-w-[95px] whitespace-nowrap">PO No</th>
                 {/* 5. Sr No (Option 3: Vertical Lane Shading) */}
-                <th className="py-2.5 px-1 w-12 min-w-[44px] max-w-[50px] text-center whitespace-nowrap font-black text-slate-900 bg-slate-200/80 border-x border-slate-200">Sr No</th>
+                <th
+                  onClick={() => setSrSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
+                  title={`Click to sort (${srSortOrder === 'desc' ? 'Currently Descending: High to Low - click for Ascending' : 'Currently Ascending: Low to High - click for Descending'})`}
+                  className="py-2.5 px-1 w-14 min-w-[50px] text-center whitespace-nowrap font-black text-slate-900 bg-slate-200 hover:bg-slate-300 border-x border-slate-300 cursor-pointer select-none transition-colors"
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    <span>Sr No</span>
+                    <span className="text-[11px] font-black text-blue-700">
+                      {srSortOrder === 'desc' ? '▼' : '▲'}
+                    </span>
+                  </div>
+                </th>
                 {/* 6. Material Type */}
                 <th className="p-2.5 min-w-[125px] whitespace-nowrap">Material Type</th>
                 {/* 7. Size Specification */}

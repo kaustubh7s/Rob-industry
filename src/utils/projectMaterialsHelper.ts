@@ -150,6 +150,25 @@ export const sortRowsByAscendingSrNo = <T extends { srNo?: any }>(rowList: T[]):
 };
 
 /**
+ * Sorts any list of items strictly in descending order of their original Sr No (e.g. 49, 48, 47... down to 1)
+ * Preserves the original serial numbers without altering them.
+ */
+export const sortRowsByDescendingSrNo = <T extends { srNo?: any }>(rowList: T[]): T[] => {
+  return [...rowList].sort((a, b) => {
+    const parseSr = (val: any) => {
+      if (val === undefined || val === null || val === '') return -99999999;
+      const clean = String(val).trim();
+      const num = parseFloat(clean.replace(/[^0-9.]/g, ''));
+      return isNaN(num) ? -99999999 : num;
+    };
+    const numA = parseSr(a.srNo);
+    const numB = parseSr(b.srNo);
+    if (numA !== numB) return numB - numA;
+    return String(b.srNo || '').localeCompare(String(a.srNo || ''), undefined, { numeric: true });
+  });
+};
+
+/**
  * Retrieves all materials strictly belonging to a project.
  * Returns an empty array [] if no materials have been added yet, ensuring real and authentic project state.
  */
