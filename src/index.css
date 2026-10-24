@@ -201,12 +201,16 @@ html:not(.dark) ::-webkit-scrollbar-thumb {
   }
 }
 
-/* Remove number input spin buttons / arrow toggles */
-.no-spin::-webkit-inner-spin-button,
-.no-spin::-webkit-outer-spin-button {
+/* Remove number input spin buttons / arrow toggles globally across the entire system */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button,
+input::-webkit-outer-spin-button {
   -webkit-appearance: none !important;
   margin: 0 !important;
 }
+
+input[type="number"],
 .no-spin {
   -moz-appearance: textfield !important;
   appearance: textfield !important;

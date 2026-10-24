@@ -1061,8 +1061,50 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const filteredExisting = (existing || []).filter((r) => !tombstones.has(r.id) && !isBelongingToDeletedProject(r));
     const filteredRemote = (remote || []).filter((r) => !tombstones.has(r.id) && !isBelongingToDeletedProject(r));
 
+    const existingMap = new Map(filteredExisting.map((r) => [r.id, r]));
     const remoteMap = new Map(filteredRemote.map((r) => [r.id, r]));
-    const merged = [...filteredRemote];
+
+    const merged = filteredRemote.map((rem) => {
+      const loc = existingMap.get(rem.id);
+      if (!loc) return rem;
+
+      const isPendingSync = pendingSyncIdsRef.current.has(rem.id);
+      const locHasArrival = loc.receivedQuantity !== undefined && loc.receivedQuantity !== null;
+      const remHasArrival = rem.receivedQuantity !== undefined && rem.receivedQuantity !== null;
+
+      let resolvedReceivedQty = rem.receivedQuantity;
+      let resolvedPendingQty = rem.pendingQuantity;
+      let resolvedIsReceived = rem.isReceived;
+
+      if (isPendingSync || (locHasArrival && (!remHasArrival || ((loc.receivedQuantity || 0) > 0 && !(rem.receivedQuantity && rem.receivedQuantity > 0))))) {
+        resolvedReceivedQty = loc.receivedQuantity;
+        resolvedPendingQty = loc.pendingQuantity;
+        resolvedIsReceived = loc.isReceived;
+      } else if (remHasArrival) {
+        resolvedReceivedQty = rem.receivedQuantity;
+        resolvedPendingQty = rem.pendingQuantity;
+        resolvedIsReceived = rem.isReceived;
+      } else if (locHasArrival) {
+        resolvedReceivedQty = loc.receivedQuantity;
+        resolvedPendingQty = loc.pendingQuantity;
+        resolvedIsReceived = loc.isReceived;
+      }
+
+      return {
+        ...rem,
+        ...loc,
+        ...rem,
+        receivedQuantity: resolvedReceivedQty,
+        pendingQuantity: resolvedPendingQty,
+        isReceived: resolvedIsReceived,
+        receivedAt: isPendingSync ? (loc.receivedAt || rem.receivedAt) : (rem.receivedAt || loc.receivedAt),
+        receivedBy: isPendingSync ? (loc.receivedBy || rem.receivedBy) : (rem.receivedBy || loc.receivedBy),
+        receivedByInitials: isPendingSync ? (loc.receivedByInitials || rem.receivedByInitials) : (rem.receivedByInitials || loc.receivedByInitials),
+        receivedByRole: isPendingSync ? (loc.receivedByRole || rem.receivedByRole) : (rem.receivedByRole || loc.receivedByRole),
+        stockStatus: isPendingSync ? (loc.stockStatus || rem.stockStatus) : (rem.stockStatus || loc.stockStatus),
+      };
+    });
+
     filteredExisting.forEach((loc) => {
       if (!remoteMap.has(loc.id)) {
         if (pendingSyncIdsRef.current.has(loc.id)) {
@@ -2782,7 +2824,11 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTimeout(() => syncProjectToBOM(targetPrj), 50);
   };
 
-  const updateProjectRequirement = (id: string, updates: Partial<ProjectMaterialRequirementItem>) => {
+  const updateProjectRequirement = (
+    id: string,
+    updates: Partial<ProjectMaterialRequirementItem>,
+    baseFallback?: ProjectMaterialRequirementItem
+  ) => {
     pendingSyncIdsRef.current.add(id);
     setProjectRequirements((prev) => {
       const exists = prev.some((r) => r.id === id);
@@ -2802,7 +2848,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return r;
         });
       } else {
-        const newEntry = { id, ...updates } as ProjectMaterialRequirementItem;
+        const newEntry = { ...(baseFallback || {}), id, ...updates } as ProjectMaterialRequirementItem;
         dbUpsertRequirement(newEntry).finally(() => {
           setTimeout(() => {
             pendingSyncIdsRef.current.delete(id);
@@ -3199,7 +3245,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       receivedByInitials: validArrived > 0 ? (target.receivedByInitials || initials) : undefined,
       receivedByRole: validArrived > 0 ? (target.receivedByRole || userRoleDisplay) : undefined,
       stockStatus: isFullyArrived ? 'Available' : isPartiallyArrived ? 'Partial Available' : 'Shortage',
-    });
+    }, target);
 
     logAudit(
       'Material Inward Quantity Updated',

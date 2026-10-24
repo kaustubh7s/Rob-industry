@@ -498,14 +498,25 @@ export const pushAllDataToSupabase = async (erpState: {
         outsourcing_cost: r.outsourcingCost,
         total_cost: r.totalCost,
         selling_price_allocated: r.sellingPriceAllocated,
-        notes: r.notes,
+        notes: (r.notes || '')
+          .replace(/\[ARRIVED_QTY:[^\]]*\]/g, '')
+          .replace(/\[PENDING_QTY:[^\]]*\]/g, '')
+          .replace(/\[INWARD_VERIFIED:[^\]]*\]/g, '')
+          .replace(/\[RECEIVED_BY:[^\]]*\]/g, '')
+          .replace(/\[RECEIVED_AT:[^\]]*\]/g, '')
+          .replace(/\[RECEIVED_INITIALS:[^\]]*\]/g, '')
+          .replace(/\[RECEIVED_ROLE:[^\]]*\]/g, '')
+          .replace(/\[RECEIVED_NOTES:[^\]]*\]/g, '')
+          .trim()
+          + (r.receivedQuantity !== undefined && r.receivedQuantity !== null ? ` [ARRIVED_QTY:${r.receivedQuantity}]` : '')
+          + (r.pendingQuantity !== undefined && r.pendingQuantity !== null ? ` [PENDING_QTY:${r.pendingQuantity}]` : '')
+          + (r.isReceived ? ` [INWARD_VERIFIED:${r.receivedBy || 'Chandramani'}:${r.receivedAt || new Date().toISOString()}:${r.receivedByInitials || 'CP'}]` : '')
+          + (r.receivedBy ? ` [RECEIVED_BY:${r.receivedBy}]` : '')
+          + (r.receivedAt ? ` [RECEIVED_AT:${r.receivedAt}]` : '')
+          + (r.receivedByInitials ? ` [RECEIVED_INITIALS:${r.receivedByInitials}]` : '')
+          + (r.receivedByRole ? ` [RECEIVED_ROLE:${r.receivedByRole}]` : '')
+          + (r.receivedNotes ? ` [RECEIVED_NOTES:${r.receivedNotes}]` : ''),
         ordered_by: r.orderedBy,
-        is_received: Boolean(r.isReceived),
-        received_at: r.receivedAt || null,
-        received_by: r.receivedBy || null,
-        received_by_initials: r.receivedByInitials || null,
-        received_by_role: r.receivedByRole || null,
-        received_notes: r.receivedNotes || null,
         timestamp: toSafeIsoTimestamp((r as any).timestamp || r.date || (r as any).poDate),
       }));
 
@@ -741,7 +752,6 @@ export const pullAllDataFromSupabase = async (): Promise<{
         let resolvedVendorName: string | undefined = undefined;
         const vendorMatch = notesStr.match(/\[VENDOR_NAME:([^\]]*)\]/);
         if (vendorMatch && vendorMatch[1]) resolvedVendorName = vendorMatch[1];
-        else if (r.vendor_name) resolvedVendorName = r.vendor_name;
         else if (r.vendor) resolvedVendorName = r.vendor;
 
         let resolvedOrderedBy: string | undefined = undefined;
@@ -749,10 +759,57 @@ export const pullAllDataFromSupabase = async (): Promise<{
         if (ordMatch && ordMatch[1]) resolvedOrderedBy = ordMatch[1];
         else if (r.ordered_by) resolvedOrderedBy = r.ordered_by;
 
-        const isReceived = Boolean(r.is_received || r.isReceived || tagReceived);
+        let resolvedReceivedQty: number | undefined = undefined;
+        const arrMatch = notesStr.match(/\[ARRIVED_QTY:([^\]]*)\]/);
+        if (arrMatch && arrMatch[1] !== undefined && arrMatch[1].trim() !== '') {
+          resolvedReceivedQty = Number(arrMatch[1]);
+        }
+
+        const totalQuantity = Number(r.quantity || 0);
+
+        let resolvedPendingQty: number | undefined = undefined;
+        const pendMatch = notesStr.match(/\[PENDING_QTY:([^\]]*)\]/);
+        if (pendMatch && pendMatch[1] !== undefined && pendMatch[1].trim() !== '') {
+          resolvedPendingQty = Number(pendMatch[1]);
+        } else if (resolvedReceivedQty !== undefined) {
+          resolvedPendingQty = Math.max(0, totalQuantity - resolvedReceivedQty);
+        }
+
+        let resolvedReceivedBy: string | undefined = tagBy;
+        const byMatch = notesStr.match(/\[RECEIVED_BY:([^\]]*)\]/);
+        if (byMatch && byMatch[1]) resolvedReceivedBy = byMatch[1];
+
+        let resolvedReceivedAt: string | undefined = tagAt;
+        const atMatch = notesStr.match(/\[RECEIVED_AT:([^\]]*)\]/);
+        if (atMatch && atMatch[1]) resolvedReceivedAt = atMatch[1];
+
+        let resolvedReceivedInitials: string | undefined = tagInitials;
+        const iniMatch = notesStr.match(/\[RECEIVED_INITIALS:([^\]]*)\]/);
+        if (iniMatch && iniMatch[1]) resolvedReceivedInitials = iniMatch[1];
+
+        let resolvedReceivedRole: string | undefined = undefined;
+        const roleMatch = notesStr.match(/\[RECEIVED_ROLE:([^\]]*)\]/);
+        if (roleMatch && roleMatch[1]) resolvedReceivedRole = roleMatch[1];
+
+        let resolvedReceivedNotes: string | undefined = undefined;
+        const recNotesMatch = notesStr.match(/\[RECEIVED_NOTES:([^\]]*)\]/);
+        if (recNotesMatch && recNotesMatch[1]) resolvedReceivedNotes = recNotesMatch[1];
+        else if (resolvedReceivedQty !== undefined) resolvedReceivedNotes = String(resolvedReceivedQty);
+
+        const isReceived = Boolean(
+          tagReceived ||
+          (resolvedReceivedQty !== undefined && resolvedReceivedQty >= totalQuantity && totalQuantity > 0)
+        );
 
         const cleanNotes = notesStr
           .replace(/\[INWARD_VERIFIED:[^\]]*\]/g, '')
+          .replace(/\[ARRIVED_QTY:[^\]]*\]/g, '')
+          .replace(/\[PENDING_QTY:[^\]]*\]/g, '')
+          .replace(/\[RECEIVED_BY:[^\]]*\]/g, '')
+          .replace(/\[RECEIVED_AT:[^\]]*\]/g, '')
+          .replace(/\[RECEIVED_INITIALS:[^\]]*\]/g, '')
+          .replace(/\[RECEIVED_ROLE:[^\]]*\]/g, '')
+          .replace(/\[RECEIVED_NOTES:[^\]]*\]/g, '')
           .replace(/\[ORIGINAL_SR_NO:[^\]]*\]/g, '')
           .replace(/\[MACHINE_NAME:[^\]]*\]/g, '')
           .replace(/\[PO_NO:[^\]]*\]/g, '')
@@ -807,11 +864,13 @@ export const pullAllDataFromSupabase = async (): Promise<{
           notes: cleanNotes,
           orderedBy: resolvedOrderedBy || r.ordered_by || 'Amit',
           isReceived,
-          receivedAt: r.received_at || tagAt || r.receivedAt || (isReceived ? (r.timestamp || new Date().toISOString()) : undefined),
-          receivedBy: r.received_by || tagBy || r.receivedBy || (isReceived ? 'Chandramani' : undefined),
-          receivedByInitials: r.received_by_initials || tagInitials || r.receivedByInitials || (isReceived ? 'CP' : undefined),
-          receivedByRole: r.received_by_role || r.receivedByRole || (isReceived ? 'Stores Incharge' : undefined),
-          receivedNotes: r.received_notes || r.receivedNotes || undefined,
+          receivedQuantity: resolvedReceivedQty,
+          pendingQuantity: resolvedPendingQty,
+          receivedAt: resolvedReceivedAt || (isReceived ? (r.timestamp || new Date().toISOString()) : undefined),
+          receivedBy: resolvedReceivedBy || (isReceived ? 'Chandramani' : undefined),
+          receivedByInitials: resolvedReceivedInitials || (isReceived ? 'CP' : undefined),
+          receivedByRole: resolvedReceivedRole || (isReceived ? 'Stores Incharge' : undefined),
+          receivedNotes: resolvedReceivedNotes,
           timestamp: r.timestamp,
         };
       });
@@ -1127,6 +1186,13 @@ export const dbUpsertRequirement = async (req: ProjectMaterialRequirementItem): 
   try {
     let baseNotes = (req.notes || '')
       .replace(/\[INWARD_VERIFIED:[^\]]*\]/g, '')
+      .replace(/\[ARRIVED_QTY:[^\]]*\]/g, '')
+      .replace(/\[PENDING_QTY:[^\]]*\]/g, '')
+      .replace(/\[RECEIVED_BY:[^\]]*\]/g, '')
+      .replace(/\[RECEIVED_AT:[^\]]*\]/g, '')
+      .replace(/\[RECEIVED_INITIALS:[^\]]*\]/g, '')
+      .replace(/\[RECEIVED_ROLE:[^\]]*\]/g, '')
+      .replace(/\[RECEIVED_NOTES:[^\]]*\]/g, '')
       .replace(/\[ORIGINAL_SR_NO:[^\]]*\]/g, '')
       .replace(/\[MACHINE_NAME:[^\]]*\]/g, '')
       .replace(/\[PO_NO:[^\]]*\]/g, '')
@@ -1153,21 +1219,42 @@ export const dbUpsertRequirement = async (req: ProjectMaterialRequirementItem): 
     if (req.orderedBy) {
       baseNotes = `${baseNotes} [ORDERED_BY:${req.orderedBy}]`.trim();
     }
+    if (req.receivedQuantity !== undefined && req.receivedQuantity !== null) {
+      baseNotes = `${baseNotes} [ARRIVED_QTY:${req.receivedQuantity}]`.trim();
+    }
+    if (req.pendingQuantity !== undefined && req.pendingQuantity !== null) {
+      baseNotes = `${baseNotes} [PENDING_QTY:${req.pendingQuantity}]`.trim();
+    }
     if (req.isReceived) {
       baseNotes = `${baseNotes} [INWARD_VERIFIED:${req.receivedBy || 'Chandramani'}:${req.receivedAt || new Date().toISOString()}:${req.receivedByInitials || 'CP'}]`.trim();
+    }
+    if (req.receivedBy) {
+      baseNotes = `${baseNotes} [RECEIVED_BY:${req.receivedBy}]`.trim();
+    }
+    if (req.receivedAt) {
+      baseNotes = `${baseNotes} [RECEIVED_AT:${req.receivedAt}]`.trim();
+    }
+    if (req.receivedByInitials) {
+      baseNotes = `${baseNotes} [RECEIVED_INITIALS:${req.receivedByInitials}]`.trim();
+    }
+    if (req.receivedByRole) {
+      baseNotes = `${baseNotes} [RECEIVED_ROLE:${req.receivedByRole}]`.trim();
+    }
+    if (req.receivedNotes) {
+      baseNotes = `${baseNotes} [RECEIVED_NOTES:${req.receivedNotes}]`.trim();
     }
 
     const payload = {
       id: req.id,
       sr_no: req.srNo !== undefined && req.srNo !== null ? String(req.srNo) : null,
-      description: req.description,
-      material_type: req.materialType,
+      description: req.description || 'Component',
+      material_type: req.materialType || 'MS Flat',
       material_grade: req.materialGrade || 'SS 304',
-      size_specs: req.sizeSpecs,
+      size_specs: req.sizeSpecs || 'Standard',
       quantity: Number(req.quantity) || 0,
       unit: req.unit || 'Nos',
       weight_kg: req.weightKg !== undefined && req.weightKg !== null ? Number(req.weightKg) : null,
-      project_name: req.projectName,
+      project_name: req.projectName || 'General',
       customer_name: req.customerName || null,
       po_number: req.poNo || req.poNumber || null,
       po_date: req.date || req.poDate || null,
@@ -1239,6 +1326,13 @@ export const dbBulkUpsertRequirements = async (
     const mapped = reqs.map((r) => {
       let baseNotes = (r.notes || '')
         .replace(/\[INWARD_VERIFIED:[^\]]*\]/g, '')
+        .replace(/\[ARRIVED_QTY:[^\]]*\]/g, '')
+        .replace(/\[PENDING_QTY:[^\]]*\]/g, '')
+        .replace(/\[RECEIVED_BY:[^\]]*\]/g, '')
+        .replace(/\[RECEIVED_AT:[^\]]*\]/g, '')
+        .replace(/\[RECEIVED_INITIALS:[^\]]*\]/g, '')
+        .replace(/\[RECEIVED_ROLE:[^\]]*\]/g, '')
+        .replace(/\[RECEIVED_NOTES:[^\]]*\]/g, '')
         .replace(/\[ORIGINAL_SR_NO:[^\]]*\]/g, '')
         .replace(/\[MACHINE_NAME:[^\]]*\]/g, '')
         .replace(/\[PO_NO:[^\]]*\]/g, '')
@@ -1265,21 +1359,42 @@ export const dbBulkUpsertRequirements = async (
       if (r.orderedBy) {
         baseNotes = `${baseNotes} [ORDERED_BY:${r.orderedBy}]`.trim();
       }
+      if (r.receivedQuantity !== undefined && r.receivedQuantity !== null) {
+        baseNotes = `${baseNotes} [ARRIVED_QTY:${r.receivedQuantity}]`.trim();
+      }
+      if (r.pendingQuantity !== undefined && r.pendingQuantity !== null) {
+        baseNotes = `${baseNotes} [PENDING_QTY:${r.pendingQuantity}]`.trim();
+      }
       if (r.isReceived) {
         baseNotes = `${baseNotes} [INWARD_VERIFIED:${r.receivedBy || 'Chandramani'}:${r.receivedAt || new Date().toISOString()}:${r.receivedByInitials || 'CP'}]`.trim();
+      }
+      if (r.receivedBy) {
+        baseNotes = `${baseNotes} [RECEIVED_BY:${r.receivedBy}]`.trim();
+      }
+      if (r.receivedAt) {
+        baseNotes = `${baseNotes} [RECEIVED_AT:${r.receivedAt}]`.trim();
+      }
+      if (r.receivedByInitials) {
+        baseNotes = `${baseNotes} [RECEIVED_INITIALS:${r.receivedByInitials}]`.trim();
+      }
+      if (r.receivedByRole) {
+        baseNotes = `${baseNotes} [RECEIVED_ROLE:${r.receivedByRole}]`.trim();
+      }
+      if (r.receivedNotes) {
+        baseNotes = `${baseNotes} [RECEIVED_NOTES:${r.receivedNotes}]`.trim();
       }
 
       return {
         id: r.id,
         sr_no: r.srNo !== undefined && r.srNo !== null ? String(r.srNo) : null,
-        description: r.description,
-        material_type: r.materialType,
+        description: r.description || 'Component',
+        material_type: r.materialType || 'MS Flat',
         material_grade: r.materialGrade || 'SS 304',
-        size_specs: r.sizeSpecs,
+        size_specs: r.sizeSpecs || 'Standard',
         quantity: Number(r.quantity) || 0,
         unit: r.unit || 'Nos',
         weight_kg: r.weightKg !== undefined && r.weightKg !== null ? Number(r.weightKg) : null,
-        project_name: r.projectName,
+        project_name: r.projectName || 'General',
         customer_name: r.customerName || null,
         po_number: r.poNo || r.poNumber || null,
         po_date: r.date || r.poDate || null,

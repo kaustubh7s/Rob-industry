@@ -263,10 +263,15 @@ export const ProjectMaterialEntry: React.FC = () => {
   const manualSrNoInputRef = useRef<HTMLInputElement>(null);
   const quickSrNoInputRef = useRef<HTMLInputElement>(null);
   const quickDescInputRef = useRef<HTMLInputElement>(null);
-  const quickMatTypeRef = useRef<HTMLSelectElement>(null);
+  const quickMatTypeRef = useRef<HTMLInputElement>(null);
   const quickSizeInputRef = useRef<HTMLInputElement>(null);
   const quickQtyInputRef = useRef<HTMLInputElement>(null);
   const quickUnitRef = useRef<HTMLSelectElement>(null);
+
+  // Material Type Type-Ahead dropdown states
+  const [isMatDropdownOpen, setIsMatDropdownOpen] = useState(false);
+  const [matActiveIndex, setMatActiveIndex] = useState(-1);
+  const matContainerRef = useRef<HTMLDivElement>(null);
 
   // Modals for Custom Additions & Direct Project Creation
   const [isAddProjectModalOpen, setIsAddProjectModalOpen] = useState(false);
@@ -348,7 +353,7 @@ export const ProjectMaterialEntry: React.FC = () => {
   const [quickDesc, setQuickDesc] = useState('');
   const [quickMatType, setQuickMatType] = useState<string>('SS Flat');
   const [quickSize, setQuickSize] = useState('');
-  const [quickQty, setQuickQty] = useState<number>(1);
+  const [quickQty, setQuickQty] = useState<number | string>(1);
   const [quickUnit, setQuickUnit] = useState('Nos');
 
   // Dynamic merged options
@@ -407,6 +412,34 @@ export const ProjectMaterialEntry: React.FC = () => {
       ])
     );
   }, [customMaterials, projectRequirements, rows]);
+
+  // Filtered materials for Material Type type-ahead search bar
+  const filteredMaterialTypes = useMemo(() => {
+    if (!quickMatType.trim()) return allMaterialTypes;
+    const query = quickMatType.trim().toLowerCase();
+    const startsWithMatches: string[] = [];
+    const includesMatches: string[] = [];
+    for (const m of allMaterialTypes) {
+      const lower = m.toLowerCase();
+      if (lower.startsWith(query)) {
+        startsWithMatches.push(m);
+      } else if (lower.includes(query)) {
+        includesMatches.push(m);
+      }
+    }
+    return [...startsWithMatches, ...includesMatches];
+  }, [allMaterialTypes, quickMatType]);
+
+  // Click outside to close Material Type type-ahead dropdown
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (matContainerRef.current && !matContainerRef.current.contains(e.target as Node)) {
+        setIsMatDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
 
   const allDescriptionOptions = useMemo(() => {
@@ -931,16 +964,18 @@ export const ProjectMaterialEntry: React.FC = () => {
 
     const formattedStartDate = newProjectForm.startDate || new Date().toISOString().split('T')[0];
     const formattedTargetDate = newProjectForm.targetDate || new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
-    const clientNameVal = newProjectForm.clientName.trim() || 'General Client';
+    const clientNameVal = newProjectForm.clientName.trim();
     const clientNumVal = newProjectForm.clientNumber.trim();
-    const customerDisplay = clientNumVal ? `${clientNameVal} (${clientNumVal})` : clientNameVal;
+    const customerDisplay = clientNameVal
+      ? (clientNumVal ? `${clientNameVal} (${clientNumVal})` : clientNameVal)
+      : (clientNumVal ? `Client (${clientNumVal})` : 'General Client');
     const resolvedMachine = newProjectForm.machineName?.trim() || '';
 
     const newPrj: Omit<ProjectItem, 'id'> = {
       name: newProjectForm.name.trim(),
       projectNumber: `PRJ-${String(projects.length + 1).padStart(3, '0')}`,
       customer: customerDisplay,
-      clientName: clientNameVal,
+      clientName: clientNameVal || 'General Client',
       clientNumber: clientNumVal,
       orderSource: 'Customer PO',
       machineType: (resolvedMachine || '') as any,
@@ -1204,9 +1239,9 @@ export const ProjectMaterialEntry: React.FC = () => {
 
     setQuickQty(1);
 
-    // Smoothly refocus back to description for continuous rapid-fire entry
+    // Smoothly refocus back to Material Type for continuous rapid-fire entry
     setTimeout(() => {
-      quickDescInputRef.current?.focus();
+      quickMatTypeRef.current?.focus();
     }, 40);
 
     setSaveToast(`Added row #${targetSrNo}: ${newRow.description} • Synced to DB`);
@@ -1861,6 +1896,12 @@ export const ProjectMaterialEntry: React.FC = () => {
         ))}
       </datalist>
 
+      <datalist id="material-suggestions">
+        {allMaterialTypes.map((m) => (
+          <option key={m} value={m} />
+        ))}
+      </datalist>
+
       {/* Hidden File Input for Excel Import */}
       <input
         ref={fileInputRef}
@@ -2232,89 +2273,176 @@ export const ProjectMaterialEntry: React.FC = () => {
                   setQuickSrNo(e.target.value);
                   setManualSrNo(e.target.value);
                 }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    quickMatTypeRef.current?.focus();
+                  }
+                }}
                 placeholder={String(rows.length + 1)}
                 className="w-full bg-slate-800 border border-emerald-500/50 rounded-lg px-2 py-1.5 text-xs font-mono font-black text-emerald-300 text-center focus:bg-slate-900 focus:outline-none focus:border-emerald-400 shadow-2xs no-spin [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 title="Manual Serial Number for material item"
               />
             </div>
 
-            {/* 1. Description (Type-Ahead & Custom) */}
-            <div className="lg:col-span-4 space-y-1">
+            {/* 1. Material Type (Type-Ahead / Searchable Type Bar) */}
+            <div className="lg:col-span-2 space-y-1 relative" ref={matContainerRef}>
               <div className="flex items-center justify-between">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-300 block">
-                  Description (Type-Ahead)
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setIsCustomDescModalOpen(true)}
-                  className="text-[9px] font-bold text-blue-400 hover:text-blue-300 cursor-pointer"
-                >
-                  + Custom
-                </button>
-              </div>
-              <input
-                ref={quickDescInputRef}
-                type="text"
-                list="description-suggestions"
-                value={quickDesc}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setQuickDesc(val);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    if (quickDesc.trim()) learnDescription(quickDesc.trim());
-                    quickMatTypeRef.current?.focus();
-                  }
-                }}
-                placeholder="e.g. Mono Conveyor Inlet Patti"
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-semibold text-white placeholder-slate-500 focus:bg-slate-900 focus:outline-none focus:border-blue-500 shadow-2xs"
-              />
-            </div>
-
-            {/* 2. Material Type */}
-            <div className="lg:col-span-2 space-y-1">
-              <div className="flex items-center justify-between">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-300 block">
-                  Material Type
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-300 block truncate">
+                  Material Type (Auto-Suggest)
                 </label>
                 <button
                   type="button"
                   onClick={() => setIsCustomMaterialModalOpen(true)}
-                  className="text-[9px] font-bold text-blue-400 hover:text-blue-300 cursor-pointer"
+                  className="text-[9px] font-bold text-blue-400 hover:text-blue-300 cursor-pointer shrink-0"
                 >
                   + Custom
                 </button>
               </div>
-              <select
-                ref={quickMatTypeRef}
-                value={quickMatType}
-                onChange={(e) => {
-                  if (e.target.value === '__CUSTOM__') {
-                    setIsCustomMaterialModalOpen(true);
-                  } else {
+              <div className="relative">
+                <input
+                  ref={quickMatTypeRef}
+                  type="text"
+                  value={quickMatType}
+                  onChange={(e) => {
                     setQuickMatType(e.target.value);
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    quickSizeInputRef.current?.focus();
-                  }
-                }}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs font-bold text-white focus:bg-slate-900 focus:outline-none focus:border-blue-500 shadow-2xs cursor-pointer"
-              >
-                {allMaterialTypes.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-                <option value="__CUSTOM__">+ Custom Material...</option>
-              </select>
+                    setIsMatDropdownOpen(true);
+                    setMatActiveIndex(0);
+                  }}
+                  onFocus={(e) => {
+                    setIsMatDropdownOpen(true);
+                    e.target.select();
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      if (!isMatDropdownOpen) {
+                        setIsMatDropdownOpen(true);
+                        setMatActiveIndex(0);
+                      } else {
+                        setMatActiveIndex((prev) =>
+                          prev < filteredMaterialTypes.length - 1 ? prev + 1 : prev
+                        );
+                      }
+                    } else if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      setMatActiveIndex((prev) => (prev > 0 ? prev - 1 : 0));
+                    } else if (e.key === 'Enter') {
+                      e.preventDefault();
+                      if (isMatDropdownOpen && matActiveIndex >= 0 && filteredMaterialTypes[matActiveIndex]) {
+                        setQuickMatType(filteredMaterialTypes[matActiveIndex]);
+                      } else if (isMatDropdownOpen && filteredMaterialTypes.length > 0 && quickMatType.trim()) {
+                        const exact = filteredMaterialTypes.find(
+                          (m) => m.toLowerCase() === quickMatType.trim().toLowerCase()
+                        );
+                        if (exact) setQuickMatType(exact);
+                      }
+                      setIsMatDropdownOpen(false);
+                      quickSizeInputRef.current?.focus();
+                    } else if (e.key === 'Escape') {
+                      setIsMatDropdownOpen(false);
+                    }
+                  }}
+                  placeholder="e.g. SS Flat"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-2.5 pr-7 py-1.5 text-xs font-bold text-white placeholder-slate-500 focus:bg-slate-900 focus:outline-none focus:border-blue-500 shadow-2xs"
+                />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => {
+                    setIsMatDropdownOpen((prev) => !prev);
+                    quickMatTypeRef.current?.focus();
+                  }}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-1 cursor-pointer"
+                  title="Toggle materials list"
+                >
+                  <ChevronDown
+                    className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                      isMatDropdownOpen ? 'rotate-180 text-blue-400' : ''
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Autocomplete / Type-Ahead Dropdown Menu */}
+              {isMatDropdownOpen && (
+                <div className="absolute left-0 right-0 top-full mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden min-w-[220px]">
+                  <div className="px-2.5 py-1.5 bg-slate-800/90 border-b border-slate-700/60 flex items-center justify-between text-[10px] font-semibold text-slate-400">
+                    <span className="truncate">
+                      {quickMatType.trim()
+                        ? `${filteredMaterialTypes.length} found for "${quickMatType}"`
+                        : `${allMaterialTypes.length} materials`}
+                    </span>
+                    <span className="text-[9px] text-slate-500 font-mono shrink-0">↑↓ ↵</span>
+                  </div>
+
+                  <div className="max-h-56 overflow-y-auto py-1 divide-y divide-slate-800/50">
+                    {filteredMaterialTypes.length > 0 ? (
+                      filteredMaterialTypes.map((m, idx) => {
+                        const isSelected = quickMatType.toLowerCase() === m.toLowerCase();
+                        const isActive = idx === matActiveIndex;
+                        return (
+                          <button
+                            key={m}
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setQuickMatType(m);
+                              setIsMatDropdownOpen(false);
+                              quickSizeInputRef.current?.focus();
+                            }}
+                            onMouseEnter={() => setMatActiveIndex(idx)}
+                            className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between transition-colors cursor-pointer ${
+                              isActive
+                                ? 'bg-blue-600 text-white font-bold'
+                                : isSelected
+                                ? 'bg-blue-950/40 text-blue-300 font-semibold'
+                                : 'text-slate-200 hover:bg-slate-800'
+                            }`}
+                          >
+                            <span className="truncate">{m}</span>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-blue-400 shrink-0" />}
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <div className="p-3 text-center text-xs text-slate-400">
+                        <p>No materials matching "{quickMatType}"</p>
+                        <button
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setIsMatDropdownOpen(false);
+                            setIsCustomMaterialModalOpen(true);
+                          }}
+                          className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold text-blue-400 hover:text-blue-300 underline cursor-pointer"
+                        >
+                          <Plus className="w-3 h-3" />
+                          Add "{quickMatType}" as Custom Material
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="border-t border-slate-700/80 bg-slate-800/40 p-1.5">
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setIsMatDropdownOpen(false);
+                        setIsCustomMaterialModalOpen(true);
+                      }}
+                      className="w-full flex items-center justify-center gap-1.5 py-1 text-[11px] font-bold text-blue-400 hover:text-blue-300 hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ Custom Material...</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* 3. Size Specification (Auto-Suggest & Custom) */}
+            {/* 2. Size Specification (Auto-Suggest & Custom) */}
             <div className="lg:col-span-2 space-y-1">
               <div className="flex items-center justify-between">
                 <label className="text-[10px] font-bold uppercase tracking-wider text-slate-300 block">
@@ -2349,7 +2477,7 @@ export const ProjectMaterialEntry: React.FC = () => {
               />
             </div>
 
-            {/* 4. Qty & Unit Together (Compound Input Group) */}
+            {/* 3. Qty & Unit Together (Compound Input Group) */}
             <div className="lg:col-span-2 space-y-1">
               <label className="text-[10px] font-bold uppercase tracking-wider text-slate-300 block">
                 Qty & Unit
@@ -2357,18 +2485,29 @@ export const ProjectMaterialEntry: React.FC = () => {
               <div className="flex items-center rounded-lg border border-slate-700 bg-slate-800 shadow-2xs overflow-hidden focus-within:ring-1 focus-within:ring-blue-500 focus-within:border-blue-500">
                 <input
                   ref={quickQtyInputRef}
-                  type="number"
-                  min="0.1"
-                  step="any"
+                  type="text"
+                  inputMode="decimal"
                   value={quickQty}
-                  onChange={(e) => setQuickQty(parseFloat(e.target.value) || 1)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                      setQuickQty(val);
+                    }
+                  }}
+                  onBlur={() => {
+                    if (quickQty === '' || isNaN(Number(quickQty)) || Number(quickQty) <= 0) {
+                      setQuickQty(1);
+                    }
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
                       quickUnitRef.current?.focus();
+                    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                      e.preventDefault();
                     }
                   }}
-                  className="w-1/2 bg-transparent px-2 py-1.5 text-xs font-mono font-black text-white text-center focus:outline-none no-spin [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  className="w-1/2 bg-transparent px-2 py-1.5 text-xs font-mono font-black text-white text-center focus:outline-none"
                   placeholder="Qty"
                 />
                 <div className="h-4 w-px bg-slate-700" />
@@ -2386,7 +2525,7 @@ export const ProjectMaterialEntry: React.FC = () => {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
-                      handleAddMaterialRow();
+                      quickDescInputRef.current?.focus();
                     }
                   }}
                   className="w-1/2 bg-transparent px-1 py-1.5 text-xs font-bold text-slate-300 text-center focus:outline-none cursor-pointer"
@@ -2399,6 +2538,41 @@ export const ProjectMaterialEntry: React.FC = () => {
                   <option value="__CUSTOM__" className="bg-slate-900 text-white">+ Custom...</option>
                 </select>
               </div>
+            </div>
+
+            {/* 4. Description (Type-Ahead & Custom) */}
+            <div className="lg:col-span-4 space-y-1">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-300 block">
+                  Description (Type-Ahead)
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsCustomDescModalOpen(true)}
+                  className="text-[9px] font-bold text-blue-400 hover:text-blue-300 cursor-pointer"
+                >
+                  + Custom
+                </button>
+              </div>
+              <input
+                ref={quickDescInputRef}
+                type="text"
+                list="description-suggestions"
+                value={quickDesc}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setQuickDesc(val);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (quickDesc.trim()) learnDescription(quickDesc.trim());
+                    handleAddMaterialRow();
+                  }
+                }}
+                placeholder="e.g. Mono Conveyor Inlet Patti"
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-semibold text-white placeholder-slate-500 focus:bg-slate-900 focus:outline-none focus:border-blue-500 shadow-2xs"
+              />
             </div>
 
             {/* 5. Submit Button */}
@@ -3022,15 +3196,14 @@ export const ProjectMaterialEntry: React.FC = () => {
             />
           </div>
 
-          {/* 2. Client Name & 3. Client Number (Self-Learning Combobox) */}
+          {/* 2. Client Name & 3. Client Number (Optional Self-Learning Combobox) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                Client / Customer Name *
+                Client / Customer Name <span className="text-slate-400 font-normal lowercase">(optional)</span>
               </label>
               <input
                 type="text"
-                required
                 list="entry-learned-customers"
                 value={newProjectForm.clientName}
                 onChange={(e) => {
@@ -3056,11 +3229,10 @@ export const ProjectMaterialEntry: React.FC = () => {
 
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                Client Number *
+                Client Number <span className="text-slate-400 font-normal lowercase">(optional)</span>
               </label>
               <input
                 type="text"
-                required
                 value={newProjectForm.clientNumber}
                 onChange={(e) => setNewProjectForm({ ...newProjectForm, clientNumber: e.target.value })}
                 placeholder="e.g. +91 98765 43210"

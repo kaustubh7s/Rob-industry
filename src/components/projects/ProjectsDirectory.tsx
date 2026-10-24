@@ -269,16 +269,18 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
 
     const count = String(projects.length + 10).padStart(3, '0');
     const projectNumber = `PRJ-2026-${count}`;
-    const clientNameVal = newProjectForm.clientName.trim() || 'General Client';
+    const clientNameVal = newProjectForm.clientName.trim();
     const clientNumVal = newProjectForm.clientNumber.trim();
-    const customerDisplay = clientNumVal ? `${clientNameVal} (${clientNumVal})` : clientNameVal;
+    const customerDisplay = clientNameVal
+      ? (clientNumVal ? `${clientNameVal} (${clientNumVal})` : clientNameVal)
+      : (clientNumVal ? `Client (${clientNumVal})` : 'General Client');
     const machineNameVal = newProjectForm.machineName.trim() || newProjectForm.name.trim();
 
     const newPrj: ProjectItem = {
       id: `prj-${Date.now()}`,
       name: newProjectForm.name.trim(),
       customer: customerDisplay,
-      clientName: clientNameVal,
+      clientName: clientNameVal || 'General Client',
       clientNumber: clientNumVal,
       projectNumber,
       orderSource: 'Customer PO',
@@ -998,15 +1000,14 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
             />
           </div>
 
-          {/* 2. Client Name & 3. Client Number (Self-Learning Combobox) */}
+          {/* 2. Client Name & 3. Client Number (Optional Self-Learning Combobox) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                Client / Customer Name *
+                Client / Customer Name <span className="text-slate-400 font-normal lowercase">(optional)</span>
               </label>
               <input
                 type="text"
-                required
                 list="learned-customers-directory"
                 value={newProjectForm.clientName}
                 onChange={(e) => {
@@ -1032,7 +1033,7 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
 
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                Client Contact Number
+                Client Contact Number <span className="text-slate-400 font-normal lowercase">(optional)</span>
               </label>
               <input
                 type="text"

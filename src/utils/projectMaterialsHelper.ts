@@ -212,8 +212,11 @@ export function getMaterialsForProject(
 
   if (matchedReqs.length > 0) {
     // If order items have unique specs not in matchedReqs, merge them
+    const reqIds = new Set(matchedReqs.map((r) => r.id));
     const reqSignatures = new Set(matchedReqs.map((r) => (r.description + '::' + r.sizeSpecs).toLowerCase()));
-    const extraOrders = orderReqs.filter((o) => !reqSignatures.has((o.description + '::' + o.sizeSpecs).toLowerCase()));
+    const extraOrders = orderReqs.filter(
+      (o) => !reqIds.has(o.id) && !reqSignatures.has((o.description + '::' + o.sizeSpecs).toLowerCase())
+    );
     return sortRowsByAscendingSrNo([...matchedReqs, ...extraOrders]);
   }
 

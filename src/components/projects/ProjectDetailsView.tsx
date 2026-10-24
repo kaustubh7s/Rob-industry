@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   ArrowLeft,
   Download,
@@ -40,7 +40,7 @@ import {
 import { useERP } from '../../context/ERPContext';
 import { ProjectItem, ProjectMaterialRequirementItem, MaterialType, MachineCategory } from '../../types/erp';
 import { exportToExcel, exportToPdfReport } from '../../utils/excelIntegration';
-import { formatDate } from '../../utils/calculations';
+import { formatDate, getTodayFormatted } from '../../utils/calculations';
 import { StatusBadge } from '../common/StatusBadge';
 import { Modal } from '../common/Modal';
 import { dbBulkUpsertRequirements } from '../../services/supabaseService';
@@ -80,6 +80,28 @@ const MACHINE_CATEGORIES: MachineCategory[] = [
   'Custom Fabrication',
 ];
 
+const toInputDate = (dateStr?: string | Date | null): string => {
+  if (!dateStr) return '';
+  const s = String(dateStr).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  if (/^\d{2}-\d{2}-\d{4}$/.test(s)) {
+    const [d, m, y] = s.split('-');
+    return `${y}-${m}-${d}`;
+  }
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
+    const [d, m, y] = s.split('/');
+    return `${y}-${m}-${d}`;
+  }
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  return '';
+};
+
 export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   project,
   onBack,
@@ -87,6 +109,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   onOpenOrderBasket,
 }) => {
   const {
+    projects,
+    updateProject,
     projectRequirements,
     setProjectRequirements,
     addProjectRequirement,
@@ -106,10 +130,39 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     currentUser?.role === 'super_admin' || currentUser?.name?.toLowerCase().includes('amit');
   const isStoreIncharge = currentUser?.role === 'store_incharge';
 
+  const activeProject = useMemo(() => {
+    return projects.find((p) => p.id === project.id) || project;
+  }, [projects, project]);
+
   // DB Sync State
   const [isSavingToDb, setIsSavingToDb] = useState(false);
   const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
+
+  // Project Specification & Overview Editable State
+  const [isEditingOverview, setIsEditingOverview] = useState(false);
+  const [isSavingOverview, setIsSavingOverview] = useState(false);
+
+  const [editProjectName, setEditProjectName] = useState(activeProject.name || '');
+  const [editProjectNumber, setEditProjectNumber] = useState(
+    activeProject.projectNumber || activeProject.poNumber || activeProject.poNo || ''
+  );
+  const [editMachineName, setEditMachineName] = useState(
+    activeProject.machineName || activeProject.machineType || ''
+  );
+  const [editClientName, setEditClientName] = useState(
+    activeProject.customer || activeProject.clientName || ''
+  );
+  const [editClientNumber, setEditClientNumber] = useState(activeProject.clientNumber || '');
+  const [editStartDate, setEditStartDate] = useState(() =>
+    toInputDate(activeProject.startDate || activeProject.date || activeProject.createdDate)
+  );
+  const [editDeliveryDate, setEditDeliveryDate] = useState(() =>
+    toInputDate(activeProject.targetCompletionDate || activeProject.targetDate)
+  );
+  const [editOrderedBy, setEditOrderedBy] = useState(
+    activeProject.orderedBy || currentUser?.name || 'Amit'
+  );
 
   // Search & Filters within this project's materials
   const [searchTerm, setSearchTerm] = useState('');
@@ -166,7 +219,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       const name = (m.machineName || m.machineType || '').trim();
       if (
         name &&
-        name.toLowerCase() !== project.name.toLowerCase().trim() &&
+        name.toLowerCase() !== activeProject.name.toLowerCase().trim() &&
         !['kaustubh', 'amit', 'admin', 'rahul', 'general'].includes(name.toLowerCase())
       ) {
         set.add(name);
@@ -174,14 +227,127 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     });
     if (
       set.size === 0 &&
-      project.machineName &&
-      project.machineName.toLowerCase().trim() !== project.name.toLowerCase().trim() &&
-      !['kaustubh', 'amit', 'admin', 'rahul', 'general'].includes(project.machineName.toLowerCase())
+      activeProject.machineName &&
+      activeProject.machineName.toLowerCase().trim() !== activeProject.name.toLowerCase().trim() &&
+      !['kaustubh', 'amit', 'admin', 'rahul', 'general'].includes(activeProject.machineName.toLowerCase())
     ) {
-      set.add(project.machineName.trim());
+      set.add(activeProject.machineName.trim());
     }
     return Array.from(set);
-  }, [project, displayMaterials]);
+  }, [activeProject, displayMaterials]);
+
+  useEffect(() => {
+    if (!isEditingOverview) {
+      setEditProjectName(activeProject.name || '');
+      setEditProjectNumber(
+        activeProject.projectNumber || activeProject.poNumber || activeProject.poNo || ''
+      );
+      setEditMachineName(
+        activeProject.machineName || activeProject.machineType || uniqueMachineTypes[0] || ''
+      );
+      setEditClientName(activeProject.customer || activeProject.clientName || '');
+      setEditClientNumber(activeProject.clientNumber || '');
+      setEditStartDate(
+        toInputDate(activeProject.startDate || activeProject.date || activeProject.createdDate)
+      );
+      setEditDeliveryDate(
+        toInputDate(activeProject.targetCompletionDate || activeProject.targetDate)
+      );
+      setEditOrderedBy(activeProject.orderedBy || currentUser?.name || 'Amit');
+    }
+  }, [activeProject, isEditingOverview, uniqueMachineTypes]);
+
+  const handleCancelEditOverview = () => {
+    setIsEditingOverview(false);
+    setEditProjectName(activeProject.name || '');
+    setEditProjectNumber(
+      activeProject.projectNumber || activeProject.poNumber || activeProject.poNo || ''
+    );
+    setEditMachineName(
+      activeProject.machineName || activeProject.machineType || uniqueMachineTypes[0] || ''
+    );
+    setEditClientName(activeProject.customer || activeProject.clientName || '');
+    setEditClientNumber(activeProject.clientNumber || '');
+    setEditStartDate(
+      toInputDate(activeProject.startDate || activeProject.date || activeProject.createdDate)
+    );
+    setEditDeliveryDate(
+      toInputDate(activeProject.targetCompletionDate || activeProject.targetDate)
+    );
+    setEditOrderedBy(activeProject.orderedBy || currentUser?.name || 'Amit');
+  };
+
+  const handleSaveOverview = () => {
+    setIsSavingOverview(true);
+    const newName = editProjectName.trim() || activeProject.name;
+    const newPrjNumber = editProjectNumber.trim() || activeProject.projectNumber || 'PRJ-001';
+    const newClient = editClientName.trim() || activeProject.customer || 'Cadila Healthcare Ltd';
+    const newClientNum = editClientNumber.trim();
+    const newMachine =
+      editMachineName.trim() || activeProject.machineName || activeProject.machineType || 'Custom Machine';
+    const newStartDate = editStartDate || activeProject.startDate || getTodayFormatted();
+    const newTargetDate =
+      editDeliveryDate || activeProject.targetCompletionDate || activeProject.targetDate || '';
+    const newOrderedBy = editOrderedBy.trim() || activeProject.orderedBy || currentUser?.name || 'Amit';
+
+    const updates: Partial<ProjectItem> = {
+      name: newName,
+      projectNumber: newPrjNumber,
+      poNumber: newPrjNumber,
+      poNo: newPrjNumber,
+      customer: newClient,
+      clientName: newClient,
+      clientNumber: newClientNum,
+      machineName: newMachine,
+      machineType: newMachine as MachineCategory,
+      machineTypes: [newMachine],
+      startDate: newStartDate,
+      date: newStartDate,
+      targetCompletionDate: newTargetDate,
+      targetDate: newTargetDate,
+      orderedBy: newOrderedBy,
+    };
+
+    updateProject(activeProject.id, updates);
+
+    // If project name changed, sync linked requirements
+    if (newName !== activeProject.name) {
+      const linked = projectRequirements.filter((r) => r.projectName === activeProject.name);
+      if (linked.length > 0) {
+        linked.forEach((r) => {
+          updateProjectRequirement(r.id, { projectName: newName });
+        });
+      }
+    }
+
+    // Sync machine category if changed
+    if (newMachine && newMachine !== activeProject.machineName) {
+      const linked = projectRequirements.filter(
+        (r) => r.projectName === newName || r.projectName === activeProject.name
+      );
+      linked.forEach((r) => {
+        if (!r.machineName || r.machineName === activeProject.machineName) {
+          updateProjectRequirement(r.id, {
+            machineName: newMachine,
+            machineType: newMachine as MachineCategory,
+          });
+        }
+      });
+    }
+
+    if (logAudit) {
+      logAudit(
+        'Project Overview Updated',
+        'Projects',
+        `Updated overview for project ${newName}: Client=${newClient}, Machine=${newMachine}, Start=${newStartDate}, Delivery=${newTargetDate}, OrderedBy=${newOrderedBy}`
+      );
+    }
+
+    setIsSavingOverview(false);
+    setIsEditingOverview(false);
+    setSaveSuccessMessage('Project Overview & Specification updated successfully!');
+    setTimeout(() => setSaveSuccessMessage(null), 3500);
+  };
 
   // Machine Folder Statistics Map (for each machine category folder)
   const machineFolderStats = useMemo(() => {
@@ -598,10 +764,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             <div className="flex items-center gap-2.5 flex-wrap">
               <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
                 <Layers className="w-6 h-6 text-blue-600" />
-                {project.name}
+                {activeProject.name}
               </h1>
               <span className="px-2.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 text-xs font-bold font-mono">
-                {project.projectNumber || 'PRJ-2026-FOHA'}
+                {activeProject.projectNumber || activeProject.poNumber || activeProject.poNo || 'PRJ-2026-FOHA'}
               </span>
               <div className="flex items-center gap-1.5 flex-wrap">
                 <button
@@ -634,11 +800,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </button>
                 ))}
               </div>
-              <StatusBadge status={project.status} size="sm" />
+              <StatusBadge status={activeProject.status} size="sm" />
             </div>
 
             <p className="text-xs text-slate-500 font-medium">
-              Client: <strong className="text-slate-800">{project.customer}</strong> • RSB Standard 10-Column Material Workflow
+              Client: <strong className="text-slate-800">{activeProject.customer || activeProject.clientName}</strong>
+              {activeProject.clientNumber ? ` (${activeProject.clientNumber})` : ''} • RSB Standard 10-Column Material Workflow
             </p>
           </div>
 
@@ -923,92 +1090,291 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       {/* ========================================================================= */}
       {/* 2. PROJECT INFORMATION BANNER (Machine Categories, Client, Dates, Ordered By) */}
       {/* ========================================================================= */}
-      <div className="bg-slate-900 border border-slate-800 text-white rounded-2xl p-5 shadow-md">
-        <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-800">
+      <div className="bg-slate-900 border border-slate-800 text-white rounded-2xl p-5 shadow-md relative">
+        {saveSuccessMessage && (
+          <div className="mb-4 p-3 rounded-xl bg-emerald-950/90 border border-emerald-500/70 text-emerald-200 text-xs font-bold flex items-center justify-between shadow-lg animate-fadeIn">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{saveSuccessMessage}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSaveSuccessMessage(null)}
+              className="text-emerald-400 hover:text-emerald-200 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 mb-4 border-b border-slate-800 gap-2">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-5 h-5 text-blue-400" />
             <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-200">
               Project Specification & Overview
             </h2>
+            {isEditingOverview && (
+              <span className="px-2 py-0.5 rounded-full bg-blue-900/60 border border-blue-500/40 text-[10px] font-bold text-blue-300 font-mono">
+                Editing Mode
+              </span>
+            )}
           </div>
-          <span className="text-xs text-slate-400 font-mono">
-            RSB Workflow Record
-          </span>
+          
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 font-mono hidden md:inline">
+              RSB Workflow Record
+            </span>
+
+            {isEditingOverview ? (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCancelEditOverview}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border border-slate-700"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>Cancel</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveOverview}
+                  disabled={isSavingOverview}
+                  className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                >
+                  {isSavingOverview ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Save Overview</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsEditingOverview(true)}
+                className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 hover:shadow-blue-500/20"
+                title="Edit Project Overview & Specifications"
+              >
+                <Edit2 className="w-3.5 h-3.5" />
+                <span>Edit Overview</span>
+              </button>
+            )}
+          </div>
         </div>
 
+        {/* TOP EDIT ROW (Project Name & PO Number) - Only in Edit Mode */}
+        {isEditingOverview && (
+          <div className="mb-4 p-3.5 rounded-xl bg-slate-800/90 border border-blue-500/30 grid grid-cols-1 sm:grid-cols-2 gap-3 shadow-inner">
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-blue-300 block">
+                Project Name
+              </label>
+              <input
+                type="text"
+                value={editProjectName}
+                onChange={(e) => setEditProjectName(e.target.value)}
+                placeholder="e.g. LM 12 & 13"
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-bold text-white placeholder-slate-500 focus:bg-slate-950 focus:outline-none focus:border-blue-500 shadow-2xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-blue-300 block">
+                PO / Project Number
+              </label>
+              <input
+                type="text"
+                value={editProjectNumber}
+                onChange={(e) => setEditProjectNumber(e.target.value)}
+                placeholder="e.g. PRJ-001"
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-mono font-bold text-white placeholder-slate-500 focus:bg-slate-950 focus:outline-none focus:border-blue-500 shadow-2xs"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* 5 OVERVIEW CARDS */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 font-mono text-xs">
           {/* 1. Machine Categories */}
-          <div className="p-3 rounded-xl bg-slate-800/80 border border-slate-700/60">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1 font-sans flex items-center gap-1">
-              <Cpu className="w-3 h-3 text-slate-400" />
-              Machine Categories ({uniqueMachineTypes.length})
-            </span>
-            <div className="flex items-center gap-1 flex-wrap mt-0.5">
-              {uniqueMachineTypes.length > 0 ? (
-                uniqueMachineTypes.map((mch) => (
-                  <button
-                    key={mch}
-                    type="button"
-                    onClick={() => setSelectedMachineFolder(mch)}
-                    className={`text-xs font-bold px-2 py-0.5 rounded transition-all cursor-pointer flex items-center gap-1 ${
-                      selectedMachineFolder === mch
-                        ? 'bg-purple-600 text-white border border-purple-400 shadow-sm'
-                        : 'text-purple-300 bg-purple-950/60 hover:bg-purple-900/80 border border-purple-800'
-                    }`}
-                    title={`Click to open ${mch} folder`}
-                  >
-                    <Folder className="w-3 h-3" />
-                    <span>{mch}</span>
-                  </button>
-                ))
-              ) : (
-                <span className="text-xs text-slate-400 font-sans italic">No machines assigned</span>
+          <div className={`p-3 rounded-xl transition-all ${
+            isEditingOverview
+              ? 'bg-slate-800 border-2 border-purple-500/60 shadow-lg'
+              : 'bg-slate-800/80 border border-slate-700/60 hover:border-slate-600'
+          }`}>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400 block mb-1.5 font-sans flex items-center justify-between">
+              <span className="flex items-center gap-1">
+                <Cpu className="w-3 h-3 text-purple-400" />
+                Machine Categories
+              </span>
+              {!isEditingOverview && uniqueMachineTypes.length > 0 && (
+                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-purple-950 text-purple-300 border border-purple-800">
+                  {uniqueMachineTypes.length}
+                </span>
               )}
-            </div>
+            </span>
+
+            {isEditingOverview ? (
+              <div className="space-y-1.5">
+                <input
+                  type="text"
+                  value={editMachineName}
+                  onChange={(e) => setEditMachineName(e.target.value)}
+                  list="overview-machine-suggestions"
+                  placeholder="e.g. LM 120"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-bold text-white placeholder-slate-500 focus:bg-slate-950 focus:outline-none focus:border-purple-500 shadow-2xs"
+                />
+                <datalist id="overview-machine-suggestions">
+                  {MACHINE_CATEGORIES.map((m) => (
+                    <option key={m} value={m} />
+                  ))}
+                </datalist>
+                <p className="text-[9px] text-slate-400 font-sans">Type machine name / category</p>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                {uniqueMachineTypes.length > 0 ? (
+                  uniqueMachineTypes.map((mch) => (
+                    <button
+                      key={mch}
+                      type="button"
+                      onClick={() => setSelectedMachineFolder(mch)}
+                      className={`text-xs font-bold px-2 py-0.5 rounded transition-all cursor-pointer flex items-center gap-1 ${
+                        selectedMachineFolder === mch
+                          ? 'bg-purple-600 text-white border border-purple-400 shadow-sm'
+                          : 'text-purple-300 bg-purple-950/60 hover:bg-purple-900/80 border border-purple-800'
+                      }`}
+                      title={`Click to open ${mch} folder`}
+                    >
+                      <Folder className="w-3 h-3" />
+                      <span>{mch}</span>
+                    </button>
+                  ))
+                ) : (
+                  <span className="text-xs text-slate-400 font-sans italic">
+                    {activeProject.machineName || activeProject.machineType || 'No machines assigned'}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* 2. Client */}
-          <div className="p-3 rounded-xl bg-slate-800/80 border border-slate-700/60">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1 font-sans flex items-center gap-1">
+          <div className={`p-3 rounded-xl transition-all ${
+            isEditingOverview
+              ? 'bg-slate-800 border-2 border-blue-500/60 shadow-lg'
+              : 'bg-slate-800/80 border border-slate-700/60 hover:border-slate-600'
+          }`}>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 block mb-1.5 font-sans flex items-center gap-1">
               <Building2 className="w-3 h-3 text-blue-400" />
               Client
             </span>
-            <p className="text-sm font-black text-white truncate font-sans" title={project.customer || project.clientName || 'Cadila Healthcare Ltd'}>
-              {project.customer || project.clientName || 'Cadila Healthcare Ltd'}
-            </p>
+            {isEditingOverview ? (
+              <div className="space-y-1.5">
+                <input
+                  type="text"
+                  value={editClientName}
+                  onChange={(e) => setEditClientName(e.target.value)}
+                  placeholder="Client Name"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs font-bold text-white placeholder-slate-500 focus:bg-slate-950 focus:outline-none focus:border-blue-500 shadow-2xs"
+                />
+                <input
+                  type="text"
+                  value={editClientNumber}
+                  onChange={(e) => setEditClientNumber(e.target.value)}
+                  placeholder="Mobile (e.g. 9441560561)"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs font-mono font-bold text-blue-300 placeholder-slate-500 focus:bg-slate-950 focus:outline-none focus:border-blue-500 shadow-2xs"
+                />
+              </div>
+            ) : (
+              <div>
+                <p className="text-sm font-black text-white truncate font-sans" title={activeProject.customer || activeProject.clientName || 'Cadila Healthcare Ltd'}>
+                  {activeProject.customer || activeProject.clientName || 'Cadila Healthcare Ltd'}
+                </p>
+                {activeProject.clientNumber && (
+                  <p className="text-[11px] font-mono font-bold text-blue-400 truncate mt-0.5">
+                    {activeProject.clientNumber}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* 3. Start Date */}
-          <div className="p-3 rounded-xl bg-slate-800/80 border border-slate-700/60">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1 font-sans flex items-center gap-1">
+          <div className={`p-3 rounded-xl transition-all ${
+            isEditingOverview
+              ? 'bg-slate-800 border-2 border-emerald-500/60 shadow-lg'
+              : 'bg-slate-800/80 border border-slate-700/60 hover:border-slate-600'
+          }`}>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block mb-1.5 font-sans flex items-center gap-1">
               <Calendar className="w-3 h-3 text-emerald-400" />
               Start Date
             </span>
-            <p className="text-base font-black text-emerald-300 truncate">
-              {formatDate(project.startDate || project.date || project.createdDate)}
-            </p>
+            {isEditingOverview ? (
+              <input
+                type="date"
+                value={editStartDate}
+                onChange={(e) => setEditStartDate(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs font-mono font-bold text-emerald-300 focus:bg-slate-950 focus:outline-none focus:border-emerald-500 shadow-2xs cursor-pointer"
+              />
+            ) : (
+              <p className="text-base font-black text-emerald-300 truncate">
+                {formatDate(activeProject.startDate || activeProject.date || activeProject.createdDate)}
+              </p>
+            )}
           </div>
 
           {/* 4. Delivery Date */}
-          <div className="p-3 rounded-xl bg-amber-950/50 border border-amber-800/60">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block mb-1 font-sans flex items-center gap-1">
+          <div className={`p-3 rounded-xl transition-all ${
+            isEditingOverview
+              ? 'bg-slate-800 border-2 border-amber-500/60 shadow-lg'
+              : 'bg-amber-950/50 border border-amber-800/60 hover:border-amber-700'
+          }`}>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block mb-1.5 font-sans flex items-center gap-1">
               <Calendar className="w-3 h-3 text-amber-400" />
               Delivery Date
             </span>
-            <p className="text-base font-black text-amber-300 truncate">
-              {formatDate(project.targetCompletionDate || project.targetDate)}
-            </p>
+            {isEditingOverview ? (
+              <input
+                type="date"
+                value={editDeliveryDate}
+                onChange={(e) => setEditDeliveryDate(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs font-mono font-bold text-amber-300 focus:bg-slate-950 focus:outline-none focus:border-amber-500 shadow-2xs cursor-pointer"
+              />
+            ) : (
+              <p className="text-base font-black text-amber-300 truncate">
+                {formatDate(activeProject.targetCompletionDate || activeProject.targetDate)}
+              </p>
+            )}
           </div>
 
           {/* 5. Ordered By */}
-          <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-800/60">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block mb-1 font-sans flex items-center gap-1">
-              <Lock className="w-3 h-3 text-emerald-400" />
-              Ordered By (Locked)
+          <div className={`p-3 rounded-xl transition-all ${
+            isEditingOverview
+              ? 'bg-slate-800 border-2 border-emerald-500/60 shadow-lg'
+              : 'bg-emerald-950/60 border border-emerald-800/60 hover:border-emerald-700'
+          }`}>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block mb-1.5 font-sans flex items-center gap-1">
+              <UserCheck className="w-3 h-3 text-emerald-400" />
+              Ordered By
             </span>
-            <p className="text-base font-black text-emerald-300 truncate">
-              {project.orderedBy || currentUser?.name || 'Amit'}
-            </p>
+            {isEditingOverview ? (
+              <input
+                type="text"
+                value={editOrderedBy}
+                onChange={(e) => setEditOrderedBy(e.target.value)}
+                placeholder="Ordered By"
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs font-bold text-emerald-300 placeholder-slate-500 focus:bg-slate-950 focus:outline-none focus:border-emerald-500 shadow-2xs"
+              />
+            ) : (
+              <p className="text-base font-black text-emerald-300 truncate">
+                {activeProject.orderedBy || currentUser?.name || 'Amit'}
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -1634,6 +2000,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           min="0"
                           step="any"
                           value={arrivedQty}
+                          onFocus={(e) => e.target.select()}
                           onChange={(e) => {
                             const val = parseFloat(e.target.value);
                             updateMaterialArrivalQty(m.id, isNaN(val) ? 0 : val);
