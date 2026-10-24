@@ -215,3 +215,16 @@ input[type="number"],
   -moz-appearance: textfield !important;
   appearance: textfield !important;
 }
+
+/* Permanently hide Netlify Drawer, Feedback badge, and injected widgets */
+[data-netlify-drawer],
+netlify-drawer,
+#netlify-drawer,
+.netlify-badge,
+iframe[title*="Netlify" i],
+div[class*="netlify-drawer" i] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
