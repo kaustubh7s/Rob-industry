@@ -43,6 +43,7 @@ import { exportToExcel, exportToPdfReport } from '../../utils/excelIntegration';
 import { formatDate, getTodayFormatted } from '../../utils/calculations';
 import { StatusBadge } from '../common/StatusBadge';
 import { Modal } from '../common/Modal';
+import { TableWithTopScroll } from '../common/TableWithTopScroll';
 import { dbBulkUpsertRequirements } from '../../services/supabaseService';
 import { MATERIAL_TYPES } from '../../data/materialTypes';
 import { getMaterialsForProject, sortRowsByAscendingSrNo } from '../../utils/projectMaterialsHelper';
@@ -1890,7 +1891,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             </button>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <TableWithTopScroll>
             <table className="min-w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-100 text-slate-800 font-bold border-b border-slate-200 text-[11px] uppercase tracking-wider">
@@ -2121,7 +2122,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 })}
               </tbody>
             </table>
-          </div>
+          </TableWithTopScroll>
         )}
       </div>
 
