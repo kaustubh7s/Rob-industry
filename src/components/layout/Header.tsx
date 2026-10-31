@@ -6,7 +6,6 @@ import {
   Bell,
   UserCheck,
   Zap,
-  CalendarDays,
   Check,
   CheckCircle2,
   AlertTriangle,
@@ -213,43 +212,6 @@ export const Header: React.FC<HeaderProps> = ({
                 Home
               </span>
             </div>
-          </button>
-
-          {/* Direct Material Entry Station Shortcut */}
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('entry');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs border ${
-              activeTab === 'entry' || activeTab === 'requirements' || activeTab === 'projects' || activeTab === 'details' || activeTab === 'procurement'
-                ? 'bg-blue-600 text-white border-blue-400 ring-2 ring-blue-400/40 shadow-blue-500/20'
-                : 'bg-slate-800 hover:bg-slate-750 text-slate-200 border-slate-700 hover:text-white'
-            }`}
-            title="Open Material Entry Station (Ctrl+1 / Alt+1 / Alt+M)"
-          >
-            <Zap className="w-3.5 h-3.5 text-amber-400" />
-            <span>Material Entry Station</span>
-          </button>
-
-          {/* Direct Daily Requirement Shortcut */}
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('daily_requirements');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs border ${
-              activeTab === 'daily_requirements'
-                ? 'bg-blue-600 text-white border-blue-400 ring-2 ring-blue-400/40 shadow-blue-500/20'
-                : 'bg-slate-800 hover:bg-slate-750 text-slate-200 border-slate-700 hover:text-white'
-            }`}
-            title="Open Daily Material Requirement & Inward Tracking"
-          >
-            <CalendarDays className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="hidden lg:inline">Daily Requirement</span>
-            <span className="lg:hidden">Daily Req</span>
           </button>
 
           {/* Quick Microsoft Excel Button */}
