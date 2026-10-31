@@ -191,6 +191,7 @@ export const ProjectMaterialEntry: React.FC = () => {
 
   // Mode View State: 'entry' | 'projects' | 'procurement' | 'details' | 'members'
   const [activeViewMode, setActiveViewMode] = useState<'entry' | 'projects' | 'procurement' | 'details' | 'members'>(() => {
+    if (currentUser?.role === 'store_incharge') return 'projects';
     if (activeTab === 'projects') return 'projects';
     if (activeTab === 'procurement') return 'procurement';
     if (activeTab === 'members') return 'members';
@@ -213,15 +214,11 @@ export const ProjectMaterialEntry: React.FC = () => {
     }
   }, [activeTab]);
 
-  // Listener to force jump straight to Material Entry Station
   useEffect(() => {
-    const handleForceEntry = () => {
-      setSelectedDetailProject(null);
-      setActiveViewMode('entry');
-    };
-    window.addEventListener('rsb:open-entry-station', handleForceEntry);
-    return () => window.removeEventListener('rsb:open-entry-station', handleForceEntry);
-  }, []);
+    if (isStoreIncharge && activeViewMode === 'entry') {
+      setActiveViewMode('projects');
+    }
+  }, [isStoreIncharge, activeViewMode]);
 
   const [selectedDetailProject, setSelectedDetailProject] = useState<ProjectItem | null>(null);
 
@@ -1978,7 +1975,60 @@ export const ProjectMaterialEntry: React.FC = () => {
   }
 
   // View Mode Switcher: Projects Directory
-  if (activeViewMode === 'projects') {
+  if (activeViewMode === 'projects' || isStoreIncharge) {
+    if (activeViewMode === 'details' && selectedDetailProject) {
+      return (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 pb-2 border-b border-slate-200">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveViewMode('projects');
+                setSelectedDetailProject(null);
+                pushNavStep({
+                  tab: 'projects',
+                  subView: 'projects',
+                });
+              }}
+              className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
+            >
+              <FolderKanban className="w-3.5 h-3.5 text-blue-600" />
+              <span>← Back to All Projects</span>
+            </button>
+            <span className="px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-bold shadow-xs flex items-center gap-1.5">
+              <Layers className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Project: {selectedDetailProject.name}</span>
+            </span>
+          </div>
+
+          <ProjectDetailsView
+            project={selectedDetailProject}
+            onBack={() => {
+              setActiveViewMode('projects');
+              setSelectedDetailProject(null);
+              pushNavStep({
+                tab: 'projects',
+                subView: 'projects',
+              });
+            }}
+            onOpenInEntrySheet={
+              !isStoreIncharge
+                ? (pName) => {
+                    const found = projects.find((p) => p.name === pName);
+                    if (found) handleOpenProjectInEntry(found);
+                    else handleSwitchView('entry');
+                  }
+                : undefined
+            }
+            onOpenOrderBasket={(pName) => {
+              setBasketProjectFilter(pName);
+              handleSwitchView('procurement');
+            }}
+          />
+        </div>
+      );
+    }
+
     return (
       <div className="space-y-4">
         <ProjectsDirectory
@@ -1991,11 +2041,15 @@ export const ProjectMaterialEntry: React.FC = () => {
               projectId: prj.id || prj.name,
             });
           }}
-          onOpenEntrySheetWithProject={(pName) => {
-            const found = projects.find((p) => p.name === pName);
-            if (found) handleOpenProjectInEntry(found);
-            else handleSwitchView('entry');
-          }}
+          onOpenEntrySheetWithProject={
+            !isStoreIncharge
+              ? (pName) => {
+                  const found = projects.find((p) => p.name === pName);
+                  if (found) handleOpenProjectInEntry(found);
+                  else handleSwitchView('entry');
+                }
+              : undefined
+          }
           onOpenProcurementBasket={() => {
             setBasketProjectFilter(undefined);
             handleSwitchView('procurement');
