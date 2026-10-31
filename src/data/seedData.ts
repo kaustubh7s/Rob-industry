@@ -106,6 +106,26 @@ export const INITIAL_USERS: User[] = [
       resetPin: '789-456',
     },
   },
+  {
+    id: 'usr-chandramani',
+    name: 'Chandramani',
+    email: 'chandramani.stores@rsbequipments.com',
+    role: 'store_incharge',
+    password: 'chandramani@123',
+    department: 'Stores & Material Inward Receiving',
+    authLevel: 'Tier 3: Department Manager',
+    status: 'Active',
+    lastActive: 'Active Now',
+    permissions: {
+      canEditMaterials: false,
+      canApproveOrders: false,
+      canDeleteRecords: false,
+      canManageUsers: false,
+      canExportReports: true,
+      canOverrideLock: false,
+      canVerifyInward: true,
+    },
+  },
 ];
 
 export const INITIAL_MATERIALS: MaterialItem[] = [];

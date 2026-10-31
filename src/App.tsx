@@ -245,7 +245,13 @@ const ERPAppContent: React.FC = () => {
 
   // On Phone View: Render dedicated mobile apps
   if (isMobile) {
-    if (currentUser?.role === 'store_incharge') {
+    if (
+      currentUser?.role === 'store_incharge' ||
+      currentUser?.name?.toLowerCase().includes('chandramani') ||
+      currentUser?.id === 'usr-chandramani' ||
+      currentUser?.email?.toLowerCase().includes('chandramani') ||
+      currentUser?.department?.toLowerCase().includes('stores')
+    ) {
       return <MobileStoreInwardApp />;
     }
     return <MobileAdminApp />;

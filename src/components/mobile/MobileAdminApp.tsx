@@ -28,6 +28,8 @@ import {
   Users,
   Trash2,
   LogOut,
+  Truck,
+  CalendarDays,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 import { ProjectItem, ProjectMaterialRequirementItem, MaterialType, MachineCategory } from '../../types/erp';
@@ -38,6 +40,7 @@ import { SupabaseConnectModal } from '../admin/SupabaseConnectModal';
 import { LiveWorldSSRatesModal } from '../rates/LiveWorldSSRatesModal';
 import { Modal } from '../common/Modal';
 import { MATERIAL_TYPES } from '../../data/materialTypes';
+import { MobileStoreInwardApp } from './MobileStoreInwardApp';
 import confetti from 'canvas-confetti';
 
 type MobileTab = 'overview' | 'projects' | 'materials' | 'floor' | 'team';
@@ -58,6 +61,7 @@ export const MobileAdminApp: React.FC = () => {
     logout,
   } = useERP();
 
+  const [showInwardApp, setShowInwardApp] = useState(false);
   const [activeTab, setActiveTab] = useState<MobileTab>('overview');
   const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
   const [isRatesModalOpen, setIsRatesModalOpen] = useState(false);
@@ -155,6 +159,27 @@ export const MobileAdminApp: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
+  if (showInwardApp) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col">
+        <div className="bg-slate-900 border-b border-slate-800 px-3.5 py-2 flex items-center justify-between text-xs sticky top-0 z-50">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="font-bold text-white text-[11px]">Stores & Daily Requirement (Chandramani Mode)</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowInwardApp(false)}
+            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[10px] font-bold active:scale-95 cursor-pointer"
+          >
+            ← Admin Dashboard
+          </button>
+        </div>
+        <MobileStoreInwardApp />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none pb-20">
       {/* ========================================================================= */}
@@ -210,6 +235,17 @@ export const MobileAdminApp: React.FC = () => {
             >
               <Globe className="w-3 h-3 text-amber-400 animate-pulse" />
               <span>₹312</span>
+            </button>
+
+            {/* Stores Inward / Daily Req Pill */}
+            <button
+              type="button"
+              onClick={() => setShowInwardApp(true)}
+              className="px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[10px] font-bold flex items-center gap-1 active:scale-95"
+              title="Stores & Daily Requirement"
+            >
+              <Truck className="w-3 h-3 text-emerald-400" />
+              <span>Inward</span>
             </button>
 
             {/* Logout Button */}
@@ -334,6 +370,30 @@ export const MobileAdminApp: React.FC = () => {
                 <div className="text-xl font-black text-white font-mono">{users.length}</div>
                 <p className="text-[10px] text-amber-400 font-medium mt-0.5">Floor Members →</p>
               </div>
+            </div>
+
+            {/* Daily Requirement & Chandramani Inward Direct Access Card */}
+            <div
+              onClick={() => setShowInwardApp(true)}
+              className="p-3.5 bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-transparent rounded-2xl border border-amber-500/40 hover:border-amber-400 active:scale-[0.99] transition-all cursor-pointer flex items-center justify-between shadow-xs"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-black shadow-xs shrink-0">
+                  <CalendarDays className="w-5 h-5 text-slate-950" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-white flex items-center gap-1.5">
+                    <span>Daily Material Requirement</span>
+                    <span className="px-1.5 py-0.2 rounded bg-amber-400 text-slate-950 text-[9px] font-mono font-black">
+                      Chandramani Level
+                    </span>
+                  </h4>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Check off material arrivals, select arrived & pending quantities on phone
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-amber-400 shrink-0" />
             </div>
 
             {/* Recent Active Projects List (Preview) */}
