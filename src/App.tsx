@@ -43,7 +43,7 @@ import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { MicrosoftWorkbookCenter } from './components/microsoft/MicrosoftWorkbookCenter';
 
 const ERPAppContent: React.FC = () => {
-  const { activeTab, setActiveTab, currentUser, isAuthenticated } = useERP();
+  const { activeTab, setActiveTab, currentUser, isAuthenticated, goBack, goForward, canGoBack, canGoForward } = useERP();
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -227,10 +227,10 @@ const ERPAppContent: React.FC = () => {
 
       if ((e.altKey && e.key === 'ArrowLeft') || (e.metaKey && e.key === '[')) {
         e.preventDefault();
-        window.history.back();
+        goBack();
       } else if ((e.altKey && e.key === 'ArrowRight') || (e.metaKey && e.key === ']')) {
         e.preventDefault();
-        window.history.forward();
+        goForward();
       }
     };
     window.addEventListener('keydown', handleKeyNav);
@@ -268,9 +268,13 @@ const ERPAppContent: React.FC = () => {
         <div className="fixed top-[60px] left-3 sm:left-4 z-30 flex items-center bg-white/95 hover:bg-white text-slate-700 shadow-md border border-slate-200/90 rounded-xl p-0.5 backdrop-blur-xs select-none transition-all">
           <button
             type="button"
-            onClick={() => window.history.back()}
-            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center hover:bg-slate-100 active:scale-90 text-slate-700 hover:text-slate-950 transition-all cursor-pointer"
-            title="Back (Alt + ←)"
+            onClick={goBack}
+            className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center transition-all ${
+              canGoBack
+                ? 'hover:bg-slate-100 active:scale-90 text-slate-700 hover:text-slate-950 cursor-pointer'
+                : 'text-slate-300 opacity-40 cursor-not-allowed'
+            }`}
+            title={canGoBack ? 'Back (Alt + ←)' : 'Back (No previous page)'}
             aria-label="Back"
           >
             <ArrowLeft className="w-4 h-4 stroke-[2.3]" />
@@ -278,9 +282,13 @@ const ERPAppContent: React.FC = () => {
           <div className="w-[1px] h-4 bg-slate-200" />
           <button
             type="button"
-            onClick={() => window.history.forward()}
-            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center hover:bg-slate-100 active:scale-90 text-slate-700 hover:text-slate-950 transition-all cursor-pointer"
-            title="Forward (Alt + →)"
+            onClick={goForward}
+            className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center transition-all ${
+              canGoForward
+                ? 'hover:bg-slate-100 active:scale-90 text-slate-700 hover:text-slate-950 cursor-pointer'
+                : 'text-slate-300 opacity-40 cursor-not-allowed'
+            }`}
+            title={canGoForward ? 'Forward (Alt + →)' : 'Forward (No next page)'}
             aria-label="Forward"
           >
             <ArrowRight className="w-4 h-4 stroke-[2.3]" />

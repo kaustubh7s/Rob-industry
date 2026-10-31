@@ -170,6 +170,7 @@ export const ProjectMaterialEntry: React.FC = () => {
     isRootAdmin,
     masterMachines,
     masterBOMs,
+    pushNavStep,
   } = useERP();
 
   const isStoreIncharge = currentUser?.role === 'store_incharge';
@@ -220,6 +221,40 @@ export const ProjectMaterialEntry: React.FC = () => {
   }, [isStoreIncharge, activeViewMode]);
 
   const [selectedDetailProject, setSelectedDetailProject] = useState<ProjectItem | null>(null);
+
+  // Sync sub-views with global navigation history (Back / Forward arrows)
+  useEffect(() => {
+    const handleNavRestore = (e: Event) => {
+      const customEvent = e as CustomEvent<any>;
+      const step = customEvent.detail;
+      if (!step) return;
+
+      if (step.subView === 'details' && step.projectId) {
+        const found = projects.find(
+          (p) => p.id === step.projectId || p.name === step.projectId || p.poNumber === step.projectId
+        );
+        if (found) {
+          setSelectedDetailProject(found);
+          setActiveViewMode('details');
+        }
+      } else if (step.subView === 'projects') {
+        setSelectedDetailProject(null);
+        setActiveViewMode('projects');
+      } else if (step.subView === 'entry') {
+        setSelectedDetailProject(null);
+        setActiveViewMode('entry');
+      } else if (step.subView === 'procurement') {
+        setSelectedDetailProject(null);
+        setActiveViewMode('procurement');
+      } else if (step.subView === 'members') {
+        setSelectedDetailProject(null);
+        setActiveViewMode('members');
+      }
+    };
+
+    window.addEventListener('rsb:nav-restore', handleNavRestore);
+    return () => window.removeEventListener('rsb:nav-restore', handleNavRestore);
+  }, [projects]);
 
   // Machine Name & Header Workflow Fields (Machine Name is primary entity)
   const [machineName, setMachineName] = useState(() => projects[0]?.machineName || projects[0]?.machineType || '');
@@ -1919,6 +1954,10 @@ export const ProjectMaterialEntry: React.FC = () => {
   const handleSwitchView = (mode: 'entry' | 'projects' | 'procurement') => {
     setActiveViewMode(mode);
     setActiveTab(mode);
+    pushNavStep({
+      tab: mode,
+      subView: mode,
+    });
   };
 
   // View Mode Switcher: Procurement Basket / PO Basket
@@ -1943,7 +1982,14 @@ export const ProjectMaterialEntry: React.FC = () => {
           <div className="flex items-center gap-2 pb-2 border-b border-slate-200">
             <button
               type="button"
-              onClick={() => setActiveViewMode('projects')}
+              onClick={() => {
+                setActiveViewMode('projects');
+                setSelectedDetailProject(null);
+                pushNavStep({
+                  tab: 'projects',
+                  subView: 'projects',
+                });
+              }}
               className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
             >
               <FolderKanban className="w-3.5 h-3.5 text-blue-600" />
@@ -1957,7 +2003,14 @@ export const ProjectMaterialEntry: React.FC = () => {
 
           <ProjectDetailsView
             project={selectedDetailProject}
-            onBack={() => setActiveViewMode('projects')}
+            onBack={() => {
+              setActiveViewMode('projects');
+              setSelectedDetailProject(null);
+              pushNavStep({
+                tab: 'projects',
+                subView: 'projects',
+              });
+            }}
             onOpenInEntrySheet={
               !isStoreIncharge
                 ? (pName) => {
@@ -1982,6 +2035,11 @@ export const ProjectMaterialEntry: React.FC = () => {
           onSelectProject={(prj) => {
             setSelectedDetailProject(prj);
             setActiveViewMode('details');
+            pushNavStep({
+              tab: 'projects',
+              subView: 'details',
+              projectId: prj.id || prj.name,
+            });
           }}
           onOpenEntrySheetWithProject={
             !isStoreIncharge
@@ -2011,7 +2069,14 @@ export const ProjectMaterialEntry: React.FC = () => {
         <div className="flex items-center gap-2 pb-2 border-b border-slate-200">
           <button
             type="button"
-            onClick={() => setActiveViewMode('projects')}
+            onClick={() => {
+              setActiveViewMode('projects');
+              setSelectedDetailProject(null);
+              pushNavStep({
+                tab: 'projects',
+                subView: 'projects',
+              });
+            }}
             className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
           >
             <FolderKanban className="w-3.5 h-3.5 text-blue-600" />
@@ -2025,7 +2090,14 @@ export const ProjectMaterialEntry: React.FC = () => {
 
         <ProjectDetailsView
           project={selectedDetailProject}
-          onBack={() => setActiveViewMode('projects')}
+          onBack={() => {
+            setActiveViewMode('projects');
+            setSelectedDetailProject(null);
+            pushNavStep({
+              tab: 'projects',
+              subView: 'projects',
+            });
+          }}
           onOpenInEntrySheet={(pName) => {
             const found = projects.find((p) => p.name === pName);
             if (found) handleOpenProjectInEntry(found);

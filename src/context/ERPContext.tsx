@@ -107,6 +107,13 @@ import {
 } from '../utils/tombstones';
 import { isRequirementMatchingProjectName, isRequirementMatchedToProject, sortRowsByAscendingSrNo } from '../utils/projectMaterialsHelper';
 
+export interface AppNavStep {
+  tab: string;
+  subView?: string;
+  projectId?: string;
+  bomId?: string;
+}
+
 interface ERPContextType {
   // Authentication & Role
   currentUser: User;
@@ -120,9 +127,14 @@ interface ERPContextType {
   activeVendorId: string;
   setActiveVendorId: (vendorId: string) => void;
 
-  // Active Tab
+  // Active Tab & Full Sequential Navigation History
   activeTab: string;
-  setActiveTab: (tab: string) => void;
+  setActiveTab: (tab: string, pushHistory?: boolean) => void;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  goBack: () => void;
+  goForward: () => void;
+  pushNavStep: (step: AppNavStep) => void;
 
   // Core Datasets
   materials: MaterialItem[];
@@ -1248,12 +1260,90 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return 'microsoft';
   });
 
+  // Full In-App Sequential Navigation History
+  const [navHistory, setNavHistory] = useState<AppNavStep[]>(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const tabParam = urlParams.get('tab');
+      if (tabParam) return [{ tab: tabParam, subView: tabParam }];
+      const saved = localStorage.getItem('RSB_ACTIVE_TAB');
+      if (saved) return [{ tab: saved, subView: saved }];
+    } catch {}
+    return [{ tab: 'microsoft', subView: 'microsoft' }];
+  });
+
+  const [navIndex, setNavIndex] = useState<number>(0);
+
+  // Apply a specific navigation step (restores tab and dispatches sub-view event)
+  const applyNavStep = useCallback((step: AppNavStep) => {
+    setActiveTabState(step.tab);
+    try {
+      localStorage.setItem('RSB_ACTIVE_TAB', step.tab);
+    } catch {}
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('rsb:nav-restore', { detail: step }));
+    }
+  }, []);
+
+  const pushNavStep = useCallback((step: AppNavStep) => {
+    setNavHistory((prev) => {
+      const current = prev[navIndex];
+      if (
+        current &&
+        current.tab === step.tab &&
+        current.subView === step.subView &&
+        current.projectId === step.projectId &&
+        current.bomId === step.bomId
+      ) {
+        return prev;
+      }
+      const next = prev.slice(0, navIndex + 1);
+      next.push(step);
+      if (next.length > 50) next.shift();
+      return next;
+    });
+    setNavIndex((prev) => Math.min(prev + 1, 49));
+  }, [navIndex]);
+
+  const goBack = useCallback(() => {
+    if (navIndex > 0) {
+      const prevIndex = navIndex - 1;
+      setNavIndex(prevIndex);
+      const step = navHistory[prevIndex];
+      if (step) {
+        applyNavStep(step);
+      }
+    } else {
+      if (typeof window !== 'undefined' && window.history) {
+        window.history.back();
+      }
+    }
+  }, [navIndex, navHistory, applyNavStep]);
+
+  const goForward = useCallback(() => {
+    if (navIndex < navHistory.length - 1) {
+      const nextIndex = navIndex + 1;
+      setNavIndex(nextIndex);
+      const step = navHistory[nextIndex];
+      if (step) {
+        applyNavStep(step);
+      }
+    } else {
+      if (typeof window !== 'undefined' && window.history) {
+        window.history.forward();
+      }
+    }
+  }, [navIndex, navHistory, applyNavStep]);
+
+  const canGoBack = navIndex > 0;
+  const canGoForward = navIndex < navHistory.length - 1;
+
   const setActiveTab = (tab: string, pushHistory = true) => {
     setActiveTabState(tab);
     try {
       localStorage.setItem('RSB_ACTIVE_TAB', tab);
-      if (pushHistory && typeof window !== 'undefined' && window.history) {
-        window.history.pushState({ tab }, '', `?tab=${tab}`);
+      if (pushHistory) {
+        pushNavStep({ tab, subView: tab });
       }
     } catch (e) {}
   };
@@ -7162,6 +7252,11 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActiveVendorId,
         activeTab,
         setActiveTab,
+        canGoBack,
+        canGoForward,
+        goBack,
+        goForward,
+        pushNavStep,
         materials,
         projectRequirements,
         setProjectRequirements,

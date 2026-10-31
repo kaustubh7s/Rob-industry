@@ -92,6 +92,7 @@ export const BOMManager: React.FC = () => {
     setProjectRequirements,
     addProject,
     setActiveTab,
+    pushNavStep,
   } = useERP();
 
   // ---------------------------------------------------------------------------
@@ -108,6 +109,25 @@ export const BOMManager: React.FC = () => {
 
   // Left sidebar library collapsed toggle
   const [isLibraryCollapsed, setIsLibraryCollapsed] = useState<boolean>(false);
+
+  // Sync sub-views with global navigation history (Back / Forward arrows)
+  useEffect(() => {
+    const handleNavRestore = (e: Event) => {
+      const customEvent = e as CustomEvent<any>;
+      const step = customEvent.detail;
+      if (!step || step.tab !== 'bom') return;
+
+      if (step.subView === 'editor' && step.bomId) {
+        setActiveBOMId(step.bomId);
+        setCurrentView('editor');
+      } else if (step.subView === 'library') {
+        setCurrentView('library');
+      }
+    };
+
+    window.addEventListener('rsb:nav-restore', handleNavRestore);
+    return () => window.removeEventListener('rsb:nav-restore', handleNavRestore);
+  }, []);
 
   // Expanded folders in the library tree: { [machineId]: boolean }
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>(() => {
@@ -1123,6 +1143,11 @@ export const BOMManager: React.FC = () => {
   const handleOpenBOM = (bom: MasterBOM) => {
     setActiveBOMId(bom.id);
     setCurrentView('editor');
+    pushNavStep({
+      tab: 'bom',
+      subView: 'editor',
+      bomId: bom.id,
+    });
     // Ensure machine & type match
     const mach = masterMachines.find((m) => m.name === bom.machineName);
     if (mach) {
@@ -1139,6 +1164,10 @@ export const BOMManager: React.FC = () => {
       }
     }
     setCurrentView('library');
+    pushNavStep({
+      tab: 'bom',
+      subView: 'library',
+    });
   };
 
   // ---------------------------------------------------------------------------
