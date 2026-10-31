@@ -1335,21 +1335,21 @@ export const DailyRequirementModule: React.FC = () => {
                   key={dateStr}
                   className="bg-white border-2 border-slate-200 hover:border-slate-300 rounded-2xl shadow-xs overflow-hidden transition-all"
                 >
-                  {/* FOLDER ACCORDION HEADER WITH PROJECTION BAR */}
+                  {/* FOLDER ACCORDION HEADER (CLEAN & SIMPLE) */}
                   <div
                     onClick={() => toggleDateFolder(dateStr)}
-                    className="p-4 bg-slate-50/90 hover:bg-slate-100/90 cursor-pointer border-b border-slate-200 transition-colors"
+                    className="p-3.5 sm:p-4 bg-slate-50/90 hover:bg-slate-100/90 cursor-pointer border-b border-slate-200 transition-colors"
                   >
-                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                      {/* Left: Chevron + Date Title & Subtitle */}
-                      <div className="flex items-start sm:items-center gap-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-6">
+                      {/* Left: Chevron + Date + Today Badge + Item Count */}
+                      <div className="flex items-center gap-2.5 min-w-0">
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             toggleDateFolder(dateStr);
                           }}
-                          className="w-8 h-8 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:text-blue-600 hover:border-blue-400 shadow-2xs transition-transform mt-0.5 sm:mt-0"
+                          className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:text-blue-600 shadow-2xs shrink-0 cursor-pointer"
                           title={isExpanded ? 'Collapse Folder' : 'Expand Folder'}
                         >
                           {isExpanded ? (
@@ -1359,99 +1359,61 @@ export const DailyRequirementModule: React.FC = () => {
                           )}
                         </button>
 
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-black text-slate-900 text-base">
-                              {formatDateFriendly(dateStr)}
+                        <div className="flex items-center gap-2 flex-wrap min-w-0">
+                          <h3 className="font-black text-slate-900 text-sm sm:text-base tracking-tight">
+                            {formatDateFriendly(dateStr)}
+                          </h3>
+                          {isToday && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-600 text-white uppercase tracking-wider shrink-0">
+                              TODAY
                             </span>
-                            <span className="font-mono text-xs text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-lg">
-                              {dateStr}
+                          )}
+                          <span className="text-[11px] font-bold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-md shrink-0">
+                            {items.length} {items.length === 1 ? 'item' : 'items'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Right: Clean Progress Bar & Pending Summary */}
+                      <div className="flex items-center gap-3 sm:gap-4 shrink-0 justify-between sm:justify-end">
+                        <div className="w-48 sm:w-64 space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className={`font-black ${isAllCompleted ? 'text-emerald-700' : 'text-blue-700'}`}>
+                              {isAllCompleted ? '✓ 100% Arrived' : `${progressPct}% Arrived`}
                             </span>
-                            {isToday && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-600 text-white uppercase tracking-wider">
-                                TODAY
-                              </span>
-                            )}
-                            {isAllCompleted ? (
-                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-100/70 border border-emerald-300 px-2 py-0.5 rounded-full">
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                <span>100% Fulfilled</span>
-                              </span>
-                            ) : (
-                              <span className="text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
-                                {progressPct}% Arrived
-                              </span>
-                            )}
+                            <span className="text-[11px] font-bold text-amber-800">
+                              {isAllCompleted ? (
+                                <span className="text-emerald-700 font-bold">All Done</span>
+                              ) : (
+                                `Pending: ${breakdown.pendingSummary}`
+                              )}
+                            </span>
                           </div>
-                          <p className="text-[11px] text-slate-500 font-medium">
-                            {items.length} Materials Scheduled for this factory day
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Middle: PROJECTION BAR & UNIT BREAKDOWN */}
-                      <div className="flex-1 max-w-lg space-y-1.5">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="font-bold text-slate-700 flex items-center gap-1">
-                            <TrendingUp className="w-3.5 h-3.5 text-blue-600" />
-                            <span>Inward Projection:</span>
-                          </span>
-                          <span className={`font-mono font-bold ${isAllCompleted ? 'text-emerald-700' : 'text-blue-700'}`}>
-                            {progressPct}% ({breakdown.arrangedSummary} of {breakdown.requiredSummary})
-                          </span>
-                        </div>
-
-                        {/* Visual Projection Bar */}
-                        <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden p-0.5">
-                          <div
-                            className={`h-full transition-all duration-500 rounded-full ${
-                              isAllCompleted
-                                ? 'bg-emerald-500'
-                                : progressPct >= 50
-                                ? 'bg-blue-600'
-                                : progressPct > 0
-                                ? 'bg-amber-500'
-                                : 'bg-slate-300'
-                            }`}
-                            style={{ width: `${progressPct}%` }}
-                          />
+                          {/* Sleek single progress bar */}
+                          <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                            <div
+                              className={`h-full transition-all duration-500 rounded-full ${
+                                isAllCompleted
+                                  ? 'bg-emerald-500'
+                                  : progressPct >= 50
+                                  ? 'bg-blue-600'
+                                  : progressPct > 0
+                                  ? 'bg-amber-500'
+                                  : 'bg-slate-300'
+                              }`}
+                              style={{ width: `${progressPct}%` }}
+                            />
+                          </div>
                         </div>
 
-                        {/* Segregated Strict Unit Balances */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {Object.keys(breakdown.requiredMap).map((unit) => {
-                            const req = breakdown.requiredMap[unit] || 0;
-                            const arr = breakdown.arrangedMap[unit] || 0;
-                            const pen = Math.max(0, req - arr);
-                            return (
-                              <span
-                                key={unit}
-                                className="px-2.5 py-0.5 rounded-lg bg-white border border-slate-200 text-[11px] font-mono shadow-2xs flex items-center gap-1.5"
-                              >
-                                <strong className="text-slate-900">{unit}:</strong>
-                                <span className="text-emerald-700 font-bold">{arr} Arr</span>
-                                <span className="text-slate-400">/</span>
-                                <span className="text-slate-600">{req} Req</span>
-                                {pen > 0 && (
-                                  <span className="text-amber-700 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 ml-1">
-                                    {pen} Pending
-                                  </span>
-                                )}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Right: Date Actions */}
-                      <div
-                        className="flex items-center gap-1.5 shrink-0"
-                        onClick={(e) => e.stopPropagation()}
-                      >
+                        {/* Export Button */}
                         <button
                           type="button"
-                          onClick={() => handleExportExcelForDate(dateStr, items)}
-                          className="p-2 rounded-xl bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 shadow-2xs cursor-pointer"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleExportExcelForDate(dateStr, items);
+                          }}
+                          className="p-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 shadow-2xs cursor-pointer shrink-0"
                           title="Export this date to Excel"
                         >
                           <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
