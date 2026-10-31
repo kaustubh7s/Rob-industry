@@ -1239,18 +1239,48 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [activeTab, setActiveTabState] = useState<string>(() => {
     try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const tabParam = urlParams.get('tab');
+      if (tabParam) return tabParam;
       const saved = localStorage.getItem('RSB_ACTIVE_TAB');
       if (saved) return saved;
     } catch (e) {}
     return 'microsoft';
   });
 
-  const setActiveTab = (tab: string) => {
+  const setActiveTab = (tab: string, pushHistory = true) => {
     setActiveTabState(tab);
     try {
       localStorage.setItem('RSB_ACTIVE_TAB', tab);
+      if (pushHistory && typeof window !== 'undefined' && window.history) {
+        window.history.pushState({ tab }, '', `?tab=${tab}`);
+      }
     } catch (e) {}
   };
+
+  // Sync with browser Back and Forward navigation
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      if (e.state && e.state.tab) {
+        setActiveTabState(e.state.tab);
+        try {
+          localStorage.setItem('RSB_ACTIVE_TAB', e.state.tab);
+        } catch {}
+      } else {
+        try {
+          const urlParams = new URLSearchParams(window.location.search);
+          const tab = urlParams.get('tab');
+          if (tab) {
+            setActiveTabState(tab);
+            localStorage.setItem('RSB_ACTIVE_TAB', tab);
+          }
+        } catch {}
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   const pendingSyncIdsRef = useRef<Set<string>>(new Set());
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { ERPProvider, useERP } from './context/ERPContext';
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
@@ -213,6 +214,29 @@ const ERPAppContent: React.FC = () => {
     return () => window.removeEventListener('rsb:start-tour', handleStartTour);
   }, []);
 
+  // Keyboard Navigation: Alt+Left / Alt+Right or Cmd+[ / Cmd+] to navigate back/forward
+  useEffect(() => {
+    const handleKeyNav = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      const isInput =
+        activeEl instanceof HTMLInputElement ||
+        activeEl instanceof HTMLTextAreaElement ||
+        activeEl instanceof HTMLSelectElement ||
+        (activeEl as HTMLElement)?.isContentEditable;
+      if (isInput) return;
+
+      if ((e.altKey && e.key === 'ArrowLeft') || (e.metaKey && e.key === '[')) {
+        e.preventDefault();
+        window.history.back();
+      } else if ((e.altKey && e.key === 'ArrowRight') || (e.metaKey && e.key === ']')) {
+        e.preventDefault();
+        window.history.forward();
+      }
+    };
+    window.addEventListener('keydown', handleKeyNav);
+    return () => window.removeEventListener('keydown', handleKeyNav);
+  }, []);
+
   // Screen Lock / Unauthenticated Gate
   if (!isAuthenticated) {
     return <LoginScreen />;
@@ -238,6 +262,31 @@ const ERPAppContent: React.FC = () => {
         onOpenTour={() => setIsTourOpen(true)}
         onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
       />
+
+      {/* Navigation Arrow Button on Left Top Below Menu (Hidden when Menu Drawer is Open) */}
+      {!isSidebarOpen && (
+        <div className="fixed top-[60px] left-3 sm:left-4 z-30 flex items-center bg-white/95 hover:bg-white text-slate-700 shadow-md border border-slate-200/90 rounded-xl p-0.5 backdrop-blur-xs select-none transition-all">
+          <button
+            type="button"
+            onClick={() => window.history.back()}
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center hover:bg-slate-100 active:scale-90 text-slate-700 hover:text-slate-950 transition-all cursor-pointer"
+            title="Back (Alt + ←)"
+            aria-label="Back"
+          >
+            <ArrowLeft className="w-4 h-4 stroke-[2.3]" />
+          </button>
+          <div className="w-[1px] h-4 bg-slate-200" />
+          <button
+            type="button"
+            onClick={() => window.history.forward()}
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center hover:bg-slate-100 active:scale-90 text-slate-700 hover:text-slate-950 transition-all cursor-pointer"
+            title="Forward (Alt + →)"
+            aria-label="Forward"
+          >
+            <ArrowRight className="w-4 h-4 stroke-[2.3]" />
+          </button>
+        </div>
+      )}
 
       {/* Main Full-Screen Body */}
       <div className="flex-1 flex overflow-hidden relative">
