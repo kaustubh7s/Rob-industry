@@ -187,3 +187,44 @@ export function removeVendorTombstone(id: string): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// MASTER BOM TOMBSTONES
+// Durable deletion tracking for Master BOM specifications
+// ---------------------------------------------------------------------------
+const BOM_TOMBSTONES_KEY = 'RSB_ERP_STATE_V6_deleted_boms';
+
+export function getDeletedBOMTombstones(): Set<string> {
+  try {
+    const raw = localStorage.getItem(BOM_TOMBSTONES_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return new Set(Array.isArray(parsed) ? parsed : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export function addBOMTombstone(id: string): void {
+  if (!id) return;
+  try {
+    const current = getDeletedBOMTombstones();
+    current.add(id);
+    localStorage.setItem(BOM_TOMBSTONES_KEY, JSON.stringify(Array.from(current)));
+  } catch (e) {
+    console.error('Failed to save BOM tombstone:', e);
+  }
+}
+
+export function removeBOMTombstone(id: string): void {
+  if (!id) return;
+  try {
+    const current = getDeletedBOMTombstones();
+    if (current.delete(id)) {
+      localStorage.setItem(BOM_TOMBSTONES_KEY, JSON.stringify(Array.from(current)));
+    }
+  } catch (e) {
+    console.error('Failed to remove BOM tombstone:', e);
+  }
+}
+
+

@@ -28,6 +28,7 @@ import {
   X,
   Check,
   Package,
+  Loader2,
   CheckSquare,
   Square,
   MoreVertical,
@@ -66,6 +67,7 @@ import { Modal } from '../common/Modal';
 import { formatDate, getTodayFormatted } from '../../utils/calculations';
 import { MATERIAL_TYPES } from '../../data/materialTypes';
 import { dbBulkUpsertRequirements } from '../../services/supabaseService';
+import { getDeletedBOMTombstones } from '../../utils/tombstones';
 
 export const BOMManager: React.FC = () => {
   const {
@@ -100,15 +102,73 @@ export const BOMManager: React.FC = () => {
   // ---------------------------------------------------------------------------
   // 'library' = Browse machine directory & BOM list
   // 'editor' = Dedicated focused BOM editor (directory collapsed)
-  const [currentView, setCurrentView] = useState<'library' | 'editor'>('library');
-  const [selectedMachineId, setSelectedMachineId] = useState<string>('ALL');
-  const [selectedMachineType, setSelectedMachineType] = useState<string>('ALL');
+  const [currentView, setCurrentView] = useState<'library' | 'editor'>(() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      if (p.get('tab') === 'bom' && p.get('subView') === 'editor' && p.get('bomId')) {
+        return 'editor';
+      }
+    } catch {}
+    return 'library';
+  });
+
+  const [selectedMachineId, setSelectedMachineId] = useState<string>(() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      const mId = p.get('machineId');
+      if (mId) return mId;
+    } catch {}
+    return 'ALL';
+  });
+
+  const [selectedMachineType, setSelectedMachineType] = useState<string>(() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      const type = p.get('type');
+      if (type) return decodeURIComponent(type);
+    } catch {}
+    return 'ALL';
+  });
+
   const [libraryViewMode, setLibraryViewMode] = useState<'cards' | 'table'>('cards');
   const [showAllMachineBOMs, setShowAllMachineBOMs] = useState<boolean>(false);
-  const [activeBOMId, setActiveBOMId] = useState<string | null>(() => masterBOMs[0]?.id || null);
+  const [activeBOMId, setActiveBOMId] = useState<string | null>(() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      const bId = p.get('bomId');
+      if (bId) return bId;
+    } catch {}
+    return masterBOMs[0]?.id || null;
+  });
 
   // Left sidebar library collapsed toggle
   const [isLibraryCollapsed, setIsLibraryCollapsed] = useState<boolean>(false);
+
+  // Sync BOM URL search parameters without reloading
+  const syncBOMUrl = useCallback((view: 'library' | 'editor', bomId: string | null, machId: string, machType: string) => {
+    if (typeof window === 'undefined') return;
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', 'bom');
+      url.searchParams.set('subView', view);
+      if (view === 'editor' && bomId) {
+        url.searchParams.set('bomId', bomId);
+      } else {
+        url.searchParams.delete('bomId');
+      }
+      if (machId && machId !== 'ALL') {
+        url.searchParams.set('machineId', machId);
+      } else {
+        url.searchParams.delete('machineId');
+      }
+      if (machType && machType !== 'ALL') {
+        url.searchParams.set('type', encodeURIComponent(machType));
+      } else {
+        url.searchParams.delete('type');
+      }
+      window.history.replaceState({}, '', url.toString());
+    } catch {}
+  }, []);
 
   // Sync sub-views with global navigation history (Back / Forward arrows)
   useEffect(() => {
@@ -117,17 +177,38 @@ export const BOMManager: React.FC = () => {
       const step = customEvent.detail;
       if (!step || step.tab !== 'bom') return;
 
+      const deletedTombstones = getDeletedBOMTombstones();
+
       if (step.subView === 'editor' && step.bomId) {
-        setActiveBOMId(step.bomId);
-        setCurrentView('editor');
-      } else if (step.subView === 'library') {
+        if (!deletedTombstones.has(step.bomId)) {
+          setActiveBOMId(step.bomId);
+          setCurrentView('editor');
+        } else {
+          setCurrentView('library');
+          setActiveBOMId(null);
+        }
+      } else {
         setCurrentView('library');
       }
+
+      if (step.machineId !== undefined) {
+        setSelectedMachineId(step.machineId);
+      }
+      if (step.machineType !== undefined) {
+        setSelectedMachineType(step.machineType);
+      }
+
+      syncBOMUrl(
+        step.subView === 'editor' ? 'editor' : 'library',
+        step.bomId || null,
+        step.machineId || 'ALL',
+        step.machineType || 'ALL'
+      );
     };
 
     window.addEventListener('rsb:nav-restore', handleNavRestore);
     return () => window.removeEventListener('rsb:nav-restore', handleNavRestore);
-  }, []);
+  }, [syncBOMUrl]);
 
   // Expanded folders in the library tree: { [machineId]: boolean }
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>(() => {
@@ -176,6 +257,14 @@ export const BOMManager: React.FC = () => {
     if (!activeBOMId) return null;
     return masterBOMs.find((b) => b.id === activeBOMId) || null;
   }, [masterBOMs, activeBOMId]);
+
+  // Safety check: if currentView is editor but activeBOM does not exist (or was deleted), return to library
+  useEffect(() => {
+    if (currentView === 'editor' && !activeBOM) {
+      setCurrentView('library');
+      syncBOMUrl('library', null, selectedMachineId, selectedMachineType);
+    }
+  }, [currentView, activeBOM, selectedMachineId, selectedMachineType, syncBOMUrl]);
 
   // Working copy of material items for active editor (supports undo/redo)
   const [editorItems, setEditorItems] = useState<MasterBOMItem[]>([]);
@@ -411,6 +500,8 @@ export const BOMManager: React.FC = () => {
   const [duplicateTargetType, setDuplicateTargetType] = useState('');
 
   const [deleteBOMModalData, setDeleteBOMModalData] = useState<MasterBOM | null>(null);
+  const [isDeletingBOM, setIsDeletingBOM] = useState<boolean>(false);
+  const [deleteBOMError, setDeleteBOMError] = useState<string | null>(null);
 
   // Guided Excel Import Modal
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -1139,21 +1230,84 @@ export const BOMManager: React.FC = () => {
     }
   };
 
-  // Open focused editor for a BOM
-  const handleOpenBOM = (bom: MasterBOM) => {
-    setActiveBOMId(bom.id);
-    setCurrentView('editor');
+  // Navigation: select machine folder
+  const handleSelectMachineFolder = (machineId: string) => {
+    setSelectedMachineId(machineId);
+    setSelectedMachineType('ALL');
     pushNavStep({
       tab: 'bom',
-      subView: 'editor',
-      bomId: bom.id,
+      subView: 'library',
+      machineId,
+      machineType: 'ALL',
     });
+    syncBOMUrl('library', null, machineId, 'ALL');
+  };
+
+  // Navigation: select machine assembly type
+  const handleSelectMachineType = (machineId: string, typeName: string) => {
+    setSelectedMachineId(machineId);
+    setSelectedMachineType(typeName);
+    pushNavStep({
+      tab: 'bom',
+      subView: 'library',
+      machineId,
+      machineType: typeName,
+    });
+    syncBOMUrl('library', null, machineId, typeName);
+  };
+
+  // Navigation: return to parent machine folder (from subfolder)
+  const handleBackToMachineFolder = () => {
+    setSelectedMachineType('ALL');
+    pushNavStep({
+      tab: 'bom',
+      subView: 'library',
+      machineId: selectedMachineId,
+      machineType: 'ALL',
+    });
+    syncBOMUrl('library', null, selectedMachineId, 'ALL');
+  };
+
+  // Navigation: return to all machines catalog
+  const handleBackToAllMachines = () => {
+    setSelectedMachineId('ALL');
+    setSelectedMachineType('ALL');
+    pushNavStep({
+      tab: 'bom',
+      subView: 'library',
+      machineId: 'ALL',
+      machineType: 'ALL',
+    });
+    syncBOMUrl('library', null, 'ALL', 'ALL');
+  };
+
+  // Open focused editor for a BOM
+  const handleOpenBOM = (bom: MasterBOM) => {
+    const deletedTombstones = getDeletedBOMTombstones();
+    if (deletedTombstones.has(bom.id)) {
+      alert('This BOM has been removed and is no longer available.');
+      return;
+    }
+    setActiveBOMId(bom.id);
+    setCurrentView('editor');
+
     // Ensure machine & type match
     const mach = masterMachines.find((m) => m.name === bom.machineName);
+    const mId = mach?.id || (selectedMachineId !== 'ALL' ? selectedMachineId : 'mach-lm');
+    const mType = bom.machineType || (selectedMachineType !== 'ALL' ? selectedMachineType : '1. Filling');
     if (mach) {
       setSelectedMachineId(mach.id);
       setSelectedMachineType(bom.machineType);
     }
+
+    pushNavStep({
+      tab: 'bom',
+      subView: 'editor',
+      bomId: bom.id,
+      machineId: mId,
+      machineType: mType,
+    });
+    syncBOMUrl('editor', bom.id, mId, mType);
   };
 
   // Close editor and return to machine library
@@ -1167,7 +1321,10 @@ export const BOMManager: React.FC = () => {
     pushNavStep({
       tab: 'bom',
       subView: 'library',
+      machineId: selectedMachineId,
+      machineType: selectedMachineType,
     });
+    syncBOMUrl('library', null, selectedMachineId, selectedMachineType);
   };
 
   // ---------------------------------------------------------------------------
@@ -2084,10 +2241,7 @@ export const BOMManager: React.FC = () => {
                   return (
                     <div
                       key={m.id}
-                      onClick={() => {
-                        setSelectedMachineId(m.id);
-                        setSelectedMachineType('ALL');
-                      }}
+                      onClick={() => handleSelectMachineFolder(m.id)}
                       className="group relative bg-white border border-slate-200 hover:border-blue-400 rounded-2xl p-5 shadow-xs hover:shadow-md transition-all cursor-pointer flex flex-col justify-between min-h-[140px]"
                     >
                       <div>
@@ -2215,10 +2369,7 @@ export const BOMManager: React.FC = () => {
                         <nav className="flex items-center gap-2 text-xs font-semibold text-slate-500">
                           <button
                             type="button"
-                            onClick={() => {
-                              setSelectedMachineId('ALL');
-                              setSelectedMachineType('ALL');
-                            }}
+                            onClick={handleBackToAllMachines}
                             className="hover:text-blue-600 flex items-center gap-1 cursor-pointer"
                           >
                             <ChevronLeft className="w-3.5 h-3.5" />
@@ -2233,10 +2384,7 @@ export const BOMManager: React.FC = () => {
 
                         <button
                           type="button"
-                          onClick={() => {
-                            setSelectedMachineId('ALL');
-                            setSelectedMachineType('ALL');
-                          }}
+                          onClick={handleBackToAllMachines}
                           className="text-xs font-bold text-slate-600 hover:text-blue-600 flex items-center gap-1 cursor-pointer"
                         >
                           <ChevronLeft className="w-3.5 h-3.5" />
@@ -2377,7 +2525,7 @@ export const BOMManager: React.FC = () => {
                             return (
                               <div
                                 key={type}
-                                onClick={() => setSelectedMachineType(type)}
+                                onClick={() => handleSelectMachineType(selectedMachineId, type)}
                                 className="group/typecard relative bg-white border border-slate-200 hover:border-amber-400 hover:shadow-md rounded-2xl p-4 transition-all cursor-pointer flex flex-col justify-between"
                               >
                                 <div>
@@ -2547,7 +2695,7 @@ export const BOMManager: React.FC = () => {
                                 return (
                                   <tr
                                     key={type}
-                                    onClick={() => setSelectedMachineType(type)}
+                                    onClick={() => handleSelectMachineType(selectedMachineId, type)}
                                     className="hover:bg-amber-50/40 transition-colors cursor-pointer group"
                                   >
                                     <td className="py-3 px-4 font-bold text-slate-900 flex items-center gap-2">
@@ -2564,7 +2712,7 @@ export const BOMManager: React.FC = () => {
                                     <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                                       <button
                                         type="button"
-                                        onClick={() => setSelectedMachineType(type)}
+                                        onClick={() => handleSelectMachineType(selectedMachineId, type)}
                                         className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs cursor-pointer inline-flex items-center gap-1"
                                       >
                                         <span>Open Folder</span>
@@ -2862,6 +3010,14 @@ export const BOMManager: React.FC = () => {
                                           <Zap className="w-3 h-3 text-amber-300" />
                                           <span>Load</span>
                                         </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setDeleteBOMModalData(bom)}
+                                          title="Delete BOM"
+                                          className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-bold cursor-pointer inline-flex items-center"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
                                       </div>
                                     </td>
                                   </tr>
@@ -2943,6 +3099,14 @@ export const BOMManager: React.FC = () => {
                                     <Zap className="w-3 h-3 text-amber-300" />
                                     <span>Load</span>
                                   </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeleteBOMModalData(bom)}
+                                    title="Delete BOM"
+                                    className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-bold cursor-pointer inline-flex items-center"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
                                 </div>
                               </div>
                             );
@@ -2963,10 +3127,7 @@ export const BOMManager: React.FC = () => {
                         <nav className="flex items-center gap-2 text-xs font-semibold text-slate-500 flex-wrap">
                           <button
                             type="button"
-                            onClick={() => {
-                              setSelectedMachineId('ALL');
-                              setSelectedMachineType('ALL');
-                            }}
+                            onClick={handleBackToAllMachines}
                             className="hover:text-blue-600 flex items-center gap-1 cursor-pointer"
                           >
                             <ChevronLeft className="w-3.5 h-3.5" />
@@ -2975,7 +3136,7 @@ export const BOMManager: React.FC = () => {
                           <span>/</span>
                           <button
                             type="button"
-                            onClick={() => setSelectedMachineType('ALL')}
+                            onClick={handleBackToMachineFolder}
                             className="hover:text-blue-600 flex items-center gap-1 cursor-pointer font-bold text-slate-700"
                           >
                             <Folder className="w-3.5 h-3.5 text-amber-500 fill-amber-100" />
@@ -2990,7 +3151,7 @@ export const BOMManager: React.FC = () => {
 
                         <button
                           type="button"
-                          onClick={() => setSelectedMachineType('ALL')}
+                          onClick={handleBackToMachineFolder}
                           className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1 cursor-pointer"
                         >
                           <ChevronLeft className="w-3.5 h-3.5" />
@@ -3118,7 +3279,7 @@ export const BOMManager: React.FC = () => {
                           </button>
                           <button
                             type="button"
-                            onClick={() => setSelectedMachineType('ALL')}
+                            onClick={handleBackToMachineFolder}
                             className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer"
                           >
                             <span>Back to {currentMachine.name}</span>
@@ -3382,6 +3543,14 @@ export const BOMManager: React.FC = () => {
                                         <Zap className="w-3 h-3 text-amber-300" />
                                         <span>Load</span>
                                       </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setDeleteBOMModalData(bom)}
+                                        title="Delete BOM"
+                                        className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-bold cursor-pointer inline-flex items-center"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
                                     </div>
                                   </td>
                                 </tr>
@@ -3483,6 +3652,14 @@ export const BOMManager: React.FC = () => {
                                 <Zap className="w-3.5 h-3.5 text-amber-300" />
                                 <span>Load</span>
                               </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeleteBOMModalData(bom)}
+                                title="Delete BOM"
+                                className="py-2.5 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold text-xs flex items-center justify-center cursor-pointer"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             </div>
                           </div>
                         );
@@ -3515,12 +3692,27 @@ export const BOMManager: React.FC = () => {
                     className="text-blue-600 hover:underline flex items-center gap-1 cursor-pointer font-bold"
                   >
                     <ChevronLeft className="w-3.5 h-3.5" />
-                    <span>Back to Machines</span>
+                    <span>Back to {activeBOM.machineType || activeBOM.machineName || 'BOM List'}</span>
                   </button>
                   <span>/</span>
-                  <span className="truncate">{activeBOM.machineName}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleBackToLibrary();
+                      handleBackToAllMachines();
+                    }}
+                    className="hover:text-blue-600 truncate cursor-pointer font-medium text-slate-600"
+                  >
+                    {activeBOM.machineName}
+                  </button>
                   <span>/</span>
-                  <span className="text-slate-800 font-bold truncate">{activeBOM.machineType}</span>
+                  <button
+                    type="button"
+                    onClick={handleBackToLibrary}
+                    className="text-slate-800 hover:text-blue-600 font-bold truncate cursor-pointer"
+                  >
+                    {activeBOM.machineType}
+                  </button>
                 </div>
 
                 {/* BOM Title & Metadata */}
@@ -5487,41 +5679,103 @@ export const BOMManager: React.FC = () => {
       {deleteBOMModalData && (
         <Modal
           isOpen={!!deleteBOMModalData}
-          onClose={() => setDeleteBOMModalData(null)}
-          title="🗑️ Delete Master BOM Specification"
-          subtitle="This deletes only the reusable template. Historical project orders and purchase orders remain intact."
+          onClose={() => {
+            if (!isDeletingBOM) {
+              setDeleteBOMModalData(null);
+              setDeleteBOMError(null);
+            }
+          }}
+          title="Delete this BOM?"
+          subtitle={`Specification: ${deleteBOMModalData.name} (${deleteBOMModalData.bomNumber})`}
           maxWidth="md"
           theme="light"
         >
           <div className="space-y-4 text-slate-800">
-            <p className="text-xs text-slate-600">
-              Are you sure you want to delete <strong>{deleteBOMModalData.name}</strong> ({deleteBOMModalData.bomNumber})?
+            <p className="text-xs text-slate-700 leading-relaxed font-medium">
+              This action will remove this BOM specification. Existing project materials and historical records must remain unaffected.
             </p>
-            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-center gap-2">
-              <Lock className="w-4 h-4 shrink-0 text-amber-600" />
-              <span>Safe Isolation: Existing project requirements and purchase records are never affected.</span>
+
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-start gap-2.5">
+              <Lock className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
+              <div>
+                <p className="font-bold text-amber-900">Safe Isolation Guarantee</p>
+                <p className="text-amber-800 text-[11px] mt-0.5">
+                  Existing project material orders, purchase orders, and inventory tracking are strictly preserved.
+                </p>
+              </div>
             </div>
-            <div className="flex justify-end gap-2 pt-2">
+
+            {deleteBOMError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start justify-between gap-2">
+                <span>{deleteBOMError}</span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setIsDeletingBOM(true);
+                    setDeleteBOMError(null);
+                    const res = await deleteMasterBOM(deleteBOMModalData.id);
+                    setIsDeletingBOM(false);
+                    if (res.success) {
+                      const deletedId = deleteBOMModalData.id;
+                      setDeleteBOMModalData(null);
+                      if (activeBOMId === deletedId) {
+                        setCurrentView('library');
+                        setActiveBOMId(null);
+                        syncBOMUrl('library', null, selectedMachineId, selectedMachineType);
+                      }
+                    } else {
+                      setDeleteBOMError(res.error || 'Failed to delete BOM. Click Retry to try again.');
+                    }
+                  }}
+                  className="px-2.5 py-1 rounded bg-rose-600 text-white font-bold text-[11px] hover:bg-rose-700 cursor-pointer shrink-0"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
               <button
                 type="button"
-                onClick={() => setDeleteBOMModalData(null)}
-                className="px-4 py-2 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold"
+                disabled={isDeletingBOM}
+                onClick={() => {
+                  setDeleteBOMModalData(null);
+                  setDeleteBOMError(null);
+                }}
+                className="px-4 py-2 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold disabled:opacity-50 cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  deleteMasterBOM(deleteBOMModalData.id);
-                  setDeleteBOMModalData(null);
-                  if (activeBOMId === deleteBOMModalData.id) {
-                    setCurrentView('library');
-                    setActiveBOMId(null);
+                disabled={isDeletingBOM}
+                onClick={async () => {
+                  setIsDeletingBOM(true);
+                  setDeleteBOMError(null);
+                  const res = await deleteMasterBOM(deleteBOMModalData.id);
+                  setIsDeletingBOM(false);
+                  if (res.success) {
+                    const deletedId = deleteBOMModalData.id;
+                    setDeleteBOMModalData(null);
+                    if (activeBOMId === deletedId) {
+                      setCurrentView('library');
+                      setActiveBOMId(null);
+                      syncBOMUrl('library', null, selectedMachineId, selectedMachineType);
+                    }
+                  } else {
+                    setDeleteBOMError(res.error || 'Failed to delete BOM from database. Please check connection and retry.');
                   }
                 }}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-bold shadow-xs cursor-pointer inline-flex items-center gap-1.5"
               >
-                Confirm Delete
+                {isDeletingBOM ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Deleting BOM...</span>
+                  </>
+                ) : (
+                  <span>Delete BOM</span>
+                )}
               </button>
             </div>
           </div>

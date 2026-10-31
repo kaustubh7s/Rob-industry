@@ -36,6 +36,9 @@ import {
   MachineFolder,
   MachineTypeMeta,
   DispatchReadyItem,
+  DailyRequirementItem,
+  DailyRequirementHistoryItem,
+  DailyRequirementStatus,
 } from '../types/erp';
 import {
   INITIAL_USERS,
@@ -86,6 +89,11 @@ import {
   dbFetchMasterBOMs,
   dbUpsertMasterBOM,
   dbDeleteMasterBOM,
+  dbFetchDailyRequirements,
+  dbUpsertDailyRequirement,
+  dbDeleteDailyRequirement,
+  dbFetchDailyRequirementHistory,
+  dbAddDailyRequirementHistory,
 } from '../services/supabaseService';
 import { getSupabaseClient } from '../lib/supabaseClient';
 import {
@@ -104,6 +112,9 @@ import {
   addVendorTombstone,
   addVendorTombstones,
   removeVendorTombstone,
+  getDeletedBOMTombstones,
+  addBOMTombstone,
+  removeBOMTombstone,
 } from '../utils/tombstones';
 import { isRequirementMatchingProjectName, isRequirementMatchedToProject, sortRowsByAscendingSrNo } from '../utils/projectMaterialsHelper';
 
@@ -112,6 +123,8 @@ export interface AppNavStep {
   subView?: string;
   projectId?: string;
   bomId?: string;
+  machineId?: string;
+  machineType?: string;
 }
 
 interface ERPContextType {
@@ -179,8 +192,22 @@ interface ERPContextType {
   addMasterBOM: (bom: Omit<MasterBOM, 'id' | 'createdAt' | 'updatedAt'>) => MasterBOM;
   updateMasterBOM: (id: string, updates: Partial<MasterBOM>) => void;
   duplicateMasterBOM: (sourceId: string, newName?: string, targetMachineName?: string, targetMachineType?: string) => MasterBOM | null;
-  deleteMasterBOM: (id: string) => void;
+  deleteMasterBOM: (id: string) => Promise<{ success: boolean; error?: string }>;
   resetMasterBOMsToFactoryDefault: () => void;
+
+  // Daily Material Requirement Workflow
+  dailyRequirements: DailyRequirementItem[];
+  dailyRequirementHistory: DailyRequirementHistoryItem[];
+  addDailyRequirement: (item: Omit<DailyRequirementItem, 'id' | 'createdAt' | 'updatedAt'>) => DailyRequirementItem;
+  addDailyRequirementsBatch: (items: Omit<DailyRequirementItem, 'id' | 'createdAt' | 'updatedAt'>[]) => void;
+  updateDailyRequirement: (id: string, updates: Partial<DailyRequirementItem>) => void;
+  deleteDailyRequirement: (id: string) => Promise<boolean>;
+  updateDailyRequirementProgress: (
+    id: string,
+    additionalQty: number,
+    remarks?: string,
+    vendorName?: string
+  ) => void;
 
   // =======================================================================
   // HEART OF ERP: PROJECT MATERIAL REQUIREMENT TABLE STATE & HANDLERS
@@ -1293,7 +1320,9 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         current.tab === step.tab &&
         current.subView === step.subView &&
         current.projectId === step.projectId &&
-        current.bomId === step.bomId
+        current.bomId === step.bomId &&
+        current.machineId === step.machineId &&
+        current.machineType === step.machineType
       ) {
         return prev;
       }
@@ -1694,24 +1723,24 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [masterBOMs, setMasterBOMs] = useState<MasterBOM[]>(() => {
+    const deletedTombstones = getDeletedBOMTombstones();
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_master_boms');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
+          const filtered = parsed.filter((b: MasterBOM) => !deletedTombstones.has(b.id));
           // If stored BOMs lack the factory root lists, merge or reset
-          const hasFactoryBOMs = parsed.some((b: MasterBOM) =>
+          const hasFactoryBOMs = filtered.some((b: MasterBOM) =>
             b.name.includes('nut bolt') || b.name.includes('RFC switch') || b.name.includes('BEARING')
           );
-          if (hasFactoryBOMs) return parsed;
-          return INITIAL_MASTER_BOMS;
+          if (hasFactoryBOMs) return filtered;
+          return INITIAL_MASTER_BOMS.filter((b) => !deletedTombstones.has(b.id));
         }
       } catch (e) {}
     }
-    return INITIAL_MASTER_BOMS;
+    return INITIAL_MASTER_BOMS.filter((b) => !deletedTombstones.has(b.id));
   });
-
-
 
   useEffect(() => {
     let isCancelled = false;
@@ -1730,11 +1759,15 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         }
 
+        const deletedTombstones = getDeletedBOMTombstones();
         if (remoteBoms && remoteBoms.length > 0) {
-          setMasterBOMs(remoteBoms);
+          const activeRemoteBoms = remoteBoms.filter((b) => !deletedTombstones.has(b.id));
+          setMasterBOMs(activeRemoteBoms);
         } else if (remoteBoms && remoteBoms.length === 0) {
           for (const b of INITIAL_MASTER_BOMS) {
-            await dbUpsertMasterBOM(b);
+            if (!deletedTombstones.has(b.id)) {
+              await dbUpsertMasterBOM(b);
+            }
           }
         }
       } catch (err) {
@@ -6559,13 +6592,14 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addMasterBOM = (bomData: Omit<MasterBOM, 'id' | 'createdAt' | 'updatedAt'>): MasterBOM => {
     const newBOM: MasterBOM = {
       ...bomData,
-      id: `bom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      createdAt: new Date().toISOString(),
+      id: (bomData as any).id || `bom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      createdAt: (bomData as any).createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      createdBy: currentUser.name || 'System',
-      updatedBy: currentUser.name || 'System',
+      createdBy: currentUser.name || (bomData as any).createdBy || 'System',
+      updatedBy: currentUser.name || (bomData as any).updatedBy || 'System',
     };
-    setMasterBOMs((prev) => [newBOM, ...prev]);
+    removeBOMTombstone(newBOM.id);
+    setMasterBOMs((prev) => [newBOM, ...prev.filter((b) => b.id !== newBOM.id)]);
     dbUpsertMasterBOM(newBOM);
     logAudit('Master BOM Created', 'BOM Management', `Created BOM "${newBOM.name}" (${newBOM.bomNumber}) for ${newBOM.machineName}`);
     addNotification('BOM Created', `Master BOM "${newBOM.name}" created`, 'success', 'bom');
@@ -6635,12 +6669,313 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('RSB_INDUSTRY_master_boms', JSON.stringify(INITIAL_MASTER_BOMS));
   };
 
-  const deleteMasterBOM = (id: string) => {
+  const deleteMasterBOM = async (id: string): Promise<{ success: boolean; error?: string }> => {
+    addBOMTombstone(id);
     const target = masterBOMs.find((b) => b.id === id);
+    const res = await dbDeleteMasterBOM(id);
+    if (res.success) {
+      setMasterBOMs((prev) => {
+        const next = prev.filter((b) => b.id !== id);
+        safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_boms', next);
+        try {
+          localStorage.setItem('RSB_INDUSTRY_master_boms', JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+      if (target) {
+        logAudit('Master BOM Deleted', 'BOM Management', `Deleted BOM "${target.name}" (${target.bomNumber})`);
+        addNotification('BOM Deleted', `Master BOM "${target.name}" deleted successfully`, 'info', 'bom');
+      }
+      return { success: true };
+    } else {
+      removeBOMTombstone(id);
+      return { success: false, error: res.error || 'Failed to delete BOM from database' };
+    }
+  };
+
+  // =========================================================================
+  // DAILY MATERIAL REQUIREMENTS STATE & HANDLERS
+  // =========================================================================
+  const INITIAL_DAILY_REQUIREMENTS: DailyRequirementItem[] = [
+    {
+      id: 'dreq-1',
+      requirementDate: new Date().toISOString().split('T')[0],
+      description: 'SS 304 Hex Bolt M8 x 25',
+      materialType: 'Hardware',
+      sizeSpecification: 'M8 X 25 MM',
+      requiredQuantity: 150,
+      arrangedQuantity: 100,
+      unit: 'Nos',
+      projectName: 'PRJ-004',
+      projectId: 'prj-4',
+      machineName: '24 HD',
+      vendorName: 'Apex Fasteners',
+      priority: 'High',
+      status: 'Partially Arranged',
+      notes: 'Urgent for carousel frame assembly line 1',
+      createdBy: 'Engineer',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: 'dreq-2',
+      requirementDate: new Date().toISOString().split('T')[0],
+      description: 'Neoprene O-Ring High Pressure',
+      materialType: 'Sealing',
+      sizeSpecification: 'ID 45 X OD 52 X 3.5 MM',
+      requiredQuantity: 24,
+      arrangedQuantity: 24,
+      unit: 'Nos',
+      projectName: 'PRJ-004',
+      projectId: 'prj-4',
+      machineName: '24 HD',
+      vendorName: 'Polymer Seals India',
+      priority: 'Normal',
+      status: 'Completed',
+      notes: 'Inspection passed, inward logged in batch #572',
+      createdBy: 'Engineer',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: 'dreq-3',
+      requirementDate: new Date().toISOString().split('T')[0],
+      description: 'SS 316 Round Bar OD 40',
+      materialType: 'SS ROD',
+      sizeSpecification: 'OD 40 X 650 MM',
+      requiredQuantity: 4,
+      arrangedQuantity: 0,
+      unit: 'Nos',
+      projectName: 'PRJ-004',
+      projectId: 'prj-4',
+      machineName: '24 HD',
+      vendorName: 'Shah Metal Syndicate',
+      priority: 'Urgent',
+      status: 'Pending',
+      notes: 'Cutting lathe operator waiting for material delivery',
+      createdBy: 'Amit',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: 'dreq-4',
+      requirementDate: new Date().toISOString().split('T')[0],
+      description: 'Brass Bushing Sleeve Rod',
+      materialType: 'BRASS ROD',
+      sizeSpecification: 'OD 45 X 18 MM',
+      requiredQuantity: 18,
+      arrangedQuantity: 9,
+      unit: 'Nos',
+      projectName: 'PRJ-003',
+      projectId: 'prj-3',
+      machineName: '10 HD',
+      vendorName: 'Metals & Alloys Corp',
+      priority: 'Normal',
+      status: 'Partially Arranged',
+      notes: 'Partial batch delivered, remaining 9 pieces expected by 4 PM',
+      createdBy: 'Amit',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: 'dreq-5',
+      requirementDate: new Date().toISOString().split('T')[0],
+      description: 'SS 304 Square Bar Frame Extrusion',
+      materialType: 'Raw Material',
+      sizeSpecification: '25 X 25 X 2.5 MM',
+      requiredQuantity: 36,
+      arrangedQuantity: 12,
+      unit: 'Kg',
+      projectName: 'PRJ-002',
+      projectId: 'prj-2',
+      machineName: '12 HD',
+      vendorName: 'Steel Point Ltd',
+      priority: 'Normal',
+      status: 'Partially Arranged',
+      notes: 'Fabrication base framing',
+      createdBy: 'Engineer',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+  ];
+
+  const [dailyRequirements, setDailyRequirements] = useState<DailyRequirementItem[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_daily_requirements');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {}
+    }
+    return INITIAL_DAILY_REQUIREMENTS;
+  });
+
+  const [dailyRequirementHistory, setDailyRequirementHistory] = useState<DailyRequirementHistoryItem[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_daily_history');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {}
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    let isCancelled = false;
+    const syncDaily = async () => {
+      try {
+        const [remoteReqs, remoteHist] = await Promise.all([
+          dbFetchDailyRequirements(),
+          dbFetchDailyRequirementHistory(),
+        ]);
+        if (isCancelled) return;
+        if (remoteReqs && remoteReqs.length > 0) {
+          setDailyRequirements(remoteReqs);
+        } else if (remoteReqs && remoteReqs.length === 0) {
+          for (const item of INITIAL_DAILY_REQUIREMENTS) {
+            await dbUpsertDailyRequirement(item);
+          }
+        }
+        if (remoteHist && remoteHist.length > 0) {
+          setDailyRequirementHistory(remoteHist);
+        }
+      } catch (e) {
+        console.warn('Daily requirements sync notice:', e);
+      }
+    };
+    syncDaily();
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_daily_requirements', dailyRequirements);
+  }, [dailyRequirements]);
+
+  useEffect(() => {
+    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_daily_history', dailyRequirementHistory);
+  }, [dailyRequirementHistory]);
+
+  const addDailyRequirement = (item: Omit<DailyRequirementItem, 'id' | 'createdAt' | 'updatedAt'>): DailyRequirementItem => {
+    const newItem: DailyRequirementItem = {
+      ...item,
+      id: `dreq-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      createdBy: currentUser.name || 'Staff',
+      updatedBy: currentUser.name || 'Staff',
+    };
+    setDailyRequirements((prev) => [newItem, ...prev]);
+    dbUpsertDailyRequirement(newItem);
+    logAudit('Daily Requirement Added', 'Daily Requirements', `Added daily requirement for "${newItem.description}" (${newItem.requiredQuantity} ${newItem.unit})`);
+    addNotification('Daily Requirement Added', `Added "${newItem.description}" (${newItem.requiredQuantity} ${newItem.unit})`, 'success', 'daily_req');
+    return newItem;
+  };
+
+  const addDailyRequirementsBatch = (items: Omit<DailyRequirementItem, 'id' | 'createdAt' | 'updatedAt'>[]) => {
+    const newItems: DailyRequirementItem[] = items.map((item, idx) => ({
+      ...item,
+      id: `dreq-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      createdBy: currentUser.name || 'Staff',
+      updatedBy: currentUser.name || 'Staff',
+    }));
+    setDailyRequirements((prev) => [...newItems, ...prev]);
+    for (const it of newItems) {
+      dbUpsertDailyRequirement(it);
+    }
+    logAudit('Daily Requirements Batch Import', 'Daily Requirements', `Imported ${items.length} items into daily requirements`);
+    addNotification('Daily Requirements Added', `Added ${items.length} materials to daily tracker`, 'success', 'daily_req');
+  };
+
+  const updateDailyRequirement = (id: string, updates: Partial<DailyRequirementItem>) => {
+    setDailyRequirements((prev) =>
+      prev.map((r) => {
+        if (r.id === id) {
+          const updated: DailyRequirementItem = {
+            ...r,
+            ...updates,
+            updatedAt: new Date().toISOString(),
+            updatedBy: currentUser.name || r.updatedBy,
+          };
+          dbUpsertDailyRequirement(updated);
+          return updated;
+        }
+        return r;
+      })
+    );
+  };
+
+  const deleteDailyRequirement = async (id: string): Promise<boolean> => {
+    setDailyRequirements((prev) => prev.filter((r) => r.id !== id));
+    await dbDeleteDailyRequirement(id);
+    logAudit('Daily Requirement Deleted', 'Daily Requirements', `Deleted daily requirement ${id}`);
+    addNotification('Daily Requirement Deleted', 'Material requirement removed from tracker', 'info', 'daily_req');
+    return true;
+  };
+
+  const updateDailyRequirementProgress = (
+    id: string,
+    additionalQty: number,
+    remarks?: string,
+    vendorName?: string
+  ) => {
+    const target = dailyRequirements.find((r) => r.id === id);
     if (!target) return;
-    setMasterBOMs((prev) => prev.filter((b) => b.id !== id));
-    dbDeleteMasterBOM(id);
-    logAudit('Master BOM Deleted', 'BOM Management', `Deleted BOM "${target.name}" (${target.bomNumber})`);
+
+    const previousArrangedQty = target.arrangedQuantity || 0;
+    const newArrangedQty = Math.max(0, previousArrangedQty + additionalQty);
+    const newStatus: DailyRequirementStatus =
+      newArrangedQty >= target.requiredQuantity
+        ? 'Completed'
+        : newArrangedQty > 0
+        ? 'Partially Arranged'
+        : 'Pending';
+
+    const historyEntry: DailyRequirementHistoryItem = {
+      id: `drh-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      requirementId: id,
+      requirementDate: target.requirementDate,
+      previousArrangedQty,
+      additionalQty,
+      newArrangedQty,
+      unit: target.unit,
+      vendorName: vendorName || target.vendorName,
+      remarks: remarks || '',
+      recordedBy: currentUser.name || 'Staff',
+      recordedAt: new Date().toISOString(),
+    };
+
+    setDailyRequirementHistory((prev) => [historyEntry, ...prev]);
+    dbAddDailyRequirementHistory(historyEntry);
+
+    const updatedItem: DailyRequirementItem = {
+      ...target,
+      arrangedQuantity: newArrangedQty,
+      status: newStatus,
+      vendorName: vendorName || target.vendorName,
+      notes: remarks ? (target.notes ? `${target.notes} | ${remarks}` : remarks) : target.notes,
+      updatedAt: new Date().toISOString(),
+      updatedBy: currentUser.name || 'Staff',
+    };
+
+    setDailyRequirements((prev) => prev.map((r) => (r.id === id ? updatedItem : r)));
+    dbUpsertDailyRequirement(updatedItem);
+
+    logAudit(
+      'Daily Requirement Progress Updated',
+      'Daily Requirements',
+      `Updated "${target.description}": Arranged +${additionalQty} ${target.unit} (Total: ${newArrangedQty}/${target.requiredQuantity})`
+    );
+    addNotification(
+      'Progress Updated',
+      `Arranged +${additionalQty} ${target.unit} for "${target.description}"`,
+      'info',
+      'daily_req'
+    );
   };
 
   // RFQ Handlers
@@ -7358,7 +7693,14 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateMasterBOM,
         duplicateMasterBOM,
         deleteMasterBOM,
-    resetMasterBOMsToFactoryDefault,
+        resetMasterBOMsToFactoryDefault,
+        dailyRequirements,
+        dailyRequirementHistory,
+        addDailyRequirement,
+        addDailyRequirementsBatch,
+        updateDailyRequirement,
+        deleteDailyRequirement,
+        updateDailyRequirementProgress,
         addRFQ,
         submitVendorQuotation,
         approveVendorQuotation,

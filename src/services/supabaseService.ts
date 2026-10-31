@@ -14,6 +14,8 @@ import {
   MasterBOM,
   MasterBOMItem,
   MachineFolder,
+  DailyRequirementItem,
+  DailyRequirementHistoryItem,
 } from '../types/erp';
 import {
   Workbook,
@@ -33,12 +35,14 @@ import {
   addMaterialTombstone,
   getDeletedVendorTombstones,
   addVendorTombstone,
+  getDeletedBOMTombstones,
+  addBOMTombstone,
 } from '../utils/tombstones';
 import { sortRowsByAscendingSrNo } from '../utils/projectMaterialsHelper';
 
 export interface DbMutationMessage {
   action: 'UPSERT' | 'DELETE' | 'BULK_UPSERT' | 'BULK_DELETE';
-  entity: 'requirement' | 'project' | 'material' | 'vendor' | 'customer' | 'master_machine' | 'master_bom';
+  entity: 'requirement' | 'project' | 'material' | 'vendor' | 'customer' | 'master_machine' | 'master_bom' | 'daily_requirement';
   id?: string;
   ids?: string[];
   data?: any;
@@ -2159,7 +2163,10 @@ export const dbFetchMasterBOMs = async (): Promise<MasterBOM[] | null> => {
       return null;
     }
     if (!data) return [];
-    return data.map((d: any) => ({
+    const tombstones = getDeletedBOMTombstones();
+    return data
+      .filter((d: any) => !tombstones.has(d.id))
+      .map((d: any) => ({
       id: d.id,
       bomNumber: d.bom_number || '',
       name: d.name || '',
@@ -2220,9 +2227,18 @@ export const dbUpsertMasterBOM = async (bom: MasterBOM): Promise<boolean> => {
   }
 };
 
-export const dbDeleteMasterBOM = async (bomId: string): Promise<boolean> => {
+export const dbDeleteMasterBOM = async (bomId: string): Promise<{ success: boolean; error?: string }> => {
+  addBOMTombstone(bomId);
   const supabase = getSupabaseClient();
-  if (!supabase) return false;
+  if (!supabase) {
+    // Local / Offline mode: tombstone saved, consider deleted
+    broadcastDbMutation({
+      action: 'DELETE',
+      entity: 'master_bom',
+      id: bomId,
+    });
+    return { success: true };
+  }
   try {
     const { error } = await supabase.from('master_boms').delete().eq('id', bomId);
     if (!error) {
@@ -2231,11 +2247,190 @@ export const dbDeleteMasterBOM = async (bomId: string): Promise<boolean> => {
         entity: 'master_bom',
         id: bomId,
       });
+      return { success: true };
+    }
+    // If the table doesn't exist yet in Supabase, treat as local deletion success
+    if (error.code === '42P01' || error.message.includes('relation "master_boms" does not exist')) {
+      return { success: true };
+    }
+    console.warn('Error deleting master BOM from Supabase:', error.message);
+    return { success: false, error: error.message };
+  } catch (err: any) {
+    console.warn('Exception deleting master BOM:', err);
+    return { success: false, error: err?.message || 'Database error occurred' };
+  }
+};
+
+// ---------------------------------------------------------------------------
+// DAILY MATERIAL REQUIREMENTS PERSISTENCE
+// ---------------------------------------------------------------------------
+export const dbFetchDailyRequirements = async (): Promise<DailyRequirementItem[] | null> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase
+      .from('daily_requirements')
+      .select('*')
+      .order('requirement_date', { ascending: false });
+
+    if (error) {
+      console.warn('Supabase daily_requirements query notice:', error.message);
+      return null;
+    }
+    if (!data) return [];
+    return data.map((d: any) => ({
+      id: d.id,
+      requirementDate: d.requirement_date,
+      description: d.description || '',
+      materialType: d.material_type || '',
+      sizeSpecification: d.size_specification || '',
+      requiredQuantity: Number(d.required_quantity) || 0,
+      arrangedQuantity: Number(d.arranged_quantity) || 0,
+      unit: d.unit || 'Nos',
+      projectName: d.project_name || '',
+      projectId: d.project_id || '',
+      machineName: d.machine_name || '',
+      machineType: d.machine_type || '',
+      bomId: d.bom_id || '',
+      bomNumber: d.bom_number || '',
+      vendorName: d.vendor_name || '',
+      priority: d.priority || 'Normal',
+      status: d.status || 'Pending',
+      notes: d.notes || '',
+      createdBy: d.created_by || 'System',
+      createdAt: d.created_at || new Date().toISOString(),
+      updatedBy: d.updated_by || d.created_by || 'System',
+      updatedAt: d.updated_at || new Date().toISOString(),
+    }));
+  } catch (err) {
+    console.warn('Exception fetching daily requirements:', err);
+    return null;
+  }
+};
+
+export const dbUpsertDailyRequirement = async (item: DailyRequirementItem): Promise<boolean> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return true;
+  try {
+    const payload = {
+      id: item.id,
+      requirement_date: item.requirementDate,
+      description: item.description,
+      material_type: item.materialType,
+      size_specification: item.sizeSpecification,
+      required_quantity: item.requiredQuantity,
+      arranged_quantity: item.arrangedQuantity,
+      unit: item.unit,
+      project_name: item.projectName || null,
+      project_id: item.projectId || null,
+      machine_name: item.machineName || null,
+      machine_type: item.machineType || null,
+      bom_id: item.bomId || null,
+      bom_number: item.bomNumber || null,
+      vendor_name: item.vendorName || null,
+      priority: item.priority || 'Normal',
+      status: item.status || 'Pending',
+      notes: item.notes || null,
+      created_by: item.createdBy || 'System',
+      created_at: toSafeIsoTimestamp(item.createdAt),
+      updated_by: item.updatedBy || item.createdBy || 'System',
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await supabase.from('daily_requirements').upsert(payload, { onConflict: 'id' });
+    if (!error) {
+      broadcastDbMutation({
+        action: 'UPSERT',
+        entity: 'daily_requirement',
+        id: item.id,
+        data: item,
+      });
+      return true;
+    }
+    console.warn('Error upserting daily requirement:', error.message);
+    return false;
+  } catch (err) {
+    console.warn('Exception upserting daily requirement:', err);
+    return false;
+  }
+};
+
+export const dbDeleteDailyRequirement = async (id: string): Promise<boolean> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return true;
+  try {
+    const { error } = await supabase.from('daily_requirements').delete().eq('id', id);
+    if (!error) {
+      broadcastDbMutation({
+        action: 'DELETE',
+        entity: 'daily_requirement',
+        id,
+      });
       return true;
     }
     return false;
   } catch (err) {
-    console.warn('Exception deleting master BOM:', err);
+    console.warn('Exception deleting daily requirement:', err);
     return false;
   }
 };
+
+export const dbFetchDailyRequirementHistory = async (requirementId?: string): Promise<DailyRequirementHistoryItem[] | null> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+  try {
+    let query = supabase.from('daily_requirement_history').select('*').order('recorded_at', { ascending: false });
+    if (requirementId) {
+      query = query.eq('requirement_id', requirementId);
+    }
+    const { data, error } = await query;
+    if (error) {
+      console.warn('Supabase daily_requirement_history query notice:', error.message);
+      return null;
+    }
+    if (!data) return [];
+    return data.map((d: any) => ({
+      id: d.id,
+      requirementId: d.requirement_id,
+      requirementDate: d.requirement_date,
+      previousArrangedQty: Number(d.previous_arranged_qty) || 0,
+      additionalQty: Number(d.additional_qty) || 0,
+      newArrangedQty: Number(d.new_arranged_qty) || 0,
+      unit: d.unit || 'Nos',
+      vendorName: d.vendor_name || '',
+      remarks: d.remarks || '',
+      recordedBy: d.recorded_by || 'Staff',
+      recordedAt: d.recorded_at || new Date().toISOString(),
+    }));
+  } catch (err) {
+    console.warn('Exception fetching daily requirement history:', err);
+    return null;
+  }
+};
+
+export const dbAddDailyRequirementHistory = async (item: DailyRequirementHistoryItem): Promise<boolean> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return true;
+  try {
+    const payload = {
+      id: item.id,
+      requirement_id: item.requirementId,
+      requirement_date: item.requirementDate,
+      previous_arranged_qty: item.previousArrangedQty,
+      additional_qty: item.additionalQty,
+      new_arranged_qty: item.newArrangedQty,
+      unit: item.unit,
+      vendor_name: item.vendorName || null,
+      remarks: item.remarks || null,
+      recorded_by: item.recordedBy || 'Staff',
+      recorded_at: toSafeIsoTimestamp(item.recordedAt),
+    };
+    const { error } = await supabase.from('daily_requirement_history').insert(payload);
+    if (!error) return true;
+    console.warn('Error inserting daily requirement history:', error.message);
+    return false;
+  } catch (err) {
+    console.warn('Exception inserting daily requirement history:', err);
+    return false;
+  }
+};
+

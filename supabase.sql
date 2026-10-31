@@ -336,3 +336,62 @@ CREATE POLICY "Allow public write master_machines" ON public.master_machines FOR
 
 CREATE POLICY "Allow public read master_boms" ON public.master_boms FOR SELECT USING (true);
 CREATE POLICY "Allow public write master_boms" ON public.master_boms FOR ALL USING (true) WITH CHECK (true);
+
+-- ---------------------------------------------------------------------------
+-- Daily Material Requirement Tracking
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.daily_requirements (
+  id text NOT NULL,
+  requirement_date date NOT NULL,
+  description text NOT NULL,
+  material_type text NOT NULL,
+  size_specification text NOT NULL,
+  required_quantity numeric DEFAULT 0 NOT NULL,
+  arranged_quantity numeric DEFAULT 0 NOT NULL,
+  unit text DEFAULT 'Nos'::text NOT NULL,
+  project_name text,
+  project_id text,
+  machine_name text,
+  machine_type text,
+  bom_id text,
+  bom_number text,
+  vendor_name text,
+  priority text DEFAULT 'Normal'::text,
+  status text DEFAULT 'Pending'::text,
+  notes text,
+  created_by text,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_by text,
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT daily_requirements_pkey PRIMARY KEY (id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_daily_req_date ON public.daily_requirements(requirement_date);
+CREATE INDEX IF NOT EXISTS idx_daily_req_project ON public.daily_requirements(project_id);
+CREATE INDEX IF NOT EXISTS idx_daily_req_status ON public.daily_requirements(status);
+
+CREATE TABLE IF NOT EXISTS public.daily_requirement_history (
+  id text NOT NULL,
+  requirement_id text NOT NULL,
+  requirement_date date NOT NULL,
+  previous_arranged_qty numeric DEFAULT 0 NOT NULL,
+  additional_qty numeric DEFAULT 0 NOT NULL,
+  new_arranged_qty numeric DEFAULT 0 NOT NULL,
+  unit text DEFAULT 'Nos'::text NOT NULL,
+  vendor_name text,
+  remarks text,
+  recorded_by text,
+  recorded_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT daily_requirement_history_pkey PRIMARY KEY (id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_daily_hist_req ON public.daily_requirement_history(requirement_id);
+
+ALTER TABLE public.daily_requirements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.daily_requirement_history ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read daily_requirements" ON public.daily_requirements FOR SELECT USING (true);
+CREATE POLICY "Allow public write daily_requirements" ON public.daily_requirements FOR ALL USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow public read daily_requirement_history" ON public.daily_requirement_history FOR SELECT USING (true);
+CREATE POLICY "Allow public write daily_requirement_history" ON public.daily_requirement_history FOR ALL USING (true) WITH CHECK (true);

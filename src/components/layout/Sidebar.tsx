@@ -10,6 +10,7 @@ import {
   Command,
   FileSpreadsheet,
   FolderTree,
+  CalendarDays,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 
@@ -29,6 +30,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     purchaseOrders,
     trashItems,
     masterBOMs,
+    dailyRequirements,
   } = useERP();
 
   // Close drawer on Escape key
@@ -64,6 +66,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       icon: Zap,
       shortcut: 'Ctrl+1',
       badge: null,
+    },
+    {
+      id: 'daily_requirements',
+      label: 'Daily Requirement',
+      icon: CalendarDays,
+      shortcut: 'Ctrl+D',
+      badge: dailyRequirements.length > 0 ? String(dailyRequirements.length) : null,
+      badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
     },
     {
       id: 'projects',

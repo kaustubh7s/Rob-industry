@@ -41,6 +41,7 @@ import { MobileStoreInwardApp } from './components/mobile/MobileStoreInwardApp';
 import { LoginScreen } from './components/auth/LoginScreen';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { MicrosoftWorkbookCenter } from './components/microsoft/MicrosoftWorkbookCenter';
+import { DailyRequirementModule } from './components/daily/DailyRequirementModule';
 
 const ERPAppContent: React.FC = () => {
   const { activeTab, setActiveTab, currentUser, isAuthenticated, goBack, goForward, canGoBack, canGoForward } = useERP();
@@ -330,6 +331,7 @@ const ERPAppContent: React.FC = () => {
               />
             )}
             {activeTab === 'orders' && <ProductionTable />}
+            {activeTab === 'daily_requirements' && <DailyRequirementModule />}
             {activeTab === 'bom' && <BOMManager />}
             {activeTab === 'mrp' && <MRPEngine />}
             {activeTab === 'dispatcher' && <ShopfloorDispatcher />}
@@ -358,7 +360,7 @@ const ERPAppContent: React.FC = () => {
             {/* Robust Fallback for Unrecognized / Dynamic Tabs */}
             {![
               'entry', 'requirements', 'projects', 'details', 'procurement', 'members',
-              'microsoft',
+              'microsoft', 'daily_requirements',
               'dashboard', 'orders', 'bom', 'mrp', 'dispatcher', 'terminal',
               'subcontracting', 'traceability', 'vendor_performance', 'vendor_portal',
               'materials', 'calculator', 'inward', 'outward', 'production',

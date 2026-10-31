@@ -828,3 +828,50 @@ export interface DispatchReadyItem {
   invoiceNumber?: string;
 }
 
+// ---------------------------------------------------------------------------
+// DAILY MATERIAL REQUIREMENT WORKFLOW
+// Daily material tracking, BOM imports, arranged progress & inspection history
+// ---------------------------------------------------------------------------
+export type DailyRequirementPriority = 'Normal' | 'High' | 'Urgent';
+export type DailyRequirementStatus = 'Pending' | 'Partially Arranged' | 'Completed';
+
+export interface DailyRequirementItem {
+  id: string;
+  requirementDate: string; // YYYY-MM-DD
+  description: string;
+  materialType: string;
+  sizeSpecification: string;
+  requiredQuantity: number;
+  arrangedQuantity: number;
+  unit: string; // e.g., Nos, Kg, Mtr, Set, Pcs
+  projectName?: string;
+  projectId?: string;
+  machineName?: string;
+  machineType?: string;
+  bomId?: string;
+  bomNumber?: string;
+  vendorName?: string;
+  priority: DailyRequirementPriority;
+  status: DailyRequirementStatus;
+  notes?: string;
+  createdBy?: string;
+  createdAt?: string;
+  updatedBy?: string;
+  updatedAt?: string;
+}
+
+export interface DailyRequirementHistoryItem {
+  id: string;
+  requirementId: string;
+  requirementDate: string;
+  previousArrangedQty: number;
+  additionalQty: number;
+  newArrangedQty: number;
+  unit: string;
+  vendorName?: string;
+  remarks?: string;
+  recordedBy: string;
+  recordedAt: string;
+}
+
+
