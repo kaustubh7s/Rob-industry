@@ -9,12 +9,15 @@ import {
   AlertCircle,
   ArrowLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Download,
   FileSpreadsheet,
   FileText,
   Boxes,
   FolderTree,
   Folder,
+  FolderOpen,
   Layers,
   Edit2,
   Trash2,
@@ -31,6 +34,8 @@ import {
   CheckSquare,
   LayoutGrid,
   Table as TableIcon,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -63,14 +68,14 @@ export const DailyRequirementModule: React.FC = () => {
   // ---------------------------------------------------------------------------
   // NAVIGATION & VIEW STATE
   // ---------------------------------------------------------------------------
-  // 'detail' = Focused today / selected date view (Default for fast daily shop-floor checkoff)
-  // 'dates' = Date-wise Grouped Schedule view
-  // 'table' = All dates flat table
-  const [activeView, setActiveView] = useState<'detail' | 'dates' | 'table'>('detail');
+  // 'dates' = Date-wise Detail Folders with Projection Bar (Default view requested by shopfloor)
+  // 'detail' = Focused single date view
+  const [activeView, setActiveView] = useState<'dates' | 'detail'>('dates');
   const [displayMode, setDisplayMode] = useState<'table' | 'cards'>('table');
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     return new Date().toISOString().split('T')[0];
   });
+  const [expandedDateFolders, setExpandedDateFolders] = useState<Record<string, boolean>>({});
 
   // Filters & Search
   const [searchTerm, setSearchTerm] = useState('');
@@ -299,6 +304,265 @@ export const DailyRequirementModule: React.FC = () => {
   const pendingCount = activeList.filter(
     (i) => i.status !== 'Completed' && i.arrangedQuantity < i.requiredQuantity
   ).length;
+
+  // ---------------------------------------------------------------------------
+  // FOLDER EXPANSION & DATE WORKFLOW ACTIONS
+  // ---------------------------------------------------------------------------
+  const isDateExpanded = (dateStr: string) => {
+    return expandedDateFolders[dateStr] !== false; // defaults to true so all days are shown immediately!
+  };
+
+  const toggleDateFolder = (dateStr: string) => {
+    setExpandedDateFolders((prev) => ({
+      ...prev,
+      [dateStr]: prev[dateStr] === false ? true : false,
+    }));
+  };
+
+  const areAllExpanded = useMemo(() => {
+    if (groupedByDate.length === 0) return true;
+    return groupedByDate.every(([d]) => expandedDateFolders[d] !== false);
+  }, [groupedByDate, expandedDateFolders]);
+
+  const handleToggleAllFolders = () => {
+    const nextVal = !areAllExpanded;
+    const nextMap: Record<string, boolean> = {};
+    groupedByDate.forEach(([d]) => {
+      nextMap[d] = nextVal;
+    });
+    setExpandedDateFolders(nextMap);
+  };
+
+  const handleOpenBOMImportModalForDate = (dateStr: string) => {
+    setSelectedDate(dateStr);
+    setBomImportTargetDate(dateStr);
+    handleOpenBOMImportModal();
+  };
+
+  const handleExportExcelForDate = (dateStr: string, itemsToExport: DailyRequirementItem[]) => {
+    if (itemsToExport.length === 0) {
+      alert(`No materials to export for ${dateStr}.`);
+      return;
+    }
+
+    const rows = itemsToExport.map((it, idx) => ({
+      'Sr No': idx + 1,
+      'Requirement Date': it.requirementDate,
+      'Item Description': it.description,
+      'Material Type': it.materialType,
+      'Size Specification': it.sizeSpecification,
+      'Required Qty': it.requiredQuantity,
+      'Arrived Qty': it.arrangedQuantity,
+      'Pending Qty': Math.max(0, it.requiredQuantity - it.arrangedQuantity),
+      'Unit': it.unit,
+      'Project': it.projectName || '-',
+      'Machine': it.machineName || '-',
+      'Status': it.status,
+      'Priority': it.priority,
+      'Vendor Name': it.vendorName || '-',
+      'Notes': it.notes || '-',
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, `Req_${dateStr}`);
+    const filename = `RSB_Daily_Requirements_${dateStr}.xlsx`;
+    XLSX.writeFile(wb, filename);
+  };
+
+  // ---------------------------------------------------------------------------
+  // FULL 11-COLUMN WORKSTATION TABLE (EXACT DETAIL VIEW FOR EACH DAY)
+  // ---------------------------------------------------------------------------
+  const renderRequirementsTable = (items: DailyRequirementItem[], emptyMessage: string) => (
+    <div className="bg-white border-t border-slate-200 overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-left text-xs border-collapse">
+          <thead>
+            <tr className="bg-slate-100 text-slate-800 font-bold border-b border-slate-200 text-[11px] uppercase tracking-wider">
+              <th className="p-3 w-44 min-w-[150px] text-center bg-emerald-50/70 border-r border-emerald-200 text-emerald-900 whitespace-nowrap">
+                Material Arrived (आवक)
+              </th>
+              <th className="p-3 min-w-[200px]">Description & Item Name</th>
+              <th className="p-3 min-w-[110px]">Type</th>
+              <th className="p-3 min-w-[140px]">Size Specification</th>
+              <th className="p-3 min-w-[100px] text-center bg-slate-100">Total Qty</th>
+              <th className="p-3 min-w-[160px] text-center bg-emerald-50/60 text-emerald-900 border-x border-emerald-200/70">
+                Arrived Qty (आवक)
+              </th>
+              <th className="p-3 min-w-[120px] text-center bg-amber-50/60 text-amber-900 border-r border-amber-200/70">
+                Pending Qty (बाकी)
+              </th>
+              <th className="p-3 min-w-[100px]">Project</th>
+              <th className="p-3 min-w-[90px]">Machine</th>
+              <th className="p-3 min-w-[130px]">Vendor</th>
+              <th className="p-3 w-24 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-200 font-medium">
+            {items.length === 0 ? (
+              <tr>
+                <td colSpan={11} className="p-8 text-center text-slate-400">
+                  {emptyMessage}
+                </td>
+              </tr>
+            ) : (
+              items.map((item) => {
+                const isArrived = item.status === 'Completed' || item.arrangedQuantity >= item.requiredQuantity;
+                const pending = Math.max(0, item.requiredQuantity - item.arrangedQuantity);
+
+                return (
+                  <tr
+                    key={item.id}
+                    className={`transition-colors ${
+                      isArrived ? 'bg-emerald-50/30 hover:bg-emerald-50/60' : 'hover:bg-blue-50/40'
+                    }`}
+                  >
+                    {/* 1. Quick 1-Click Toggle: Mark Arrived / Arrived (आवक) */}
+                    <td className="p-3 text-center whitespace-nowrap border-r border-emerald-100 bg-emerald-50/20">
+                      {isArrived ? (
+                        <button
+                          type="button"
+                          onClick={() => handleToggleArrived(item)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs font-bold text-xs transition-all active:scale-95 cursor-pointer"
+                          title="Click to toggle back to pending"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200 shrink-0" />
+                          <span>Arrived (आवक)</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleToggleArrived(item)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border-2 border-dashed border-emerald-400 hover:border-emerald-600 font-bold text-xs transition-all active:scale-95 cursor-pointer shadow-2xs"
+                          title="Click to mark 100% arrived"
+                        >
+                          <Square className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span>Mark Arrived</span>
+                        </button>
+                      )}
+                    </td>
+
+                    {/* 2. Description & Item Name */}
+                    <td className="p-3 font-bold text-slate-900">
+                      <div>{item.description}</div>
+                      {item.notes && <div className="text-[10px] text-slate-500 font-normal italic">{item.notes}</div>}
+                    </td>
+
+                    {/* 3. Type */}
+                    <td className="p-3">
+                      <span className="font-mono text-[10px] font-bold bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">
+                        {item.materialType}
+                      </span>
+                    </td>
+
+                    {/* 4. Size Specification */}
+                    <td className="p-3 font-mono text-slate-700 font-bold">
+                      {item.sizeSpecification}
+                    </td>
+
+                    {/* 5. Total Required Qty */}
+                    <td className="p-3 text-center font-mono font-bold text-slate-900 bg-slate-50/50">
+                      {item.requiredQuantity} {item.unit}
+                    </td>
+
+                    {/* 6. Arrived Qty (आवक) (Inline Stepper & Input) */}
+                    <td className="p-2.5 text-center bg-emerald-50/30 border-x border-emerald-100">
+                      <div className="inline-flex items-center gap-1 bg-white border border-emerald-300 rounded-xl p-0.5 shadow-2xs">
+                        <button
+                          type="button"
+                          onClick={() => handleQuickAdjustArrived(item, -1)}
+                          className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer active:scale-90 transition-all font-bold"
+                          title="Decrease 1"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={item.arrangedQuantity}
+                          onChange={(e) => handleSetExactArrived(item, Number(e.target.value))}
+                          className="w-14 text-center font-mono font-black text-xs text-emerald-800 bg-transparent outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleQuickAdjustArrived(item, 1)}
+                          className="w-6 h-6 rounded-lg bg-emerald-100 hover:bg-emerald-200 flex items-center justify-center text-emerald-800 cursor-pointer active:scale-90 transition-all font-bold"
+                          title="Increase 1"
+                        >
+                          +
+                        </button>
+                        <span className="text-[10px] font-bold text-slate-500 pr-1">{item.unit}</span>
+                      </div>
+                    </td>
+
+                    {/* 7. Pending Qty (बाकी) */}
+                    <td className="p-3 text-center border-r border-amber-100 bg-amber-50/20 font-mono">
+                      {pending === 0 ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-100/70 px-2.5 py-0.5 rounded-full border border-emerald-300">
+                          <Check className="w-3 h-3" />
+                          <span>0 {item.unit} (Done)</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-300">
+                          <span>{pending} {item.unit}</span>
+                        </span>
+                      )}
+                    </td>
+
+                    {/* 8. Project */}
+                    <td className="p-3 text-slate-700 font-semibold">
+                      {item.projectName || '-'}
+                    </td>
+
+                    {/* 9. Machine */}
+                    <td className="p-3 text-slate-500 font-medium">
+                      {item.machineName || '-'}
+                    </td>
+
+                    {/* 10. Vendor */}
+                    <td className="p-3 text-blue-700 font-medium">
+                      {item.vendorName || '-'}
+                    </td>
+
+                    {/* 11. Actions */}
+                    <td className="p-3 text-right whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setHistoryModalItem(item)}
+                          className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
+                          title="View History"
+                        >
+                          <History className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditModalItem(item)}
+                          className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
+                          title="Edit"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteModalItem(item)}
+                          className="p-1 rounded-lg hover:bg-rose-50 text-rose-600 cursor-pointer"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 
   // ---------------------------------------------------------------------------
   // HANDLERS
@@ -728,21 +992,23 @@ export const DailyRequirementModule: React.FC = () => {
             <div className="flex items-center p-0.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 text-xs">
               <button
                 type="button"
-                onClick={() => setActiveView('detail')}
-                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-                  activeView === 'detail' ? 'bg-white text-slate-900 shadow-2xs' : 'hover:text-slate-900 text-slate-500'
+                onClick={() => setActiveView('dates')}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  activeView === 'dates' ? 'bg-white text-blue-700 shadow-2xs' : 'hover:text-slate-900 text-slate-500'
                 }`}
               >
-                Today / Active Date ({detailRequirements.length})
+                <FolderOpen className="w-3.5 h-3.5" />
+                <span>Date Folders ({groupedByDate.length} Days)</span>
               </button>
               <button
                 type="button"
-                onClick={() => setActiveView('dates')}
-                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-                  activeView === 'dates' ? 'bg-white text-slate-900 shadow-2xs' : 'hover:text-slate-900 text-slate-500'
+                onClick={() => setActiveView('detail')}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  activeView === 'detail' ? 'bg-white text-blue-700 shadow-2xs' : 'hover:text-slate-900 text-slate-500'
                 }`}
               >
-                All Dates Schedule
+                <CalendarDays className="w-3.5 h-3.5" />
+                <span>Single Date Focus ({detailRequirements.length})</span>
               </button>
             </div>
 
@@ -879,192 +1145,10 @@ export const DailyRequirementModule: React.FC = () => {
           {/* TABLE DISPLAY MODE (FAST, EXCEL-LIKE WORKSTATION) */}
           {displayMode === 'table' ? (
             <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-slate-100 text-slate-800 font-bold border-b border-slate-200 text-[11px] uppercase tracking-wider">
-                      <th className="p-3 w-40 min-w-[140px] text-center bg-emerald-50/70 border-r border-emerald-200 text-emerald-900 whitespace-nowrap">
-                        Material Arrived (आवक)
-                      </th>
-                      <th className="p-3 min-w-[200px]">Description & Item Name</th>
-                      <th className="p-3 min-w-[120px]">Type</th>
-                      <th className="p-3 min-w-[150px]">Size Specification</th>
-                      <th className="p-3 min-w-[100px] text-center bg-slate-100">Total Qty</th>
-                      <th className="p-3 min-w-[160px] text-center bg-emerald-50/60 text-emerald-900 border-x border-emerald-200/70">
-                        Arrived Qty (आवक)
-                      </th>
-                      <th className="p-3 min-w-[120px] text-center bg-amber-50/60 text-amber-900 border-r border-amber-200/70">
-                        Pending Qty (बाकी)
-                      </th>
-                      <th className="p-3 min-w-[110px]">Project</th>
-                      <th className="p-3 min-w-[90px]">Machine</th>
-                      <th className="p-3 min-w-[130px]">Vendor</th>
-                      <th className="p-3 w-24 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 font-medium">
-                    {detailRequirements.length === 0 ? (
-                      <tr>
-                        <td colSpan={11} className="p-8 text-center text-slate-400">
-                          No materials found for {selectedDate}. Click "+ New Requirement" or "+ Add from BOM" to get started.
-                        </td>
-                      </tr>
-                    ) : (
-                      detailRequirements.map((item) => {
-                        const isArrived = item.status === 'Completed' || item.arrangedQuantity >= item.requiredQuantity;
-                        const pending = Math.max(0, item.requiredQuantity - item.arrangedQuantity);
-
-                        return (
-                          <tr
-                            key={item.id}
-                            className={`transition-colors ${
-                              isArrived ? 'bg-emerald-50/30 hover:bg-emerald-50/60' : 'hover:bg-blue-50/40'
-                            }`}
-                          >
-                            {/* 1. Quick 1-Click Toggle: Mark Arrived / Arrived */}
-                            <td className="p-3 text-center whitespace-nowrap border-r border-emerald-100 bg-emerald-50/20">
-                              {isArrived ? (
-                                <button
-                                  type="button"
-                                  onClick={() => handleToggleArrived(item)}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs font-bold text-xs transition-all active:scale-95 cursor-pointer"
-                                  title="Click to toggle back to pending"
-                                >
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200 shrink-0" />
-                                  <span>Arrived (आवक)</span>
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => handleToggleArrived(item)}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border-2 border-dashed border-emerald-400 hover:border-emerald-600 font-bold text-xs transition-all active:scale-95 cursor-pointer shadow-2xs"
-                                  title="Click to mark 100% arrived"
-                                >
-                                  <Square className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                  <span>Mark Arrived</span>
-                                </button>
-                              )}
-                            </td>
-
-                            {/* 2. Description */}
-                            <td className="p-3 font-bold text-slate-900">
-                              <div>{item.description}</div>
-                              {item.notes && <div className="text-[10px] text-slate-500 font-normal italic">{item.notes}</div>}
-                            </td>
-
-                            {/* 3. Type */}
-                            <td className="p-3">
-                              <span className="font-mono text-[10px] font-bold bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">
-                                {item.materialType}
-                              </span>
-                            </td>
-
-                            {/* 4. Size Specification */}
-                            <td className="p-3 font-mono text-slate-700 font-bold">
-                              {item.sizeSpecification}
-                            </td>
-
-                            {/* 5. Required Qty */}
-                            <td className="p-3 text-center font-mono font-bold text-slate-900 bg-slate-50/50">
-                              {item.requiredQuantity} {item.unit}
-                            </td>
-
-                            {/* 6. Arrived Qty (Inline Editable Stepper) */}
-                            <td className="p-2.5 text-center bg-emerald-50/30 border-x border-emerald-100">
-                              <div className="inline-flex items-center gap-1 bg-white border border-emerald-300 rounded-xl p-0.5 shadow-2xs">
-                                <button
-                                  type="button"
-                                  onClick={() => handleQuickAdjustArrived(item, -1)}
-                                  className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer active:scale-90 transition-all"
-                                  title="Decrease 1"
-                                >
-                                  <Minus className="w-3 h-3" />
-                                </button>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="any"
-                                  value={item.arrangedQuantity}
-                                  onChange={(e) => handleSetExactArrived(item, Number(e.target.value))}
-                                  className="w-14 text-center font-mono font-black text-xs text-emerald-800 bg-transparent outline-none"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => handleQuickAdjustArrived(item, 1)}
-                                  className="w-6 h-6 rounded-lg bg-emerald-100 hover:bg-emerald-200 flex items-center justify-center text-emerald-800 cursor-pointer active:scale-90 transition-all font-bold"
-                                  title="Increase 1"
-                                >
-                                  +
-                                </button>
-                                <span className="text-[10px] font-bold text-slate-400 pr-1">{item.unit}</span>
-                              </div>
-                            </td>
-
-                            {/* 7. Pending Qty */}
-                            <td className="p-3 text-center border-r border-amber-100 bg-amber-50/20 font-mono">
-                              {pending === 0 ? (
-                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full">
-                                  <Check className="w-3 h-3" />
-                                  <span>0 {item.unit} (Done)</span>
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
-                                  <span>{pending} {item.unit}</span>
-                                </span>
-                              )}
-                            </td>
-
-                            {/* 8. Project */}
-                            <td className="p-3 text-slate-700 font-semibold">
-                              {item.projectName || '-'}
-                            </td>
-
-                            {/* 9. Machine */}
-                            <td className="p-3 text-slate-500">
-                              {item.machineName || '-'}
-                            </td>
-
-                            {/* 10. Vendor */}
-                            <td className="p-3 text-blue-700 font-medium">
-                              {item.vendorName || '-'}
-                            </td>
-
-                            {/* 11. Actions */}
-                            <td className="p-3 text-right whitespace-nowrap">
-                              <div className="flex items-center justify-end gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => setHistoryModalItem(item)}
-                                  className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
-                                  title="View History"
-                                >
-                                  <History className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setEditModalItem(item)}
-                                  className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
-                                  title="Edit"
-                                >
-                                  <Edit2 className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setDeleteModalItem(item)}
-                                  className="p-1 rounded-lg hover:bg-rose-50 text-rose-600 cursor-pointer"
-                                  title="Delete"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              {renderRequirementsTable(
+                detailRequirements,
+                `No materials found for ${selectedDate}. Click "+ New Requirement" or "+ Add from BOM" to get started.`
+              )}
             </div>
           ) : (
             /* CARDS DISPLAY MODE (CLEAN & HORIZONTAL) */
@@ -1197,20 +1281,48 @@ export const DailyRequirementModule: React.FC = () => {
         </div>
       )}
 
-      {/* VIEW 5: ALL DATES GROUPED SCHEDULE */}
+      {/* VIEW: DATE-WISE DETAIL TABLE FOLDERS (SHOW OF EACH DAY) */}
       {activeView === 'dates' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
-              <CalendarDays className="w-5 h-5 text-blue-600" />
-              <span>Date-wise Daily Material Schedule</span>
-            </h2>
-            <span className="text-xs text-slate-500 font-medium">
-              Showing {groupedByDate.length} {groupedByDate.length === 1 ? 'date' : 'dates'} scheduled
-            </span>
+        <div className="space-y-5">
+          {/* Section Toolbar: Total Days & Expand/Collapse All */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <span className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center shrink-0">
+                <FolderOpen className="w-5 h-5" />
+              </span>
+              <div>
+                <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
+                  <span>Date-wise Daily Material Schedule Folders</span>
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Showing {groupedByDate.length} {groupedByDate.length === 1 ? 'day folder' : 'day folders'} with live inward projection bars & 11-column checklist tables for each day
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleToggleAllFolders}
+                className="px-3.5 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+              >
+                {areAllExpanded ? (
+                  <>
+                    <Minimize2 className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Collapse All Days</span>
+                  </>
+                ) : (
+                  <>
+                    <Maximize2 className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Expand All Days</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Date Folder Cards List */}
+          <div className="space-y-4">
             {groupedByDate.map(([dateStr, items]) => {
               const todayStr = new Date().toISOString().split('T')[0];
               const isToday = dateStr === todayStr;
@@ -1223,66 +1335,171 @@ export const DailyRequirementModule: React.FC = () => {
                 totalArrSum += Number(it.arrangedQuantity) || 0;
               });
               const progressPct = totalReqSum > 0 ? Math.min(100, Math.round((totalArrSum / totalReqSum) * 100)) : 0;
-              const isAllCompleted = items.every((i) => i.status === 'Completed' || i.arrangedQuantity >= i.requiredQuantity);
+              const isAllCompleted = items.length > 0 && items.every((i) => i.status === 'Completed' || i.arrangedQuantity >= i.requiredQuantity);
+              const isExpanded = isDateExpanded(dateStr);
 
               return (
                 <div
                   key={dateStr}
-                  onClick={() => handleOpenDetailView(dateStr)}
-                  className="group bg-white border border-slate-200 hover:border-blue-400 rounded-2xl p-5 shadow-xs hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
+                  className="bg-white border-2 border-slate-200 hover:border-slate-300 rounded-2xl shadow-xs overflow-hidden transition-all"
                 >
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-mono text-xs font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded-lg">
-                          {formatDateFriendly(dateStr)}
-                        </span>
-                        {isToday && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-600 text-white uppercase tracking-wider">
-                            TODAY
+                  {/* FOLDER ACCORDION HEADER WITH PROJECTION BAR */}
+                  <div
+                    onClick={() => toggleDateFolder(dateStr)}
+                    className="p-4 bg-slate-50/90 hover:bg-slate-100/90 cursor-pointer border-b border-slate-200 transition-colors"
+                  >
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                      {/* Left: Chevron + Date Title & Subtitle */}
+                      <div className="flex items-start sm:items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleDateFolder(dateStr);
+                          }}
+                          className="w-8 h-8 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:text-blue-600 hover:border-blue-400 shadow-2xs transition-transform mt-0.5 sm:mt-0"
+                          title={isExpanded ? 'Collapse Folder' : 'Expand Folder'}
+                        >
+                          {isExpanded ? (
+                            <ChevronDown className="w-4 h-4 text-blue-600" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4 text-slate-500" />
+                          )}
+                        </button>
+
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-black text-slate-900 text-base">
+                              {formatDateFriendly(dateStr)}
+                            </span>
+                            <span className="font-mono text-xs text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-lg">
+                              {dateStr}
+                            </span>
+                            {isToday && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-600 text-white uppercase tracking-wider">
+                                TODAY
+                              </span>
+                            )}
+                            {isAllCompleted ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-100/70 border border-emerald-300 px-2 py-0.5 rounded-full">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>100% Fulfilled</span>
+                              </span>
+                            ) : (
+                              <span className="text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
+                                {progressPct}% Arrived
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-500 font-medium">
+                            {items.length} Materials Scheduled for this factory day
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Middle: PROJECTION BAR & UNIT BREAKDOWN */}
+                      <div className="flex-1 max-w-lg space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-slate-700 flex items-center gap-1">
+                            <TrendingUp className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Inward Projection:</span>
                           </span>
-                        )}
-                      </div>
-                      {isAllCompleted ? (
-                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                          100% Arrived
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">
-                          {progressPct}% Inward
-                        </span>
-                      )}
-                    </div>
+                          <span className={`font-mono font-bold ${isAllCompleted ? 'text-emerald-700' : 'text-blue-700'}`}>
+                            {progressPct}% ({breakdown.arrangedSummary} of {breakdown.requiredSummary})
+                          </span>
+                        </div>
 
-                    <div>
-                      <h3 className="text-sm font-black text-slate-900 group-hover:text-blue-600 transition-colors">
-                        {items.length} Materials Scheduled
-                      </h3>
-                    </div>
+                        {/* Visual Projection Bar */}
+                        <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden p-0.5">
+                          <div
+                            className={`h-full transition-all duration-500 rounded-full ${
+                              isAllCompleted
+                                ? 'bg-emerald-500'
+                                : progressPct >= 50
+                                ? 'bg-blue-600'
+                                : progressPct > 0
+                                ? 'bg-amber-500'
+                                : 'bg-slate-300'
+                            }`}
+                            style={{ width: `${progressPct}%` }}
+                          />
+                        </div>
 
-                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-[11px] space-y-1">
-                      <div className="flex items-center justify-between text-slate-600 font-medium">
-                        <span>Required:</span>
-                        <span className="font-bold text-slate-900">{breakdown.requiredSummary}</span>
+                        {/* Segregated Strict Unit Balances */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {Object.keys(breakdown.requiredMap).map((unit) => {
+                            const req = breakdown.requiredMap[unit] || 0;
+                            const arr = breakdown.arrangedMap[unit] || 0;
+                            const pen = Math.max(0, req - arr);
+                            return (
+                              <span
+                                key={unit}
+                                className="px-2 py-0.5 rounded-lg bg-white border border-slate-200 text-[11px] font-mono shadow-2xs"
+                              >
+                                <strong className="text-slate-900">{unit}:</strong>{' '}
+                                <span className="text-emerald-700 font-bold">{arr} Arr</span> /{' '}
+                                <span className="text-slate-600">{req} Req</span>
+                                {pen > 0 && (
+                                  <span className="text-amber-700 font-bold ml-1 bg-amber-50 px-1 py-0.2 rounded border border-amber-200">
+                                    {pen} Pending
+                                  </span>
+                                )}
+                              </span>
+                            );
+                          })}
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between text-emerald-700 font-medium">
-                        <span>Arrived:</span>
-                        <span className="font-bold text-emerald-800">{breakdown.arrangedSummary}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-amber-700 font-medium">
-                        <span>Pending:</span>
-                        <span className="font-bold text-amber-800">{breakdown.pendingSummary}</span>
+
+                      {/* Right: Date Actions */}
+                      <div
+                        className="flex items-center gap-1.5 shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleOpenAddModal(dateStr)}
+                          className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1 shadow-2xs cursor-pointer active:scale-95 transition-all"
+                          title="Add Material for this date"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>+ Add Material</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenBOMImportModalForDate(dateStr)}
+                          className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs flex items-center gap-1 border border-indigo-200 shadow-2xs cursor-pointer active:scale-95 transition-all"
+                          title="Import from BOM for this date"
+                        >
+                          <FolderTree className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>+ BOM</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleExportExcelForDate(dateStr, items)}
+                          className="p-2 rounded-xl bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 shadow-2xs cursor-pointer"
+                          title="Export this date to Excel"
+                        >
+                          <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                        </button>
                       </div>
                     </div>
                   </div>
 
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-blue-600 group-hover:underline">
-                    <span>Open Workstation</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </div>
+                  {/* FOLDER BODY: FULL 11-COLUMN WORKSTATION TABLE */}
+                  {isExpanded && renderRequirementsTable(items, `No materials scheduled for ${dateStr}.`)}
                 </div>
               );
             })}
+
+            {groupedByDate.length === 0 && (
+              <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-400">
+                <Boxes className="w-12 h-12 mx-auto text-slate-300 mb-3" />
+                <h3 className="text-base font-bold text-slate-700">No scheduled requirements found</h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Try clearing your search filters or click "+ New Requirement" to schedule materials.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
