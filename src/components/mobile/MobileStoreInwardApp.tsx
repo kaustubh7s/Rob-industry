@@ -46,6 +46,7 @@ export const MobileStoreInwardApp: React.FC = () => {
     setProjectRequirements,
     orders,
     toggleMaterialReceived,
+    updateMaterialArrivalQty,
     dailyRequirements,
     updateDailyRequirement,
     updateDailyRequirementProgress,
@@ -58,7 +59,7 @@ export const MobileStoreInwardApp: React.FC = () => {
   // 'DAILY' = Daily Material Requirement Folder (दैनिक आवश्यकता)
   // 'PROJECTS' = Project-wise Inward Folders (प्रोजेक्ट-वाइज फाइल्स)
   // =========================================================================
-  const [activeFolderMode, setActiveFolderMode] = useState<'DAILY' | 'PROJECTS'>('DAILY');
+  const [activeFolderMode, setActiveFolderMode] = useState<'DAILY' | 'PROJECTS'>('PROJECTS');
 
   // -------------------------------------------------------------------------
   // DAILY MATERIAL REQUIREMENT STATE
@@ -87,22 +88,80 @@ export const MobileStoreInwardApp: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveToast, setSaveToast] = useState<string | null>(null);
 
+  // -------------------------------------------------------------------------
+  // SWIPE-UP INWARD QUANTITY MODAL STATE (ASK QUANTITY WHEN CLICKING AN ITEM)
+  // -------------------------------------------------------------------------
+  const [inwardModalItem, setInwardModalItem] = useState<{
+    id: string;
+    description: string;
+    machineName: string;
+    sizeSpecs: string;
+    quantity: number;
+    unit: string;
+    arrivedQty: number;
+    vendorName?: string;
+    isDaily?: boolean;
+  } | null>(null);
+
+  const [enteredArrivedQty, setEnteredArrivedQty] = useState<number>(0);
+
+  // Open Swipe-Up Inward Drawer
+  const handleOpenInwardModal = (item: {
+    id: string;
+    description: string;
+    machineName: string;
+    sizeSpecs: string;
+    quantity: number;
+    unit: string;
+    arrivedQty: number;
+    vendorName?: string;
+    isDaily?: boolean;
+  }) => {
+    setInwardModalItem(item);
+    // If 0 arrived, pre-fill with total quantity so 1-tap confirms full arrival
+    // If already has arrived quantity, start with that
+    setEnteredArrivedQty(item.arrivedQty > 0 ? item.arrivedQty : item.quantity);
+  };
+
+  // Confirm and Save Inward Quantity from Swipe-Up Sheet
+  const handleConfirmInwardQty = () => {
+    if (!inwardModalItem) return;
+    const total = inwardModalItem.quantity;
+    const arrived = Math.max(0, Number(enteredArrivedQty) || 0);
+
+    if (inwardModalItem.isDaily) {
+      const newStatus: DailyRequirementStatus =
+        arrived >= total ? 'Completed' : arrived > 0 ? 'Partially Arranged' : 'Pending';
+      updateDailyRequirement(inwardModalItem.id, {
+        arrangedQuantity: arrived,
+        status: newStatus,
+      });
+    } else {
+      updateMaterialArrivalQty(inwardModalItem.id, arrived);
+    }
+
+    if (arrived >= total) {
+      confetti({ particleCount: 35, spread: 60, origin: { y: 0.7 } });
+    }
+
+    setSaveToast(`✅ Saved: ${arrived}/${total} ${inwardModalItem.unit} for ${inwardModalItem.description}`);
+    setTimeout(() => setSaveToast(null), 2500);
+    setInwardModalItem(null);
+  };
+
   // =========================================================================
-  // DAILY REQUIREMENT COMPUTATIONS & STRICT UNIT SEGREGATION
+  // DAILY REQUIREMENT COMPUTATIONS & UNIT SUMMARY
   // =========================================================================
   const filteredDailyRequirements = useMemo(() => {
     return (dailyRequirements || []).filter((item) => {
-      // Date filter
       if (!isAllDatesView && item.requirementDate !== dailySelectedDate) {
         return false;
       }
 
-      // Status filter
       const isCompleted = item.status === 'Completed' || (Number(item.arrangedQuantity) || 0) >= item.requiredQuantity;
       if (dailyStatusFilter === 'ARRIVED' && !isCompleted) return false;
       if (dailyStatusFilter === 'PENDING' && isCompleted) return false;
 
-      // Search term
       if (dailySearchTerm.trim()) {
         const term = dailySearchTerm.toLowerCase();
         return (
@@ -119,7 +178,6 @@ export const MobileStoreInwardApp: React.FC = () => {
     });
   }, [dailyRequirements, dailySelectedDate, isAllDatesView, dailyStatusFilter, dailySearchTerm]);
 
-  // Strictly segregate units (Never sum Nos with Kg!)
   const dailyUnitSummary = useMemo(() => {
     const list = (dailyRequirements || []).filter((it) => isAllDatesView || it.requirementDate === dailySelectedDate);
     const requiredByUnit: Record<string, number> = {};
@@ -161,13 +219,6 @@ export const MobileStoreInwardApp: React.FC = () => {
     };
   }, [dailyRequirements, dailySelectedDate, isAllDatesView]);
 
-  // Today's total count for top folder badge
-  const todayCount = useMemo(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
-    return (dailyRequirements || []).filter((it) => it.requirementDate === todayStr).length;
-  }, [dailyRequirements]);
-
-  // Step Date helper (-1 day / +1 day)
   const handleStepDate = (days: number) => {
     const parts = dailySelectedDate.split('-').map(Number);
     const d = new Date(parts[0], parts[1] - 1, parts[2]);
@@ -179,74 +230,9 @@ export const MobileStoreInwardApp: React.FC = () => {
     setIsAllDatesView(false);
   };
 
-  // Reset to today
   const handleJumpToToday = () => {
     setDailySelectedDate(new Date().toISOString().split('T')[0]);
     setIsAllDatesView(false);
-  };
-
-  // -------------------------------------------------------------------------
-  // 1-CLICK DAILY ACTIONS: MARK ARRIVED, SELECT ARRIVED & PENDING QUANTITY
-  // -------------------------------------------------------------------------
-  const handleDailyToggleArrived = (item: DailyRequirementItem) => {
-    const currentArr = Number(item.arrangedQuantity) || 0;
-    const isCompleted = item.status === 'Completed' || currentArr >= item.requiredQuantity;
-
-    if (isCompleted) {
-      // Toggle back to Pending (0 arrived)
-      updateDailyRequirement(item.id, {
-        arrangedQuantity: 0,
-        status: 'Pending',
-      });
-      logAudit?.(
-        'Daily Requirement Status Reset',
-        'Stores Inward (Mobile)',
-        `${currentUser?.name || 'Chandramani'} reset "${item.description}" to Pending on mobile`
-      );
-      setSaveToast(`↺ Reset "${item.description}" to Pending (0 Arrived)`);
-      setTimeout(() => setSaveToast(null), 2500);
-    } else {
-      // 1-Click: Mark full quantity arrived!
-      updateDailyRequirement(item.id, {
-        arrangedQuantity: item.requiredQuantity,
-        status: 'Completed',
-      });
-      logAudit?.(
-        'Daily Requirement Marked Arrived',
-        'Stores Inward (Mobile)',
-        `${currentUser?.name || 'Chandramani'} verified full arrival (${item.requiredQuantity} ${item.unit}) for "${item.description}"`
-      );
-      confetti({ particleCount: 35, spread: 60, origin: { y: 0.7 } });
-      setSaveToast(`✅ Marked "${item.description}" as Fully Arrived (${item.requiredQuantity} ${item.unit})`);
-      setTimeout(() => setSaveToast(null), 2500);
-    }
-  };
-
-  // Select Arrived Quantity directly on mobile
-  const handleDailySetArrivedQty = (item: DailyRequirementItem, val: number) => {
-    const validQty = Math.max(0, Number(val) || 0);
-    const newStatus: DailyRequirementStatus =
-      validQty >= item.requiredQuantity
-        ? 'Completed'
-        : validQty > 0
-        ? 'Partially Arranged'
-        : 'Pending';
-
-    updateDailyRequirement(item.id, {
-      arrangedQuantity: validQty,
-      status: newStatus,
-    });
-
-    if (validQty >= item.requiredQuantity) {
-      confetti({ particleCount: 30, spread: 50, origin: { y: 0.7 } });
-    }
-  };
-
-  // Stepper adjuster for Arrived (+ / -)
-  const handleDailyAdjustArrived = (item: DailyRequirementItem, delta: number) => {
-    const current = Number(item.arrangedQuantity) || 0;
-    const nextVal = Math.max(0, current + delta);
-    handleDailySetArrivedQty(item, nextVal);
   };
 
   // Save Daily Requirements to Supabase DB from phone
@@ -538,15 +524,12 @@ export const MobileStoreInwardApp: React.FC = () => {
 
       {/* ========================================================================= */}
       {/* 2. DEDICATED FOLDER SWITCHER: DAILY REQUIREMENT vs PROJECT FOLDERS */}
-      {/* Visible to Chandramani level on Phone */}
       {/* ========================================================================= */}
       <nav className="bg-white border-b border-slate-200 px-3 py-2 sticky top-[53px] z-20 shadow-xs flex items-center gap-2">
-        {/* Folder 1: Daily Requirement (दैनिक सामग्री आवश्यकता) */}
+        {/* Folder 1: Daily Requirement */}
         <button
           type="button"
-          onClick={() => {
-            setActiveFolderMode('DAILY');
-          }}
+          onClick={() => setActiveFolderMode('DAILY')}
           className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
             activeFolderMode === 'DAILY'
               ? 'bg-slate-900 text-white shadow-sm ring-2 ring-slate-900/15'
@@ -564,12 +547,10 @@ export const MobileStoreInwardApp: React.FC = () => {
           </span>
         </button>
 
-        {/* Folder 2: Project Folders (प्रोजेक्ट फाइल्स) */}
+        {/* Folder 2: Project Folders */}
         <button
           type="button"
-          onClick={() => {
-            setActiveFolderMode('PROJECTS');
-          }}
+          onClick={() => setActiveFolderMode('PROJECTS')}
           className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
             activeFolderMode === 'PROJECTS'
               ? 'bg-slate-900 text-white shadow-sm ring-2 ring-slate-900/15'
@@ -589,7 +570,7 @@ export const MobileStoreInwardApp: React.FC = () => {
       </nav>
 
       {/* ========================================================================= */}
-      {/* MODE A: DAILY MATERIAL REQUIREMENT FOLDER (चन्द्रमणि दैनिक आवक ट्रैकर) */}
+      {/* MODE A: DAILY MATERIAL REQUIREMENT FOLDER */}
       {/* ========================================================================= */}
       {activeFolderMode === 'DAILY' && (
         <main className="p-3.5 space-y-3 flex-1 overflow-y-auto">
@@ -782,17 +763,15 @@ export const MobileStoreInwardApp: React.FC = () => {
             </button>
           </div>
 
-          {/* List of Material Requirement Cards */}
-          <div className="space-y-3">
+          {/* Daily Requirements List in Exact Clean Format */}
+          <div className="space-y-2.5">
             {filteredDailyRequirements.length === 0 ? (
               <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 space-y-3 shadow-xs">
                 <div className="w-12 h-12 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
                   <CalendarDays className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-800">
-                    No Materials Found
-                  </h3>
+                  <h3 className="text-sm font-bold text-slate-800">No Materials Found</h3>
                   <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
                     {dailySearchTerm
                       ? `No match for "${dailySearchTerm}" in this filter.`
@@ -818,187 +797,109 @@ export const MobileStoreInwardApp: React.FC = () => {
               </div>
             ) : (
               filteredDailyRequirements.map((item) => {
-                const reqQty = Number(item.requiredQuantity) || 1;
-                const arrQty = Number(item.arrangedQuantity) || 0;
-                const penQty = Math.max(0, reqQty - arrQty);
-                const isFullyArrived = arrQty >= reqQty;
-                const progressPct = Math.min(100, Math.round((arrQty / reqQty) * 100));
+                const total = Number(item.requiredQuantity) || 1;
+                const arrived = Number(item.arrangedQuantity) || 0;
+                const pending = Math.max(0, total - arrived);
+                const isArrived = arrived >= total && total > 0;
+                const isPartial = arrived > 0 && arrived < total;
 
                 return (
                   <div
                     key={item.id}
-                    className={`p-3.5 rounded-2xl bg-white border transition-all duration-150 shadow-xs space-y-3 ${
-                      isFullyArrived
-                        ? 'border-emerald-300 ring-1 ring-emerald-400/20 bg-emerald-50/15'
-                        : arrQty > 0
-                        ? 'border-blue-300 ring-1 ring-blue-400/10'
-                        : 'border-slate-200'
+                    onClick={() =>
+                      handleOpenInwardModal({
+                        id: item.id,
+                        description: item.description,
+                        machineName: item.machineName || 'Machine',
+                        sizeSpecs: item.sizeSpecification || 'Standard',
+                        quantity: total,
+                        unit: item.unit || 'Nos',
+                        arrivedQty: arrived,
+                        vendorName: item.vendorName,
+                        isDaily: true,
+                      })
+                    }
+                    className={`p-3 rounded-2xl bg-white border transition-all duration-150 shadow-xs cursor-pointer active:scale-[0.99] flex items-center justify-between gap-3 ${
+                      isArrived
+                        ? 'border-emerald-400 ring-2 ring-emerald-400/25 bg-emerald-50/25'
+                        : isPartial
+                        ? 'border-amber-300 ring-1 ring-amber-400/20 bg-amber-50/15'
+                        : 'border-slate-200 hover:border-slate-300'
                     }`}
                   >
-                    {/* Header: Machine, Project & Priority Pills */}
-                    <div className="flex items-center justify-between gap-1.5 flex-wrap">
+                    <div className="flex-1 min-w-0 space-y-1">
+                      {/* Black Machine Tag & Blue Size Tag */}
                       <div className="flex items-center gap-1.5 flex-wrap">
                         {item.machineName && (
-                          <span className="px-2 py-0.5 rounded-md bg-slate-900 text-white font-mono font-black text-[10px] tracking-wide">
+                          <span className="px-2 py-0.5 rounded-md bg-slate-900 text-white font-mono font-black text-[10px]">
                             {item.machineName}
                           </span>
                         )}
+                        <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-mono font-bold text-[10px] border border-blue-200">
+                          {item.sizeSpecification || 'Standard'}
+                        </span>
                         {item.projectName && (
-                          <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 font-mono font-bold text-[10px]">
+                          <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[9px] font-bold">
                             {item.projectName}
                           </span>
                         )}
-                        <span
-                          className={`px-2 py-0.5 rounded-md font-bold text-[9px] uppercase tracking-wider ${
-                            item.priority === 'Urgent'
-                              ? 'bg-rose-100 text-rose-800 border border-rose-300 font-black'
-                              : item.priority === 'High'
-                              ? 'bg-amber-100 text-amber-800 border border-amber-300'
-                              : 'bg-slate-100 text-slate-700'
-                          }`}
-                        >
-                          {item.priority || 'Normal'}
-                        </span>
                       </div>
 
-                      {/* Date Badge (if showing All Dates) */}
-                      {isAllDatesView && (
-                        <span className="text-[10px] font-mono text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded">
-                          {item.requirementDate}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Title & Specs */}
-                    <div>
-                      <h4 className="text-sm font-extrabold text-slate-900 leading-snug">
+                      {/* Description */}
+                      <h4 className="text-xs font-extrabold text-slate-900 leading-tight">
                         {item.description}
                       </h4>
-                      <div className="flex items-center gap-2 mt-1 text-xs text-slate-600 flex-wrap">
-                        <span className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 font-mono font-bold text-slate-800 text-[11px]">
-                          {item.sizeSpecification || 'Standard'}
+
+                      {/* Qty, Arrived, Pending and Vendor Line */}
+                      <div className="flex items-center gap-1.5 text-xs text-slate-500 flex-wrap">
+                        <span className="font-mono font-black text-slate-900">
+                          Qty: {total} {item.unit || 'Nos'}
                         </span>
-                        <span className="text-[11px] text-slate-500">
-                          Type: <strong className="text-slate-700">{item.materialType || 'Component'}</strong>
+                        <span className="text-slate-300">•</span>
+                        <span className="font-mono font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200 text-[11px]">
+                          Arrived: {arrived}
+                        </span>
+                        <span className="font-mono font-bold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200 text-[11px]">
+                          Pending: {pending}
                         </span>
                         {item.vendorName && (
-                          <span className="text-[11px] text-slate-500 truncate max-w-[150px]">
-                            Vendor: <strong className="text-slate-800">{item.vendorName}</strong>
-                          </span>
+                          <>
+                            <span className="text-slate-300">•</span>
+                            <span className="truncate text-slate-600">
+                              Vendor: <strong className="text-slate-800">{item.vendorName}</strong>
+                            </span>
+                          </>
                         )}
                       </div>
-                      {item.notes && (
-                        <p className="text-[11px] text-slate-500 mt-1 italic line-clamp-2">
-                          Note: {item.notes}
-                        </p>
-                      )}
                     </div>
 
-                    {/* ============================================================= */}
-                    {/* 3 SIMPLE BOXES: REQUIRED (कुल) | ARRIVED (आया) | PENDING (बाकी) */}
-                    {/* ============================================================= */}
-                    <div className="grid grid-cols-3 gap-2 py-1 text-center">
-                      {/* Box 1: Required */}
-                      <div className="p-2.5 rounded-xl bg-slate-100 border border-slate-200">
-                        <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide">
-                          Required (कुल)
-                        </span>
-                        <span className="text-base font-black text-slate-900 font-mono mt-0.5 block">
-                          {reqQty} <span className="text-[11px] font-normal text-slate-600">{item.unit || 'Nos'}</span>
-                        </span>
+                    {/* Big Checkbox */}
+                    <div className="shrink-0 flex flex-col items-center justify-center pl-1">
+                      <div
+                        className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-150 shadow-xs ${
+                          isArrived
+                            ? 'bg-emerald-600 text-white scale-105'
+                            : isPartial
+                            ? 'bg-amber-500 text-white'
+                            : 'bg-slate-100 hover:bg-slate-200 border-2 border-slate-300 text-slate-400'
+                        }`}
+                      >
+                        {isArrived ? (
+                          <Check className="w-7 h-7 stroke-[3.5] text-white" />
+                        ) : isPartial ? (
+                          <span className="font-mono font-black text-xs text-white">
+                            {arrived}/{total}
+                          </span>
+                        ) : (
+                          <div className="w-5 h-5 rounded-lg border-2 border-slate-400" />
+                        )}
                       </div>
-
-                      {/* Box 2: Arrived */}
-                      <div className={`p-2.5 rounded-xl border ${
-                        arrQty > 0 ? 'bg-emerald-50 border-emerald-300' : 'bg-slate-50 border-slate-200'
-                      }`}>
-                        <span className="block text-[10px] font-bold text-emerald-800 uppercase tracking-wide">
-                          Arrived (आया)
-                        </span>
-                        <span className="text-base font-black text-emerald-700 font-mono mt-0.5 block">
-                          {arrQty} <span className="text-[11px] font-normal text-emerald-600">{item.unit || 'Nos'}</span>
-                        </span>
-                      </div>
-
-                      {/* Box 3: Pending */}
-                      <div className={`p-2.5 rounded-xl border ${
-                        penQty > 0 ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'
-                      }`}>
-                        <span className="block text-[10px] font-bold text-amber-800 uppercase tracking-wide">
-                          Pending (बाकी)
-                        </span>
-                        <span className="text-base font-black text-amber-700 font-mono mt-0.5 block">
-                          {penQty} <span className="text-[11px] font-normal text-amber-600">{item.unit || 'Nos'}</span>
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* ============================================================= */}
-                    {/* SIMPLE ACTION: 1-CLICK MARK ARRIVED & PARTIAL RECEIPT */}
-                    {/* ============================================================= */}
-                    <div className="space-y-2 pt-1 border-t border-slate-100">
-                      {isFullyArrived ? (
-                        <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-600 text-white font-bold text-xs shadow-xs">
-                          <div className="flex items-center gap-2">
-                            <CheckCircle2 className="w-5 h-5 text-white shrink-0" />
-                            <div>
-                              <div className="text-xs font-black">MATERIAL ARRIVED (सामग्री आ गई)</div>
-                              <div className="text-[10px] text-emerald-100 font-mono">
-                                Verified {arrQty} {item.unit || 'Nos'} • Chandramani [CP]
-                              </div>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleDailyToggleArrived(item)}
-                            className="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-semibold active:scale-95 shadow-xs"
-                          >
-                            Reset (हटाएं)
-                          </button>
+                      {isArrived && (
+                        <div className="text-[9px] text-emerald-800 font-mono font-black text-center mt-1 flex items-center justify-center gap-0.5 bg-emerald-100 px-1 py-0.2 rounded border border-emerald-300">
+                          <Lock className="w-2.5 h-2.5 text-emerald-700 shrink-0" />
+                          <span>CP</span>
                         </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleDailyToggleArrived(item)}
-                          className="w-full py-3.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-sm flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99] transition-all"
-                        >
-                          <Check className="w-5 h-5 stroke-[3]" />
-                          <span>Mark Arrived ({reqQty} {item.unit || 'Nos'} आ गया)</span>
-                        </button>
                       )}
-
-                      {/* SIMPLE PARTIAL STEPPER (Only if less quantity received) */}
-                      <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs">
-                        <span className="text-slate-700 font-bold">
-                          Partial (कम माल आया तो):
-                        </span>
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleDailyAdjustArrived(item, -1)}
-                            disabled={arrQty <= 0}
-                            className="w-8 h-8 rounded-lg bg-white border border-slate-300 text-slate-800 font-bold text-base flex items-center justify-center active:scale-90 disabled:opacity-30 cursor-pointer shadow-2xs"
-                          >
-                            -
-                          </button>
-                          <input
-                            type="number"
-                            min="0"
-                            max={reqQty}
-                            value={arrQty}
-                            onChange={(e) => handleDailySetArrivedQty(item, Number(e.target.value))}
-                            className="w-14 text-center py-1 font-mono font-black text-slate-900 bg-white border border-slate-300 rounded-lg text-sm"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleDailyAdjustArrived(item, 1)}
-                            className="w-8 h-8 rounded-lg bg-white border border-slate-300 text-slate-800 font-bold text-base flex items-center justify-center active:scale-90 cursor-pointer shadow-2xs"
-                          >
-                            +
-                          </button>
-                          <span className="text-slate-500 font-mono text-xs ml-0.5">{item.unit || 'Nos'}</span>
-                        </div>
-                      </div>
                     </div>
                   </div>
                 );
@@ -1009,7 +910,7 @@ export const MobileStoreInwardApp: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* MODE B: EXISTING PROJECT INWARD WORKFLOW (STEP 1 -> STEP 2 -> STEP 3) */}
+      {/* MODE B: PROJECT INWARD WORKFLOW (STEP 1 -> STEP 2 -> STEP 3) */}
       {/* ========================================================================= */}
       {activeFolderMode === 'PROJECTS' && (
         <>
@@ -1161,10 +1062,9 @@ export const MobileStoreInwardApp: React.FC = () => {
             </main>
           )}
 
-          {/* STEP 2: PICK MACHINE FOLDER (मशीन फोल्डर चुनें) */}
+          {/* STEP 2: PICK MACHINE FOLDER */}
           {activeProject && viewStep === 'MACHINES' && (
             <main className="p-3.5 space-y-3 flex-1 overflow-y-auto">
-              {/* Back to Step 1 Bar */}
               <div className="flex items-center justify-between">
                 <button
                   type="button"
@@ -1184,7 +1084,6 @@ export const MobileStoreInwardApp: React.FC = () => {
                 </div>
               </div>
 
-              {/* Step 2 Indicator */}
               <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-xs flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="w-6 h-6 rounded-full bg-slate-900 text-white text-xs font-black flex items-center justify-center">
@@ -1199,7 +1098,6 @@ export const MobileStoreInwardApp: React.FC = () => {
                 </span>
               </div>
 
-              {/* Machine Folder Cards */}
               <div className="space-y-2.5">
                 {/* 1. "ALL MACHINES" Combined Folder */}
                 <div
@@ -1311,7 +1209,7 @@ export const MobileStoreInwardApp: React.FC = () => {
             </main>
           )}
 
-          {/* STEP 3: 1-TAP INWARD CHECKLIST (मटेरियल आवक टिक लिस्ट) */}
+          {/* STEP 3: 1-TAP INWARD CHECKLIST (Exact layout user requested) */}
           {activeProject && viewStep === 'CHECKLIST' && (
             <div className="flex-1 flex flex-col overflow-hidden">
               {/* Back to Step 2 Header */}
@@ -1402,7 +1300,7 @@ export const MobileStoreInwardApp: React.FC = () => {
                 </div>
               </div>
 
-              {/* Checklist Items List */}
+              {/* Checklist Items List (Cards with Arrived & Pending quantity right in line) */}
               <main className="p-3.5 space-y-2.5 flex-1 overflow-y-auto">
                 {filteredMaterials.length === 0 ? (
                   <div className="p-8 text-center text-slate-500 bg-white rounded-2xl border border-slate-200">
@@ -1410,18 +1308,38 @@ export const MobileStoreInwardApp: React.FC = () => {
                   </div>
                 ) : (
                   filteredMaterials.map((m) => {
-                    const isArrived = Boolean(m.isReceived);
+                    const total = Number(m.quantity) || 1;
+                    const arrived = Number(m.receivedQuantity ?? (m.isReceived ? total : 0)) || 0;
+                    const pending = Math.max(0, total - arrived);
+                    const isArrived = arrived >= total && total > 0;
+                    const isPartial = arrived > 0 && arrived < total;
+
                     return (
                       <div
                         key={m.id}
-                        onClick={() => toggleMaterialReceived(m.id)}
+                        onClick={() =>
+                          handleOpenInwardModal({
+                            id: m.id,
+                            description: m.description,
+                            machineName: m.machineName || m.machineType || selectedMachineFolder,
+                            sizeSpecs: m.sizeSpecs || 'Standard',
+                            quantity: total,
+                            unit: m.unit || 'Nos',
+                            arrivedQty: arrived,
+                            vendorName: m.vendorName || m.vendor,
+                            isDaily: false,
+                          })
+                        }
                         className={`p-3 rounded-2xl bg-white border transition-all duration-150 shadow-xs cursor-pointer active:scale-[0.99] flex items-center justify-between gap-3 ${
                           isArrived
                             ? 'border-emerald-400 ring-2 ring-emerald-400/25 bg-emerald-50/25'
+                            : isPartial
+                            ? 'border-amber-300 ring-1 ring-amber-400/20 bg-amber-50/15'
                             : 'border-slate-200 hover:border-slate-300'
                         }`}
                       >
                         <div className="flex-1 min-w-0 space-y-1">
+                          {/* Machine Black Tag & Size Blue Tag */}
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="px-2 py-0.5 rounded-md bg-slate-900 text-white font-mono font-black text-[10px]">
                               {m.machineName || m.machineType || selectedMachineFolder}
@@ -1430,32 +1348,52 @@ export const MobileStoreInwardApp: React.FC = () => {
                               {m.sizeSpecs || 'Standard'}
                             </span>
                           </div>
+
+                          {/* Title */}
                           <p className="text-xs font-extrabold text-slate-900 leading-tight">
                             {m.description}
                           </p>
-                          <div className="flex items-center gap-2 text-xs text-slate-500">
+
+                          {/* Line with Qty, Arrived, Pending and Vendor */}
+                          <div className="flex items-center gap-1.5 text-xs text-slate-500 flex-wrap">
                             <span className="font-mono font-black text-slate-900">
                               Qty: {m.quantity} {m.unit || 'Nos'}
                             </span>
-                            {m.vendorName && (
-                              <span className="truncate">
-                                Vendor: <strong className="text-slate-800">{m.vendorName}</strong>
-                              </span>
+                            <span className="text-slate-300">•</span>
+                            <span className="font-mono font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200 text-[11px]">
+                              Arrived: {arrived}
+                            </span>
+                            <span className="font-mono font-bold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200 text-[11px]">
+                              Pending: {pending}
+                            </span>
+                            {(m.vendorName || m.vendor) && (
+                              <>
+                                <span className="text-slate-300">•</span>
+                                <span className="truncate text-slate-600">
+                                  Vendor: <strong className="text-slate-800">{m.vendorName || m.vendor}</strong>
+                                </span>
+                              </>
                             )}
                           </div>
                         </div>
 
-                        {/* Big 1-Tap Checkbox */}
+                        {/* Big Checkbox */}
                         <div className="shrink-0 flex flex-col items-center justify-center pl-1">
                           <div
                             className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-150 shadow-xs ${
                               isArrived
                                 ? 'bg-emerald-600 text-white scale-105'
+                                : isPartial
+                                ? 'bg-amber-500 text-white'
                                 : 'bg-slate-100 hover:bg-slate-200 border-2 border-slate-300 text-slate-400'
                             }`}
                           >
                             {isArrived ? (
                               <Check className="w-7 h-7 stroke-[3.5] text-white" />
+                            ) : isPartial ? (
+                              <span className="font-mono font-black text-xs text-white">
+                                {arrived}/{total}
+                              </span>
                             ) : (
                               <div className="w-5 h-5 rounded-lg border-2 border-slate-400" />
                             )}
@@ -1463,9 +1401,7 @@ export const MobileStoreInwardApp: React.FC = () => {
                           {isArrived && (
                             <div className="text-[9px] text-emerald-800 font-mono font-black text-center mt-1 flex items-center justify-center gap-0.5 bg-emerald-100 px-1 py-0.2 rounded border border-emerald-300">
                               <Lock className="w-2.5 h-2.5 text-emerald-700 shrink-0" />
-                              <span>
-                                {m.receivedByInitials || 'CP'}
-                              </span>
+                              <span>{m.receivedByInitials || 'CP'}</span>
                             </div>
                           )}
                         </div>
@@ -1480,9 +1416,10 @@ export const MobileStoreInwardApp: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* 3. FLOATING BOTTOM BAR: SAVE TO DB & CLOUD STATUS */}
+      {/* 3. FLOATING BOTTOM BAR: NORMAL SAVE TO DB */}
+      {/* Before clicking an item, keeps this exact clean green button */}
       {/* ========================================================================= */}
-      <footer className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 p-3 shadow-lg">
+      <footer className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-md border-t border-slate-200 p-3 shadow-lg">
         <div className="max-w-md mx-auto space-y-1.5">
           {saveToast && (
             <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-mono font-bold text-center shadow-xs">
@@ -1495,16 +1432,16 @@ export const MobileStoreInwardApp: React.FC = () => {
               type="button"
               onClick={handleSaveDailyToDb}
               disabled={isSaving}
-              className="w-full py-3.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-sm shadow-md flex items-center justify-center gap-2 transition-all active:scale-[0.99] cursor-pointer disabled:opacity-50"
+              className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-md flex items-center justify-center gap-2 transition-all active:scale-[0.99] cursor-pointer disabled:opacity-50"
             >
               {isSaving ? (
                 <>
-                  <span className="w-4 h-4 border-2 border-slate-950/30 border-t-slate-950 rounded-full animate-spin" />
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   <span>Saving Inward Receipts...</span>
                 </>
               ) : (
                 <>
-                  <Database className="w-5 h-5 text-slate-950" />
+                  <Database className="w-5 h-5 text-white" />
                   <span>Save Inward Receipts (सेव करें)</span>
                 </>
               )}
@@ -1533,6 +1470,148 @@ export const MobileStoreInwardApp: React.FC = () => {
           )}
         </div>
       </footer>
+
+      {/* ========================================================================= */}
+      {/* 4. SWIPE-UP DRAWER: ASK QUANTITY WHEN CLICKING AN ITEM */}
+      {/* Slides up from bottom when an item is tapped */}
+      {/* ========================================================================= */}
+      {inwardModalItem && (
+        <div className="fixed inset-0 z-50 flex flex-col justify-end">
+          {/* Backdrop */}
+          <div
+            onClick={() => setInwardModalItem(null)}
+            className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity"
+          />
+
+          {/* Swipe-Up Sheet */}
+          <div className="relative z-10 bg-white rounded-t-3xl border-t border-slate-200 shadow-2xl p-4 max-w-md w-full mx-auto space-y-3.5 animate-in slide-in-from-bottom duration-200">
+            {/* Grab Handle */}
+            <div className="w-12 h-1.5 rounded-full bg-slate-300 mx-auto" />
+
+            {/* Header: Item & Machine */}
+            <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2.5">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                  <span className="px-2 py-0.5 rounded-md bg-slate-900 text-white font-mono font-black text-[10px]">
+                    {inwardModalItem.machineName}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-mono font-bold text-[10px] border border-blue-200">
+                    {inwardModalItem.sizeSpecs}
+                  </span>
+                </div>
+                <h3 className="text-sm font-extrabold text-slate-900 leading-tight">
+                  {inwardModalItem.description}
+                </h3>
+                {inwardModalItem.vendorName && (
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Vendor: <strong className="text-slate-800">{inwardModalItem.vendorName}</strong>
+                  </p>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setInwardModalItem(null)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* 3 Number Display: Required | Arrived | Pending */}
+            {(() => {
+              const req = inwardModalItem.quantity;
+              const arr = Math.max(0, Number(enteredArrivedQty) || 0);
+              const pen = Math.max(0, req - arr);
+              return (
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="p-2 rounded-xl bg-slate-100 border border-slate-200">
+                    <span className="block text-[9px] font-bold text-slate-500 uppercase">Required (कुल)</span>
+                    <span className="text-sm font-black text-slate-900 font-mono mt-0.5 block">
+                      {req} <span className="text-[10px] font-normal text-slate-600">{inwardModalItem.unit}</span>
+                    </span>
+                  </div>
+
+                  <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-300">
+                    <span className="block text-[9px] font-bold text-emerald-800 uppercase">Arrived (आया)</span>
+                    <span className="text-sm font-black text-emerald-700 font-mono mt-0.5 block">
+                      {arr} <span className="text-[10px] font-normal text-emerald-600">{inwardModalItem.unit}</span>
+                    </span>
+                  </div>
+
+                  <div className="p-2 rounded-xl bg-amber-50 border border-amber-300">
+                    <span className="block text-[9px] font-bold text-amber-800 uppercase">Pending (बाकी)</span>
+                    <span className="text-sm font-black text-amber-700 font-mono mt-0.5 block">
+                      {pen} <span className="text-[10px] font-normal text-amber-600">{inwardModalItem.unit}</span>
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Stepper & Input for Arrived Quantity */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+              <label className="block text-xs font-bold text-slate-800 text-center">
+                Enter Arrived Quantity (आई हुई संख्या दर्ज करें):
+              </label>
+
+              <div className="flex items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEnteredArrivedQty((prev) => Math.max(0, prev - 1))}
+                  className="w-11 h-11 rounded-xl bg-white border border-slate-300 text-slate-800 font-bold text-xl flex items-center justify-center active:scale-90 shadow-2xs cursor-pointer"
+                >
+                  -
+                </button>
+                <input
+                  type="number"
+                  min="0"
+                  max={inwardModalItem.quantity}
+                  value={enteredArrivedQty}
+                  onChange={(e) => setEnteredArrivedQty(Number(e.target.value))}
+                  className="w-24 text-center py-2 font-mono font-black text-slate-900 bg-white border border-slate-300 rounded-xl text-lg focus:outline-none focus:border-emerald-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setEnteredArrivedQty((prev) => Math.min(inwardModalItem.quantity, prev + 1))}
+                  className="w-11 h-11 rounded-xl bg-white border border-slate-300 text-slate-800 font-bold text-xl flex items-center justify-center active:scale-90 shadow-2xs cursor-pointer"
+                >
+                  +
+                </button>
+                <span className="text-slate-600 font-mono text-xs font-bold">{inwardModalItem.unit}</span>
+              </div>
+
+              {/* Quick Presets */}
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setEnteredArrivedQty(inwardModalItem.quantity)}
+                  className="flex-1 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-xs font-black text-emerald-800 active:scale-95 transition-all"
+                >
+                  ✓ All Arrived ({inwardModalItem.quantity})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEnteredArrivedQty(0)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold active:scale-95 transition-all"
+                >
+                  Reset (0)
+                </button>
+              </div>
+            </div>
+
+            {/* Confirm & Save Button */}
+            <button
+              type="button"
+              onClick={handleConfirmInwardQty}
+              className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-md flex items-center justify-center gap-2 active:scale-[0.99] cursor-pointer transition-all"
+            >
+              <Check className="w-5 h-5 stroke-[3]" />
+              <span>Save Inward Receipts (सेव करें)</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
