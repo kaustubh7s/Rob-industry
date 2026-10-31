@@ -872,69 +872,38 @@ export const DailyRequirementModule: React.FC = () => {
       </div>
 
       {/* ===================================================================== */}
-      {/* 2. FOUR SUMMARY METRICS CARDS                                         */}
+      {/* 2. SIMPLE SUMMARY METRICS STRIP                                       */}
       {/* ===================================================================== */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Today's Requirements */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex items-start justify-between">
-          <div>
-            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Today's Requirements</p>
-            <h3 className="text-2xl font-black text-slate-900 mt-1">
-              {globalMetrics.todayCount} <span className="text-xs font-semibold text-slate-500">Materials</span>
-            </h3>
-            <p className="text-[11px] text-blue-600 mt-1 font-medium flex items-center gap-1">
-              <CalendarDays className="w-3 h-3" />
-              <span>Scheduled for {formatDateFriendly(new Date().toISOString().split('T')[0])}</span>
-            </p>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center shrink-0">
-            <CalendarDays className="w-5 h-5" />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* Metric 1: Today */}
+        <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs">
+          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Today's Schedule</span>
+          <div className="text-xl font-black text-slate-900 mt-1">
+            {globalMetrics.todayCount} <span className="text-xs font-semibold text-slate-400">Items</span>
           </div>
         </div>
 
-        {/* Card 2: Total Required */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex items-start justify-between">
-          <div>
-            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Required</p>
-            <h3 className="text-lg font-black text-slate-900 mt-1 line-clamp-1">
-              {globalMetrics.requiredSummary}
-            </h3>
-            <p className="text-[11px] text-slate-500 mt-1">Across all {globalMetrics.totalCount} active items</p>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-600 flex items-center justify-center shrink-0">
-            <Boxes className="w-5 h-5" />
+        {/* Metric 2: Total Required */}
+        <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs">
+          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Total Required</span>
+          <div className="text-xl font-black text-slate-900 font-mono mt-1 truncate">
+            {globalMetrics.requiredSummary}
           </div>
         </div>
 
-        {/* Card 3: Completed / Arranged */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex items-start justify-between">
-          <div>
-            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Arrived (आवक)</p>
-            <h3 className="text-lg font-black text-emerald-700 mt-1 line-clamp-1">
-              {globalMetrics.arrangedSummary}
-            </h3>
-            <p className="text-[11px] text-emerald-600 mt-1 font-medium">
-              {globalMetrics.completedCount} items fully received
-            </p>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center shrink-0">
-            <CheckCircle2 className="w-5 h-5" />
+        {/* Metric 3: Arrived */}
+        <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-3.5 shadow-2xs">
+          <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider block">Arrived (आवक)</span>
+          <div className="text-xl font-black text-emerald-700 font-mono mt-1 truncate">
+            {globalMetrics.arrangedSummary}
           </div>
         </div>
 
-        {/* Card 4: Pending Shortages */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex items-start justify-between">
-          <div>
-            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Pending Shortages (बाकी)</p>
-            <h3 className="text-lg font-black text-amber-700 mt-1 line-clamp-1">
-              {globalMetrics.pendingSummary}
-            </h3>
-            <p className="text-[11px] text-amber-600 mt-1 font-medium">
-              {globalMetrics.pendingCount} items awaiting fulfillment
-            </p>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center shrink-0">
-            <AlertCircle className="w-5 h-5" />
+        {/* Metric 4: Pending */}
+        <div className="bg-amber-50/60 border border-amber-200 rounded-xl p-3.5 shadow-2xs">
+          <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider block">Pending (बाकी)</span>
+          <div className="text-xl font-black text-amber-700 font-mono mt-1 truncate">
+            {globalMetrics.pendingSummary}
           </div>
         </div>
       </div>
