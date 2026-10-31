@@ -63,6 +63,7 @@ export const DailyRequirementModule: React.FC = () => {
     projects,
     masterMachines,
     masterBOMs,
+    setActiveTab,
   } = useERP();
 
   // ---------------------------------------------------------------------------
@@ -825,7 +826,19 @@ export const DailyRequirementModule: React.FC = () => {
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('entry');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="px-3 py-1 rounded-xl bg-slate-100 hover:bg-blue-50 text-slate-800 hover:text-blue-700 font-bold text-xs flex items-center gap-1.5 border border-slate-200 transition-all cursor-pointer shadow-2xs active:scale-95"
+                title="Return to Material Entry Station"
+              >
+                <ArrowLeft className="w-3.5 h-3.5 text-slate-500" />
+                <span>← Material Entry Station</span>
+              </button>
               <span className="font-mono text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1.5">
                 <CalendarDays className="w-3.5 h-3.5 text-emerald-600" />
                 <span>Shopfloor Tracking Active</span>
