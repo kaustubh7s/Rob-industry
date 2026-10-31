@@ -853,14 +853,6 @@ export const DailyRequirementModule: React.FC = () => {
             </button>
             <button
               type="button"
-              onClick={handleOpenBOMImportModal}
-              className="px-3.5 py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
-            >
-              <FolderTree className="w-4 h-4 text-indigo-600" />
-              <span>+ Add from BOM</span>
-            </button>
-            <button
-              type="button"
               onClick={handleExportExcel}
               className="px-3.5 py-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
             >
@@ -1147,7 +1139,7 @@ export const DailyRequirementModule: React.FC = () => {
             <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
               {renderRequirementsTable(
                 detailRequirements,
-                `No materials found for ${selectedDate}. Click "+ New Requirement" or "+ Add from BOM" to get started.`
+                `No materials found for ${selectedDate}. Click "+ New Requirement" to get started.`
               )}
             </div>
           ) : (
@@ -1434,13 +1426,14 @@ export const DailyRequirementModule: React.FC = () => {
                             return (
                               <span
                                 key={unit}
-                                className="px-2 py-0.5 rounded-lg bg-white border border-slate-200 text-[11px] font-mono shadow-2xs"
+                                className="px-2.5 py-0.5 rounded-lg bg-white border border-slate-200 text-[11px] font-mono shadow-2xs flex items-center gap-1.5"
                               >
-                                <strong className="text-slate-900">{unit}:</strong>{' '}
-                                <span className="text-emerald-700 font-bold">{arr} Arr</span> /{' '}
+                                <strong className="text-slate-900">{unit}:</strong>
+                                <span className="text-emerald-700 font-bold">{arr} Arr</span>
+                                <span className="text-slate-400">/</span>
                                 <span className="text-slate-600">{req} Req</span>
                                 {pen > 0 && (
-                                  <span className="text-amber-700 font-bold ml-1 bg-amber-50 px-1 py-0.2 rounded border border-amber-200">
+                                  <span className="text-amber-700 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 ml-1">
                                     {pen} Pending
                                   </span>
                                 )}
@@ -1455,24 +1448,6 @@ export const DailyRequirementModule: React.FC = () => {
                         className="flex items-center gap-1.5 shrink-0"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <button
-                          type="button"
-                          onClick={() => handleOpenAddModal(dateStr)}
-                          className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1 shadow-2xs cursor-pointer active:scale-95 transition-all"
-                          title="Add Material for this date"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>+ Add Material</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenBOMImportModalForDate(dateStr)}
-                          className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs flex items-center gap-1 border border-indigo-200 shadow-2xs cursor-pointer active:scale-95 transition-all"
-                          title="Import from BOM for this date"
-                        >
-                          <FolderTree className="w-3.5 h-3.5 text-indigo-600" />
-                          <span>+ BOM</span>
-                        </button>
                         <button
                           type="button"
                           onClick={() => handleExportExcelForDate(dateStr, items)}
