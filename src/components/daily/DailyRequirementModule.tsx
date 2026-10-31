@@ -26,11 +26,11 @@ import {
   TrendingUp,
   Tag,
   Building2,
-  User,
-  MoreVertical,
-  CheckSquare,
   Square,
-  ArrowUpDown,
+  Minus,
+  CheckSquare,
+  LayoutGrid,
+  Table as TableIcon,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -58,16 +58,16 @@ export const DailyRequirementModule: React.FC = () => {
     projects,
     masterMachines,
     masterBOMs,
-    vendors,
   } = useERP();
 
   // ---------------------------------------------------------------------------
   // NAVIGATION & VIEW STATE
   // ---------------------------------------------------------------------------
-  // 'dates' = Date-wise Grouped View
-  // 'detail' = Focused view for a selected date
-  // 'table' = All materials flat table view
-  const [activeView, setActiveView] = useState<'dates' | 'detail' | 'table'>('dates');
+  // 'detail' = Focused today / selected date view (Default for fast daily shop-floor checkoff)
+  // 'dates' = Date-wise Grouped Schedule view
+  // 'table' = All dates flat table
+  const [activeView, setActiveView] = useState<'detail' | 'dates' | 'table'>('detail');
+  const [displayMode, setDisplayMode] = useState<'table' | 'cards'>('table');
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     return new Date().toISOString().split('T')[0];
   });
@@ -75,7 +75,7 @@ export const DailyRequirementModule: React.FC = () => {
   // Filters & Search
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedProjectFilter, setSelectedProjectFilter] = useState<string>('ALL');
-  const [selectedStatusFilter, setSelectedStatusFilter] = useState<'ALL' | DailyRequirementStatus>('ALL');
+  const [quickStatusFilter, setQuickStatusFilter] = useState<'ALL' | 'ARRIVED' | 'PENDING'>('ALL');
   const [selectedPriorityFilter, setSelectedPriorityFilter] = useState<'ALL' | DailyRequirementPriority>('ALL');
 
   // Modals state
@@ -139,10 +139,10 @@ export const DailyRequirementModule: React.FC = () => {
         }
       }
 
-      // Status filter
-      if (selectedStatusFilter !== 'ALL') {
-        if (item.status !== selectedStatusFilter) return false;
-      }
+      // Quick Arrival / Pending Filter
+      const isCompleted = item.status === 'Completed' || item.arrangedQuantity >= item.requiredQuantity;
+      if (quickStatusFilter === 'ARRIVED' && !isCompleted) return false;
+      if (quickStatusFilter === 'PENDING' && isCompleted) return false;
 
       // Priority filter
       if (selectedPriorityFilter !== 'ALL') {
@@ -151,7 +151,7 @@ export const DailyRequirementModule: React.FC = () => {
 
       return true;
     });
-  }, [dailyRequirements, searchTerm, selectedProjectFilter, selectedStatusFilter, selectedPriorityFilter]);
+  }, [dailyRequirements, searchTerm, selectedProjectFilter, quickStatusFilter, selectedPriorityFilter]);
 
   // Requirements for active selected date (in detail view)
   const detailRequirements = useMemo(() => {
@@ -170,6 +170,59 @@ export const DailyRequirementModule: React.FC = () => {
 
     return Object.entries(map).sort(([dateA], [dateB]) => dateB.localeCompare(dateA));
   }, [filteredRequirements]);
+
+  // ---------------------------------------------------------------------------
+  // 1-CLICK ACTIONS: MARK ARRIVED & INLINE ADJUSTMENTS
+  // ---------------------------------------------------------------------------
+  const handleToggleArrived = (item: DailyRequirementItem) => {
+    const isCompleted = item.status === 'Completed' || item.arrangedQuantity >= item.requiredQuantity;
+    if (isCompleted) {
+      // Toggle back to Pending
+      updateDailyRequirement(item.id, {
+        arrangedQuantity: 0,
+        status: 'Pending',
+      });
+    } else {
+      // 1-Click: Mark completely arrived!
+      updateDailyRequirementProgress(
+        item.id,
+        Math.max(0, item.requiredQuantity - item.arrangedQuantity),
+        'Confirmed material arrival on shop floor',
+        item.vendorName
+      );
+      confetti({ particleCount: 30, spread: 60, origin: { y: 0.7 } });
+    }
+  };
+
+  const handleQuickAdjustArrived = (item: DailyRequirementItem, delta: number) => {
+    const newQty = Math.max(0, (Number(item.arrangedQuantity) || 0) + delta);
+    const newStatus: DailyRequirementStatus =
+      newQty >= item.requiredQuantity
+        ? 'Completed'
+        : newQty > 0
+        ? 'Partially Arranged'
+        : 'Pending';
+
+    updateDailyRequirement(item.id, {
+      arrangedQuantity: newQty,
+      status: newStatus,
+    });
+  };
+
+  const handleSetExactArrived = (item: DailyRequirementItem, exactVal: number) => {
+    const validQty = Math.max(0, Number(exactVal) || 0);
+    const newStatus: DailyRequirementStatus =
+      validQty >= item.requiredQuantity
+        ? 'Completed'
+        : validQty > 0
+        ? 'Partially Arranged'
+        : 'Pending';
+
+    updateDailyRequirement(item.id, {
+      arrangedQuantity: validQty,
+      status: newStatus,
+    });
+  };
 
   // ---------------------------------------------------------------------------
   // STRICT UNIT-WISE SUMMARIES (NEVER MIX INCOMPATIBLE UNITS)
@@ -211,8 +264,12 @@ export const DailyRequirementModule: React.FC = () => {
     const todayItems = dailyRequirements.filter((r) => r.requirementDate === todayStr);
 
     const totalCount = dailyRequirements.length;
-    const completedItems = dailyRequirements.filter((r) => r.status === 'Completed');
-    const pendingItems = dailyRequirements.filter((r) => r.status !== 'Completed');
+    const completedItems = dailyRequirements.filter(
+      (r) => r.status === 'Completed' || r.arrangedQuantity >= r.requiredQuantity
+    );
+    const pendingItems = dailyRequirements.filter(
+      (r) => r.status !== 'Completed' && r.arrangedQuantity < r.requiredQuantity
+    );
 
     const totalUnits = computeUnitBreakdown(dailyRequirements);
     const arrangedUnits = computeUnitBreakdown(dailyRequirements);
@@ -233,6 +290,15 @@ export const DailyRequirementModule: React.FC = () => {
   const detailMetrics = useMemo(() => {
     return computeUnitBreakdown(detailRequirements);
   }, [detailRequirements]);
+
+  // Counts for All / Arrived / Pending quick tabs
+  const activeList = activeView === 'detail' ? detailRequirements : filteredRequirements;
+  const arrivedCount = activeList.filter(
+    (i) => i.status === 'Completed' || i.arrangedQuantity >= i.requiredQuantity
+  ).length;
+  const pendingCount = activeList.filter(
+    (i) => i.status !== 'Completed' && i.arrangedQuantity < i.requiredQuantity
+  ).length;
 
   // ---------------------------------------------------------------------------
   // HANDLERS
@@ -370,7 +436,7 @@ export const DailyRequirementModule: React.FC = () => {
   };
 
   // ---------------------------------------------------------------------------
-  // UPDATE PROGRESS
+  // UPDATE PROGRESS MODAL
   // ---------------------------------------------------------------------------
   const handleOpenProgressModal = (item: DailyRequirementItem) => {
     setProgressModalItem(item);
@@ -412,7 +478,7 @@ export const DailyRequirementModule: React.FC = () => {
       'Material Type': it.materialType,
       'Size Specification': it.sizeSpecification,
       'Required Qty': it.requiredQuantity,
-      'Arranged Qty': it.arrangedQuantity,
+      'Arrived Qty': it.arrangedQuantity,
       'Pending Qty': Math.max(0, it.requiredQuantity - it.arrangedQuantity),
       'Unit': it.unit,
       'Project': it.projectName || '-',
@@ -444,7 +510,7 @@ export const DailyRequirementModule: React.FC = () => {
     doc.text(`Scope: ${activeView === 'detail' ? `Date: ${selectedDate}` : 'All Scheduled Dates'} | Generated: ${new Date().toLocaleString()}`, 14, 22);
 
     const headers = [
-      ['Sr', 'Date', 'Description', 'Type', 'Size Specification', 'Req', 'Arr', 'Pending', 'Unit', 'Project', 'Status']
+      ['Sr', 'Date', 'Description', 'Type', 'Size Specification', 'Req', 'Arrived', 'Pending', 'Unit', 'Project', 'Status']
     ];
 
     const body = itemsToExport.map((it, idx) => [
@@ -473,7 +539,6 @@ export const DailyRequirementModule: React.FC = () => {
     doc.save(`RSB_Daily_Requirements_${activeView === 'detail' ? selectedDate : 'All'}.pdf`);
   };
 
-  // Helper date formatter
   const formatDateFriendly = (dStr: string) => {
     try {
       const d = new Date(dStr);
@@ -488,47 +553,10 @@ export const DailyRequirementModule: React.FC = () => {
     }
   };
 
-  const getStatusBadge = (status: DailyRequirementStatus) => {
-    switch (status) {
-      case 'Completed':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-            <span>Completed</span>
-          </span>
-        );
-      case 'Partially Arranged':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
-            <Clock className="w-3 h-3 text-blue-600" />
-            <span>Partially Arranged</span>
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
-            <AlertCircle className="w-3 h-3 text-amber-600" />
-            <span>Pending</span>
-          </span>
-        );
-    }
-  };
-
-  const getPriorityBadge = (p: DailyRequirementPriority) => {
-    switch (p) {
-      case 'Urgent':
-        return <span className="px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-800 uppercase tracking-wider">Urgent</span>;
-      case 'High':
-        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 uppercase tracking-wider">High</span>;
-      default:
-        return <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700">Normal</span>;
-    }
-  };
-
   return (
-    <div className="space-y-6 pb-16 select-text">
+    <div className="space-y-6 pb-20 select-text">
       {/* ===================================================================== */}
-      {/* 1. TOP HEADER & WORKFLOW BANNER */}
+      {/* 1. TOP HEADER BANNER                                                  */}
       {/* ===================================================================== */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -539,25 +567,25 @@ export const DailyRequirementModule: React.FC = () => {
                 <span>Shopfloor Tracking Active</span>
               </span>
               <span className="text-slate-400">•</span>
-              <span className="text-xs text-slate-500 font-medium">Daily Material Inward & Staging</span>
+              <span className="text-xs text-slate-500 font-medium">Daily Material Inward (आवक) & Staging</span>
             </div>
             <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
               <span>Daily Material Requirement</span>
             </h1>
             <p className="text-xs text-slate-500 max-w-3xl">
-              Live factory tracking: Schedule daily material demands, import directly from Master BOMs, track vendor dispatches, and check off inward quantities unit-by-unit.
+              Tick to confirm material arrival (आवक) from vendor, track pending shortages, and adjust received quantities inline.
             </p>
           </div>
 
           {/* Quick Header Actions */}
-          <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               type="button"
               onClick={() => handleOpenAddModal()}
               className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>+ New Daily Requirement</span>
+              <span>+ New Requirement</span>
             </button>
             <button
               type="button"
@@ -588,7 +616,7 @@ export const DailyRequirementModule: React.FC = () => {
       </div>
 
       {/* ===================================================================== */}
-      {/* 2. FOUR SUMMARY METRICS CARDS */}
+      {/* 2. FOUR SUMMARY METRICS CARDS                                         */}
       {/* ===================================================================== */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Today's Requirements */}
@@ -608,7 +636,7 @@ export const DailyRequirementModule: React.FC = () => {
           </div>
         </div>
 
-        {/* Card 2: Total Required (Strict Unit-Wise) */}
+        {/* Card 2: Total Required */}
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex items-start justify-between">
           <div>
             <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Required</p>
@@ -625,12 +653,12 @@ export const DailyRequirementModule: React.FC = () => {
         {/* Card 3: Completed / Arranged */}
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex items-start justify-between">
           <div>
-            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Completed / Arranged</p>
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Arrived (आवक)</p>
             <h3 className="text-lg font-black text-emerald-700 mt-1 line-clamp-1">
               {globalMetrics.arrangedSummary}
             </h3>
             <p className="text-[11px] text-emerald-600 mt-1 font-medium">
-              {globalMetrics.completedCount} items fully satisfied
+              {globalMetrics.completedCount} items fully received
             </p>
           </div>
           <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center shrink-0">
@@ -638,10 +666,10 @@ export const DailyRequirementModule: React.FC = () => {
           </div>
         </div>
 
-        {/* Card 4: Pending Requirements */}
+        {/* Card 4: Pending Shortages */}
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex items-start justify-between">
           <div>
-            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Pending Shortages</p>
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Pending Shortages (बाकी)</p>
             <h3 className="text-lg font-black text-amber-700 mt-1 line-clamp-1">
               {globalMetrics.pendingSummary}
             </h3>
@@ -656,7 +684,7 @@ export const DailyRequirementModule: React.FC = () => {
       </div>
 
       {/* ===================================================================== */}
-      {/* 3. TOOLBAR & FILTER CONTROLS */}
+      {/* 3. SIMPLIFIED TOOLBAR & WORKSTATION TABS                              */}
       {/* ===================================================================== */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
         <div className="flex flex-col md:flex-row items-center justify-between gap-3">
@@ -681,7 +709,7 @@ export const DailyRequirementModule: React.FC = () => {
             )}
           </div>
 
-          {/* Quick Date Picker & View Mode */}
+          {/* Quick Date Selector & View Navigation */}
           <div className="flex items-center gap-2 w-full md:w-auto flex-wrap">
             <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 text-xs">
               <CalendarDays className="w-3.5 h-3.5 text-slate-500" />
@@ -696,34 +724,94 @@ export const DailyRequirementModule: React.FC = () => {
               />
             </div>
 
-            {/* View Mode Toggle */}
-            <div className="flex items-center p-0.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-600">
+            {/* View Mode Tabs */}
+            <div className="flex items-center p-0.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 text-xs">
+              <button
+                type="button"
+                onClick={() => setActiveView('detail')}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                  activeView === 'detail' ? 'bg-white text-slate-900 shadow-2xs' : 'hover:text-slate-900 text-slate-500'
+                }`}
+              >
+                Today / Active Date ({detailRequirements.length})
+              </button>
               <button
                 type="button"
                 onClick={() => setActiveView('dates')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
                   activeView === 'dates' ? 'bg-white text-slate-900 shadow-2xs' : 'hover:text-slate-900 text-slate-500'
                 }`}
               >
-                Date-wise List
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveView('table')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  activeView === 'table' ? 'bg-white text-slate-900 shadow-2xs' : 'hover:text-slate-900 text-slate-500'
-                }`}
-              >
-                All Materials
+                All Dates Schedule
               </button>
             </div>
+
+            {/* Table / Cards toggle for active view */}
+            {activeView === 'detail' && (
+              <div className="flex items-center p-0.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-600">
+                <button
+                  type="button"
+                  onClick={() => setDisplayMode('table')}
+                  title="Table View (Workstation)"
+                  className={`p-1.5 rounded-lg cursor-pointer ${displayMode === 'table' ? 'bg-white text-blue-600 shadow-2xs' : 'text-slate-500'}`}
+                >
+                  <TableIcon className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDisplayMode('cards')}
+                  title="Card View"
+                  className={`p-1.5 rounded-lg cursor-pointer ${displayMode === 'cards' ? 'bg-white text-blue-600 shadow-2xs' : 'text-slate-500'}`}
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Secondary Filter Chips */}
-        <div className="flex items-center gap-2 pt-2 border-t border-slate-100 flex-wrap text-xs">
-          {/* Project Filter */}
-          <div className="flex items-center gap-1">
+        {/* Quick Filter Tabs: All, Arrived, Pending */}
+        <div className="flex items-center justify-between pt-2 border-t border-slate-100 flex-wrap gap-2 text-xs">
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setQuickStatusFilter('ALL')}
+              className={`px-3 py-1 rounded-xl font-bold transition-all cursor-pointer ${
+                quickStatusFilter === 'ALL'
+                  ? 'bg-slate-900 text-white shadow-2xs'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+              }`}
+            >
+              All ({activeList.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setQuickStatusFilter('ARRIVED')}
+              className={`px-3 py-1 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                quickStatusFilter === 'ARRIVED'
+                  ? 'bg-emerald-600 text-white shadow-2xs'
+                  : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200'
+              }`}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>Arrived ({arrivedCount})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setQuickStatusFilter('PENDING')}
+              className={`px-3 py-1 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                quickStatusFilter === 'PENDING'
+                  ? 'bg-amber-600 text-white shadow-2xs'
+                  : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200'
+              }`}
+            >
+              <AlertCircle className="w-3.5 h-3.5" />
+              <span>Pending ({pendingCount})</span>
+            </button>
+          </div>
+
+          {/* Project Dropdown */}
+          <div className="flex items-center gap-1.5">
             <span className="text-slate-400 font-medium">Project:</span>
             <select
               value={selectedProjectFilter}
@@ -738,52 +826,378 @@ export const DailyRequirementModule: React.FC = () => {
               ))}
             </select>
           </div>
-
-          {/* Status Filter */}
-          <div className="flex items-center gap-1">
-            <span className="text-slate-400 font-medium">Status:</span>
-            {(['ALL', 'Pending', 'Partially Arranged', 'Completed'] as const).map((st) => (
-              <button
-                key={st}
-                type="button"
-                onClick={() => setSelectedStatusFilter(st)}
-                className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-                  selectedStatusFilter === st
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                }`}
-              >
-                {st === 'ALL' ? 'All' : st}
-              </button>
-            ))}
-          </div>
-
-          {/* Priority Filter */}
-          <div className="flex items-center gap-1 ml-auto">
-            <span className="text-slate-400 font-medium">Priority:</span>
-            {(['ALL', 'Urgent', 'High', 'Normal'] as const).map((pr) => (
-              <button
-                key={pr}
-                type="button"
-                onClick={() => setSelectedPriorityFilter(pr)}
-                className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer ${
-                  selectedPriorityFilter === pr
-                    ? 'bg-slate-900 text-white'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                {pr}
-              </button>
-            ))}
-          </div>
         </div>
       </div>
 
       {/* ===================================================================== */}
-      {/* 4. MAIN CONTENT DISPLAY (3 MODES)                                     */}
+      {/* 4. DETAIL WORKSTATION VIEW (PRIMARY & INTUITIVE)                       */}
       {/* ===================================================================== */}
+      {activeView === 'detail' && (
+        <div className="space-y-4">
+          {/* Header Banner for Date */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <span className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center shrink-0">
+                <CalendarDays className="w-5 h-5" />
+              </span>
+              <div>
+                <h2 className="text-base font-black text-slate-900">
+                  {formatDateFriendly(selectedDate)}
+                </h2>
+                <p className="text-[11px] text-slate-500">
+                  Tick to confirm arrival (आवक) • Adjust arrived qty inline • Pending auto-calculates
+                </p>
+              </div>
+            </div>
 
-      {/* VIEW 1: DATE-WISE GROUPED LIST */}
+            {/* Strict Unit Balances for this date */}
+            <div className="flex items-center gap-2 flex-wrap text-xs">
+              {Object.keys(detailMetrics.requiredMap).map((unit) => {
+                const req = detailMetrics.requiredMap[unit] || 0;
+                const arr = detailMetrics.arrangedMap[unit] || 0;
+                const pen = Math.max(0, req - arr);
+                return (
+                  <div
+                    key={unit}
+                    className="px-3 py-1 rounded-xl bg-slate-50 border border-slate-200 text-xs flex items-center gap-2 font-mono"
+                  >
+                    <span className="font-bold text-slate-900">{unit}:</span>
+                    <span className="font-bold text-emerald-700">{arr} Arrived</span>
+                    <span className="text-slate-400">/</span>
+                    <span className="text-slate-600">{req} Req</span>
+                    {pen > 0 && (
+                      <span className="font-bold text-amber-700 bg-amber-100/60 px-1.5 py-0.2 rounded">
+                        {pen} Pending
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* TABLE DISPLAY MODE (FAST, EXCEL-LIKE WORKSTATION) */}
+          {displayMode === 'table' ? (
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-100 text-slate-800 font-bold border-b border-slate-200 text-[11px] uppercase tracking-wider">
+                      <th className="p-3 w-40 min-w-[140px] text-center bg-emerald-50/70 border-r border-emerald-200 text-emerald-900 whitespace-nowrap">
+                        Material Arrived (आवक)
+                      </th>
+                      <th className="p-3 min-w-[200px]">Description & Item Name</th>
+                      <th className="p-3 min-w-[120px]">Type</th>
+                      <th className="p-3 min-w-[150px]">Size Specification</th>
+                      <th className="p-3 min-w-[100px] text-center bg-slate-100">Total Qty</th>
+                      <th className="p-3 min-w-[160px] text-center bg-emerald-50/60 text-emerald-900 border-x border-emerald-200/70">
+                        Arrived Qty (आवक)
+                      </th>
+                      <th className="p-3 min-w-[120px] text-center bg-amber-50/60 text-amber-900 border-r border-amber-200/70">
+                        Pending Qty (बाकी)
+                      </th>
+                      <th className="p-3 min-w-[110px]">Project</th>
+                      <th className="p-3 min-w-[90px]">Machine</th>
+                      <th className="p-3 min-w-[130px]">Vendor</th>
+                      <th className="p-3 w-24 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 font-medium">
+                    {detailRequirements.length === 0 ? (
+                      <tr>
+                        <td colSpan={11} className="p-8 text-center text-slate-400">
+                          No materials found for {selectedDate}. Click "+ New Requirement" or "+ Add from BOM" to get started.
+                        </td>
+                      </tr>
+                    ) : (
+                      detailRequirements.map((item) => {
+                        const isArrived = item.status === 'Completed' || item.arrangedQuantity >= item.requiredQuantity;
+                        const pending = Math.max(0, item.requiredQuantity - item.arrangedQuantity);
+
+                        return (
+                          <tr
+                            key={item.id}
+                            className={`transition-colors ${
+                              isArrived ? 'bg-emerald-50/30 hover:bg-emerald-50/60' : 'hover:bg-blue-50/40'
+                            }`}
+                          >
+                            {/* 1. Quick 1-Click Toggle: Mark Arrived / Arrived */}
+                            <td className="p-3 text-center whitespace-nowrap border-r border-emerald-100 bg-emerald-50/20">
+                              {isArrived ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleArrived(item)}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs font-bold text-xs transition-all active:scale-95 cursor-pointer"
+                                  title="Click to toggle back to pending"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200 shrink-0" />
+                                  <span>Arrived (आवक)</span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleArrived(item)}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border-2 border-dashed border-emerald-400 hover:border-emerald-600 font-bold text-xs transition-all active:scale-95 cursor-pointer shadow-2xs"
+                                  title="Click to mark 100% arrived"
+                                >
+                                  <Square className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                  <span>Mark Arrived</span>
+                                </button>
+                              )}
+                            </td>
+
+                            {/* 2. Description */}
+                            <td className="p-3 font-bold text-slate-900">
+                              <div>{item.description}</div>
+                              {item.notes && <div className="text-[10px] text-slate-500 font-normal italic">{item.notes}</div>}
+                            </td>
+
+                            {/* 3. Type */}
+                            <td className="p-3">
+                              <span className="font-mono text-[10px] font-bold bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">
+                                {item.materialType}
+                              </span>
+                            </td>
+
+                            {/* 4. Size Specification */}
+                            <td className="p-3 font-mono text-slate-700 font-bold">
+                              {item.sizeSpecification}
+                            </td>
+
+                            {/* 5. Required Qty */}
+                            <td className="p-3 text-center font-mono font-bold text-slate-900 bg-slate-50/50">
+                              {item.requiredQuantity} {item.unit}
+                            </td>
+
+                            {/* 6. Arrived Qty (Inline Editable Stepper) */}
+                            <td className="p-2.5 text-center bg-emerald-50/30 border-x border-emerald-100">
+                              <div className="inline-flex items-center gap-1 bg-white border border-emerald-300 rounded-xl p-0.5 shadow-2xs">
+                                <button
+                                  type="button"
+                                  onClick={() => handleQuickAdjustArrived(item, -1)}
+                                  className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer active:scale-90 transition-all"
+                                  title="Decrease 1"
+                                >
+                                  <Minus className="w-3 h-3" />
+                                </button>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  value={item.arrangedQuantity}
+                                  onChange={(e) => handleSetExactArrived(item, Number(e.target.value))}
+                                  className="w-14 text-center font-mono font-black text-xs text-emerald-800 bg-transparent outline-none"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleQuickAdjustArrived(item, 1)}
+                                  className="w-6 h-6 rounded-lg bg-emerald-100 hover:bg-emerald-200 flex items-center justify-center text-emerald-800 cursor-pointer active:scale-90 transition-all font-bold"
+                                  title="Increase 1"
+                                >
+                                  +
+                                </button>
+                                <span className="text-[10px] font-bold text-slate-400 pr-1">{item.unit}</span>
+                              </div>
+                            </td>
+
+                            {/* 7. Pending Qty */}
+                            <td className="p-3 text-center border-r border-amber-100 bg-amber-50/20 font-mono">
+                              {pending === 0 ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full">
+                                  <Check className="w-3 h-3" />
+                                  <span>0 {item.unit} (Done)</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+                                  <span>{pending} {item.unit}</span>
+                                </span>
+                              )}
+                            </td>
+
+                            {/* 8. Project */}
+                            <td className="p-3 text-slate-700 font-semibold">
+                              {item.projectName || '-'}
+                            </td>
+
+                            {/* 9. Machine */}
+                            <td className="p-3 text-slate-500">
+                              {item.machineName || '-'}
+                            </td>
+
+                            {/* 10. Vendor */}
+                            <td className="p-3 text-blue-700 font-medium">
+                              {item.vendorName || '-'}
+                            </td>
+
+                            {/* 11. Actions */}
+                            <td className="p-3 text-right whitespace-nowrap">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setHistoryModalItem(item)}
+                                  className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
+                                  title="View History"
+                                >
+                                  <History className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditModalItem(item)}
+                                  className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
+                                  title="Edit"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setDeleteModalItem(item)}
+                                  className="p-1 rounded-lg hover:bg-rose-50 text-rose-600 cursor-pointer"
+                                  title="Delete"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            /* CARDS DISPLAY MODE (CLEAN & HORIZONTAL) */
+            <div className="space-y-3">
+              {detailRequirements.map((item) => {
+                const isArrived = item.status === 'Completed' || item.arrangedQuantity >= item.requiredQuantity;
+                const pending = Math.max(0, item.requiredQuantity - item.arrangedQuantity);
+
+                return (
+                  <div
+                    key={item.id}
+                    className={`bg-white border rounded-2xl p-4 shadow-xs transition-all space-y-3 ${
+                      isArrived ? 'border-emerald-200 bg-emerald-50/15' : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      {/* Left: Button + Description */}
+                      <div className="flex items-start gap-3">
+                        {isArrived ? (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleArrived(item)}
+                            className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-2xs cursor-pointer shrink-0"
+                          >
+                            <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+                            <span>Arrived (आवक)</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleArrived(item)}
+                            className="px-3 py-2 rounded-xl bg-white hover:bg-emerald-50 text-slate-800 hover:text-emerald-800 border-2 border-dashed border-emerald-400 font-bold text-xs flex items-center gap-1.5 shadow-2xs cursor-pointer shrink-0"
+                          >
+                            <Square className="w-4 h-4 text-emerald-600" />
+                            <span>Mark Arrived</span>
+                          </button>
+                        )}
+
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-mono text-[10px] font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">
+                              {item.materialType}
+                            </span>
+                            {item.projectName && (
+                              <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
+                                {item.projectName}
+                              </span>
+                            )}
+                            {item.machineName && (
+                              <span className="text-[10px] text-slate-500 font-medium">
+                                Machine: {item.machineName}
+                              </span>
+                            )}
+                          </div>
+                          <h4 className="text-sm font-black text-slate-900">{item.description}</h4>
+                          <p className="text-xs text-slate-600 font-mono">Size: {item.sizeSpecification}</p>
+                        </div>
+                      </div>
+
+                      {/* Right: Quantity Blocks */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* Required */}
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-center min-w-[80px]">
+                          <span className="block text-[9px] font-bold text-slate-400 uppercase">Required</span>
+                          <span className="font-mono font-black text-slate-900 text-xs">
+                            {item.requiredQuantity} {item.unit}
+                          </span>
+                        </div>
+
+                        {/* Arrived with Stepper */}
+                        <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl px-2 py-1 flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleQuickAdjustArrived(item, -1)}
+                            className="w-5 h-5 rounded bg-white hover:bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-xs cursor-pointer"
+                          >
+                            -
+                          </button>
+                          <div className="text-center px-1">
+                            <span className="block text-[9px] font-bold text-emerald-700 uppercase">Arrived</span>
+                            <span className="font-mono font-black text-emerald-900 text-xs">
+                              {item.arrangedQuantity} {item.unit}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleQuickAdjustArrived(item, 1)}
+                            className="w-5 h-5 rounded bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center font-bold text-xs cursor-pointer"
+                          >
+                            +
+                          </button>
+                        </div>
+
+                        {/* Pending */}
+                        <div className={`rounded-xl px-3 py-1.5 text-center min-w-[80px] border ${
+                          pending === 0
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                            : 'bg-amber-50 border-amber-200 text-amber-900'
+                        }`}>
+                          <span className="block text-[9px] font-bold uppercase">Pending</span>
+                          <span className="font-mono font-black text-xs">
+                            {pending} {item.unit}
+                          </span>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-center gap-1 ml-2">
+                          <button
+                            type="button"
+                            onClick={() => setEditModalItem(item)}
+                            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteModalItem(item)}
+                            className="p-1.5 rounded-lg hover:bg-rose-50 text-rose-600"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* VIEW 5: ALL DATES GROUPED SCHEDULE */}
       {activeView === 'dates' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -796,477 +1210,79 @@ export const DailyRequirementModule: React.FC = () => {
             </span>
           </div>
 
-          {groupedByDate.length === 0 ? (
-            <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center space-y-3">
-              <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
-                <CalendarDays className="w-6 h-6" />
-              </div>
-              <h3 className="text-sm font-black text-slate-900">No Daily Requirements Found</h3>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                There are no scheduled daily material requirements matching your filters. Click below to add a new requirement or import from BOM.
-              </p>
-              <div className="flex justify-center gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => handleOpenAddModal()}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs cursor-pointer"
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {groupedByDate.map(([dateStr, items]) => {
+              const todayStr = new Date().toISOString().split('T')[0];
+              const isToday = dateStr === todayStr;
+              const breakdown = computeUnitBreakdown(items);
+
+              let totalReqSum = 0;
+              let totalArrSum = 0;
+              items.forEach((it) => {
+                totalReqSum += Number(it.requiredQuantity) || 0;
+                totalArrSum += Number(it.arrangedQuantity) || 0;
+              });
+              const progressPct = totalReqSum > 0 ? Math.min(100, Math.round((totalArrSum / totalReqSum) * 100)) : 0;
+              const isAllCompleted = items.every((i) => i.status === 'Completed' || i.arrangedQuantity >= i.requiredQuantity);
+
+              return (
+                <div
+                  key={dateStr}
+                  onClick={() => handleOpenDetailView(dateStr)}
+                  className="group bg-white border border-slate-200 hover:border-blue-400 rounded-2xl p-5 shadow-xs hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
                 >
-                  + Add Requirement
-                </button>
-                <button
-                  type="button"
-                  onClick={handleOpenBOMImportModal}
-                  className="px-4 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs cursor-pointer"
-                >
-                  + Add from BOM
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {groupedByDate.map(([dateStr, items]) => {
-                const todayStr = new Date().toISOString().split('T')[0];
-                const isToday = dateStr === todayStr;
-                const isPast = dateStr < todayStr;
-
-                const breakdown = computeUnitBreakdown(items);
-                const projectsInvolved = Array.from(new Set(items.map((i) => i.projectName).filter(Boolean)));
-
-                // Calculate progress %
-                let totalReqSum = 0;
-                let totalArrSum = 0;
-                items.forEach((it) => {
-                  totalReqSum += Number(it.requiredQuantity) || 0;
-                  totalArrSum += Number(it.arrangedQuantity) || 0;
-                });
-                const progressPct = totalReqSum > 0 ? Math.min(100, Math.round((totalArrSum / totalReqSum) * 100)) : 0;
-                const isAllCompleted = items.every((i) => i.status === 'Completed');
-
-                return (
-                  <div
-                    key={dateStr}
-                    onClick={() => handleOpenDetailView(dateStr)}
-                    className="group bg-white border border-slate-200 hover:border-blue-400 rounded-2xl p-5 shadow-xs hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
-                  >
-                    <div className="space-y-3">
-                      {/* Date Header & Badges */}
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono text-xs font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded-lg">
-                            {formatDateFriendly(dateStr)}
-                          </span>
-                          {isToday && (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-600 text-white uppercase tracking-wider">
-                              TODAY
-                            </span>
-                          )}
-                          {isPast && (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700">
-                              PAST
-                            </span>
-                          )}
-                        </div>
-                        {isAllCompleted ? (
-                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                            100% Arranged
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">
-                            {progressPct}% Progress
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono text-xs font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded-lg">
+                          {formatDateFriendly(dateStr)}
+                        </span>
+                        {isToday && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-600 text-white uppercase tracking-wider">
+                            TODAY
                           </span>
                         )}
                       </div>
-
-                      {/* Summary Information */}
-                      <div className="space-y-1">
-                        <h3 className="text-sm font-black text-slate-900 group-hover:text-blue-600 transition-colors">
-                          {items.length} {items.length === 1 ? 'Material' : 'Materials'} Scheduled
-                        </h3>
-                        <p className="text-xs text-slate-500 font-medium">
-                          {projectsInvolved.length > 0 ? projectsInvolved.join(', ') : 'General Shopfloor'}
-                        </p>
-                      </div>
-
-                      {/* Progress Bar */}
-                      <div className="space-y-1">
-                        <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all duration-500 ${
-                              isAllCompleted ? 'bg-emerald-500' : progressPct > 50 ? 'bg-blue-600' : 'bg-amber-500'
-                            }`}
-                            style={{ width: `${progressPct}%` }}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Strict Unit Summaries */}
-                      <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-[11px] space-y-1">
-                        <div className="flex items-center justify-between text-slate-600 font-medium">
-                          <span>Required:</span>
-                          <span className="font-bold text-slate-900">{breakdown.requiredSummary}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-emerald-700 font-medium">
-                          <span>Arranged:</span>
-                          <span className="font-bold text-emerald-800">{breakdown.arrangedSummary}</span>
-                        </div>
-                      </div>
+                      {isAllCompleted ? (
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                          100% Arrived
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">
+                          {progressPct}% Inward
+                        </span>
+                      )}
                     </div>
 
-                    {/* Bottom Action */}
-                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-                      <span className="text-xs font-bold text-blue-600 group-hover:underline flex items-center gap-1">
-                        <span>View Details</span>
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      </span>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpenAddModal(dateStr);
-                        }}
-                        className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-800"
-                        title="Add Material to this Date"
-                      >
-                        <Plus className="w-4 h-4" />
-                      </button>
+                    <div>
+                      <h3 className="text-sm font-black text-slate-900 group-hover:text-blue-600 transition-colors">
+                        {items.length} Materials Scheduled
+                      </h3>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-[11px] space-y-1">
+                      <div className="flex items-center justify-between text-slate-600 font-medium">
+                        <span>Required:</span>
+                        <span className="font-bold text-slate-900">{breakdown.requiredSummary}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-emerald-700 font-medium">
+                        <span>Arrived:</span>
+                        <span className="font-bold text-emerald-800">{breakdown.arrangedSummary}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-amber-700 font-medium">
+                        <span>Pending:</span>
+                        <span className="font-bold text-amber-800">{breakdown.pendingSummary}</span>
+                      </div>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
 
-      {/* VIEW 2: DATE-WISE DETAIL VIEW */}
-      {activeView === 'detail' && (
-        <div className="space-y-5">
-          {/* Top Return Banner */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setActiveView('dates')}
-                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
-                title="Back to All Dates"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-xl font-black text-slate-900">
-                    {formatDateFriendly(selectedDate)}
-                  </h2>
-                  <span className="font-mono text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded font-bold">
-                    {selectedDate}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Detailed inspection & arrangement list for this factory day ({detailRequirements.length} items)
-                </p>
-              </div>
-            </div>
-
-            {/* Actions for this specific date */}
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => handleOpenAddModal(selectedDate)}
-                className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs flex items-center gap-1 cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>+ Add Material</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleOpenBOMImportModal}
-                className="px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs flex items-center gap-1 cursor-pointer"
-              >
-                <FolderTree className="w-3.5 h-3.5 text-indigo-600" />
-                <span>+ Add from BOM</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleExportExcel}
-                className="px-3 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5 text-slate-600" />
-                <span>Export</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Unit-Wise Summary Badges for this Date (Never mixing units) */}
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Unit Balances:</span>
-            {Object.keys(detailMetrics.requiredMap).map((unit) => {
-              const req = detailMetrics.requiredMap[unit] || 0;
-              const arr = detailMetrics.arrangedMap[unit] || 0;
-              const pen = Math.max(0, req - arr);
-              return (
-                <div
-                  key={unit}
-                  className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 shadow-2xs text-xs flex items-center gap-2"
-                >
-                  <span className="font-bold text-slate-900">{unit}:</span>
-                  <span className="font-bold text-emerald-700">{arr} Arranged</span>
-                  <span className="text-slate-400">/</span>
-                  <span className="text-slate-600">{req} Required</span>
-                  {pen > 0 && (
-                    <span className="font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
-                      {pen} Pending
-                    </span>
-                  )}
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-blue-600 group-hover:underline">
+                    <span>Open Workstation</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </div>
                 </div>
               );
             })}
-          </div>
-
-          {/* Material Cards List for this Date */}
-          {detailRequirements.length === 0 ? (
-            <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center space-y-3">
-              <p className="text-xs text-slate-500">No materials scheduled for {selectedDate}.</p>
-              <button
-                type="button"
-                onClick={() => handleOpenAddModal(selectedDate)}
-                className="px-4 py-2 rounded-xl bg-blue-600 text-white font-bold text-xs"
-              >
-                + Add Material for {selectedDate}
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {detailRequirements.map((item) => {
-                const pending = Math.max(0, item.requiredQuantity - item.arrangedQuantity);
-                const progressPct =
-                  item.requiredQuantity > 0
-                    ? Math.min(100, Math.round((item.arrangedQuantity / item.requiredQuantity) * 100))
-                    : 0;
-
-                return (
-                  <div
-                    key={item.id}
-                    className="bg-white border border-slate-200 hover:border-slate-300 rounded-2xl p-5 shadow-xs transition-all space-y-4"
-                  >
-                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                      {/* Left: Material Info */}
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-mono text-[10px] font-bold text-indigo-800 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
-                            {item.materialType}
-                          </span>
-                          {getPriorityBadge(item.priority)}
-                          {getStatusBadge(item.status)}
-                          {item.projectName && (
-                            <span className="text-[11px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded flex items-center gap-1">
-                              <Building2 className="w-3 h-3 text-slate-500" />
-                              <span>{item.projectName}</span>
-                            </span>
-                          )}
-                          {item.machineName && (
-                            <span className="text-[11px] text-slate-500 font-medium">
-                              Machine: {item.machineName}
-                            </span>
-                          )}
-                        </div>
-
-                        <h4 className="text-base font-black text-slate-900 tracking-tight">
-                          {item.description}
-                        </h4>
-                        <div className="flex items-center gap-3 text-xs text-slate-600 flex-wrap">
-                          <span>
-                            Size: <strong className="font-mono text-slate-900">{item.sizeSpecification}</strong>
-                          </span>
-                          {item.vendorName && (
-                            <span>
-                              Vendor: <strong className="text-blue-700">{item.vendorName}</strong>
-                            </span>
-                          )}
-                          {item.bomNumber && (
-                            <span className="text-slate-400">
-                              (Linked to BOM: {item.bomNumber})
-                            </span>
-                          )}
-                        </div>
-                        {item.notes && (
-                          <p className="text-xs text-slate-500 italic">
-                            Note: {item.notes}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Right: Quantities & Update Action */}
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 shrink-0">
-                        {/* Quantity Stats Box */}
-                        <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs">
-                          <div>
-                            <span className="block text-[10px] text-slate-400 font-bold uppercase">Required</span>
-                            <span className="text-sm font-black text-slate-900 font-mono">
-                              {item.requiredQuantity} {item.unit}
-                            </span>
-                          </div>
-                          <div className="w-[1px] h-6 bg-slate-200" />
-                          <div>
-                            <span className="block text-[10px] text-emerald-600 font-bold uppercase">Arranged</span>
-                            <span className="text-sm font-black text-emerald-700 font-mono">
-                              {item.arrangedQuantity} {item.unit}
-                            </span>
-                          </div>
-                          <div className="w-[1px] h-6 bg-slate-200" />
-                          <div>
-                            <span className="block text-[10px] text-amber-600 font-bold uppercase">Pending</span>
-                            <span className="text-sm font-black text-amber-700 font-mono">
-                              {pending} {item.unit}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Action Buttons */}
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenProgressModal(item)}
-                            className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs flex items-center gap-1.5 cursor-pointer"
-                          >
-                            <TrendingUp className="w-3.5 h-3.5" />
-                            <span>Update Progress</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setHistoryModalItem(item)}
-                            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs cursor-pointer"
-                            title="View Inward History"
-                          >
-                            <History className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setEditModalItem(item)}
-                            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs cursor-pointer"
-                            title="Edit Item"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDeleteModalItem(item)}
-                            className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-xs cursor-pointer"
-                            title="Delete Item"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Progress Bar & History Indicator */}
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
-                        <span>Arrangement Progress: {progressPct}%</span>
-                        <span>{item.arrangedQuantity} of {item.requiredQuantity} {item.unit} received</span>
-                      </div>
-                      <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all duration-300 ${
-                            item.status === 'Completed'
-                              ? 'bg-emerald-500'
-                              : progressPct > 50
-                              ? 'bg-blue-600'
-                              : 'bg-amber-500'
-                          }`}
-                          style={{ width: `${progressPct}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* VIEW 3: ALL MATERIALS FLAT TABLE VIEW */}
-      {activeView === 'table' && (
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
-          <div className="p-4 border-b border-slate-200 flex items-center justify-between">
-            <h3 className="text-sm font-black text-slate-900">
-              All Scheduled Materials ({filteredRequirements.length})
-            </h3>
-            <button
-              type="button"
-              onClick={handleExportExcel}
-              className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
-            >
-              <Download className="w-3 h-3 text-slate-500" />
-              <span>Export CSV/Excel</span>
-            </button>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
-                  <th className="py-3 px-4">Date</th>
-                  <th className="py-3 px-4">Description</th>
-                  <th className="py-3 px-4">Type</th>
-                  <th className="py-3 px-4">Size Specification</th>
-                  <th className="py-3 px-4 text-center">Req Qty</th>
-                  <th className="py-3 px-4 text-center">Arr Qty</th>
-                  <th className="py-3 px-4 text-center">Pending</th>
-                  <th className="py-3 px-4">Project</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredRequirements.map((it) => {
-                  const pending = Math.max(0, it.requiredQuantity - it.arrangedQuantity);
-                  return (
-                    <tr key={it.id} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="py-3 px-4 font-mono font-bold text-slate-700">{it.requirementDate}</td>
-                      <td className="py-3 px-4 font-bold text-slate-900">{it.description}</td>
-                      <td className="py-3 px-4">
-                        <span className="font-mono text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">
-                          {it.materialType}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 font-mono text-slate-600">{it.sizeSpecification}</td>
-                      <td className="py-3 px-4 text-center font-bold font-mono">{it.requiredQuantity} {it.unit}</td>
-                      <td className="py-3 px-4 text-center font-bold font-mono text-emerald-700">{it.arrangedQuantity} {it.unit}</td>
-                      <td className="py-3 px-4 text-center font-bold font-mono text-amber-700">{pending} {it.unit}</td>
-                      <td className="py-3 px-4 text-slate-600 font-medium">{it.projectName || '-'}</td>
-                      <td className="py-3 px-4">{getStatusBadge(it.status)}</td>
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenProgressModal(it)}
-                            className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs cursor-pointer"
-                          >
-                            Progress
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setEditModalItem(it)}
-                            className="p-1 rounded-lg hover:bg-slate-100 text-slate-500"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDeleteModalItem(it)}
-                            className="p-1 rounded-lg hover:bg-rose-50 text-rose-600"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
           </div>
         </div>
       )}
@@ -1461,7 +1477,6 @@ export const DailyRequirementModule: React.FC = () => {
           theme="light"
         >
           <div className="space-y-4 text-xs text-slate-800">
-            {/* Step 1 & 2: Machine & Assembly selection */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200">
               <div>
                 <label className="block text-[11px] font-bold text-slate-600 mb-1">1. Machine Folder</label>
@@ -1524,7 +1539,6 @@ export const DailyRequirementModule: React.FC = () => {
               </div>
             </div>
 
-            {/* Target Date & Project */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-[11px] font-bold text-slate-600 mb-1">Scheduled Date for Daily Requirement *</label>
@@ -1554,7 +1568,6 @@ export const DailyRequirementModule: React.FC = () => {
               </div>
             </div>
 
-            {/* Items Checklist Table */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-slate-700">
@@ -1665,123 +1678,21 @@ export const DailyRequirementModule: React.FC = () => {
       )}
 
       {/* ===================================================================== */}
-      {/* MODAL 3: UPDATE PROGRESS                                              */}
-      {/* ===================================================================== */}
-      {progressModalItem && (
-        <Modal
-          isOpen={!!progressModalItem}
-          onClose={() => setProgressModalItem(null)}
-          title="📈 Update Arranged Material Progress"
-          subtitle={`Check off newly received material for: ${progressModalItem.description}`}
-          maxWidth="md"
-          theme="light"
-        >
-          <form onSubmit={handleSaveProgress} className="space-y-4 text-xs text-slate-800">
-            {/* Current Summary Box */}
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 grid grid-cols-3 gap-2 text-center">
-              <div>
-                <span className="block text-[10px] text-slate-500 font-bold uppercase">Required</span>
-                <span className="text-sm font-black text-slate-900 font-mono">
-                  {progressModalItem.requiredQuantity} {progressModalItem.unit}
-                </span>
-              </div>
-              <div>
-                <span className="block text-[10px] text-emerald-600 font-bold uppercase">Current Arranged</span>
-                <span className="text-sm font-black text-emerald-700 font-mono">
-                  {progressModalItem.arrangedQuantity} {progressModalItem.unit}
-                </span>
-              </div>
-              <div>
-                <span className="block text-[10px] text-amber-600 font-bold uppercase">Current Pending</span>
-                <span className="text-sm font-black text-amber-700 font-mono">
-                  {Math.max(0, progressModalItem.requiredQuantity - progressModalItem.arrangedQuantity)} {progressModalItem.unit}
-                </span>
-              </div>
-            </div>
-
-            {/* Input: Additional Quantity */}
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                Additional Quantity Arranged / Inward Received Today ({progressModalItem.unit}) *
-              </label>
-              <input
-                type="number"
-                min="0.1"
-                step="any"
-                required
-                value={additionalQtyInput}
-                onChange={(e) => setAdditionalQtyInput(Number(e.target.value))}
-                className="w-full px-3 py-2.5 rounded-xl bg-white border-2 border-blue-500 font-black text-lg text-slate-900 font-mono outline-none shadow-xs"
-              />
-            </div>
-
-            {/* Live Preview */}
-            <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-xs text-blue-900 flex items-center justify-between">
-              <span>New Total Arranged:</span>
-              <strong className="text-sm font-mono font-bold">
-                {progressModalItem.arrangedQuantity + Number(additionalQtyInput)} / {progressModalItem.requiredQuantity} {progressModalItem.unit}
-              </strong>
-            </div>
-
-            {/* Input: Vendor */}
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1">Vendor / Supplier</label>
-              <input
-                type="text"
-                placeholder="Vendor delivering this lot..."
-                value={progressVendorInput}
-                onChange={(e) => setProgressVendorInput(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 font-medium outline-none"
-              />
-            </div>
-
-            {/* Input: Remarks */}
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1">Inward / Inspection Remarks</label>
-              <input
-                type="text"
-                placeholder="e.g. Received via tempo #MH-12-8877, verified by inspector"
-                value={progressRemarksInput}
-                onChange={(e) => setProgressRemarksInput(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 font-medium outline-none"
-              />
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setProgressModalItem(null)}
-                className="px-4 py-2 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 font-bold"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs cursor-pointer"
-              >
-                Save Progress Update
-              </button>
-            </div>
-          </form>
-        </Modal>
-      )}
-
-      {/* ===================================================================== */}
-      {/* MODAL 4: INWARD HISTORY AUDIT                                         */}
+      {/* MODAL 3: INWARD HISTORY AUDIT                                         */}
       {/* ===================================================================== */}
       {historyModalItem && (
         <Modal
           isOpen={!!historyModalItem}
           onClose={() => setHistoryModalItem(null)}
           title="📜 Material Inward Audit Trail"
-          subtitle={`Chronological record of arranged batches for: ${historyModalItem.description}`}
+          subtitle={`Chronological record of arrival checkoffs for: ${historyModalItem.description}`}
           maxWidth="lg"
           theme="light"
         >
           <div className="space-y-4 text-xs text-slate-800">
             {dailyRequirementHistory.filter((h) => h.requirementId === historyModalItem.id).length === 0 ? (
               <div className="p-8 text-center text-slate-400">
-                No progress updates logged for this item yet.
+                No arrival history logged for this item yet. Click "Mark Arrived" to log an arrival.
               </div>
             ) : (
               <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
@@ -1822,7 +1733,7 @@ export const DailyRequirementModule: React.FC = () => {
       )}
 
       {/* ===================================================================== */}
-      {/* MODAL 5: EDIT MATERIAL                                                */}
+      {/* MODAL 4: EDIT MATERIAL                                                */}
       {/* ===================================================================== */}
       {editModalItem && (
         <Modal
@@ -1892,7 +1803,7 @@ export const DailyRequirementModule: React.FC = () => {
       )}
 
       {/* ===================================================================== */}
-      {/* MODAL 6: DELETE CONFIRMATION                                          */}
+      {/* MODAL 5: DELETE CONFIRMATION                                          */}
       {/* ===================================================================== */}
       {deleteModalItem && (
         <Modal
