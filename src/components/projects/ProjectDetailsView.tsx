@@ -936,7 +936,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 </button>
               )}
 
-              {onOpenInEntrySheet && !isStoreIncharge && (
+              {onOpenInEntrySheet && (
                 <button
                   type="button"
                   onClick={() => onOpenInEntrySheet(project.name)}

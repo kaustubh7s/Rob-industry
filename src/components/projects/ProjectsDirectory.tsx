@@ -752,7 +752,11 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
                     type="button"
                     data-tour={idx === 0 ? 'tour-directory-open-project' : undefined}
                     onClick={() => {
-                      onSelectProject(prj);
+                      if (onOpenEntrySheetWithProject) {
+                        onOpenEntrySheetWithProject(prj.name);
+                      } else {
+                        onSelectProject(prj);
+                      }
                       window.dispatchEvent(new CustomEvent('rsb:tour:directory-project-selected', { detail: { project: prj } }));
                     }}
                     className="flex-1 py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold shadow-xs flex items-center justify-center gap-1.5 transition-all active:scale-98 cursor-pointer"
