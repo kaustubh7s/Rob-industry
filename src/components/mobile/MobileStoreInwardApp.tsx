@@ -249,36 +249,6 @@ export const MobileStoreInwardApp: React.FC = () => {
     handleDailySetArrivedQty(item, nextVal);
   };
 
-  // Select Pending Quantity directly on mobile
-  // Pending = Required - Arrived  =>  Arrived = Required - Pending
-  const handleDailySetPendingQty = (item: DailyRequirementItem, pendingVal: number) => {
-    const validPending = Math.max(0, Number(pendingVal) || 0);
-    const newArrived = Math.max(0, item.requiredQuantity - validPending);
-    const newStatus: DailyRequirementStatus =
-      newArrived >= item.requiredQuantity
-        ? 'Completed'
-        : newArrived > 0
-        ? 'Partially Arranged'
-        : 'Pending';
-
-    updateDailyRequirement(item.id, {
-      arrangedQuantity: newArrived,
-      status: newStatus,
-    });
-
-    if (newArrived >= item.requiredQuantity) {
-      confetti({ particleCount: 30, spread: 50, origin: { y: 0.7 } });
-    }
-  };
-
-  // Stepper adjuster for Pending (+ / -)
-  const handleDailyAdjustPending = (item: DailyRequirementItem, delta: number) => {
-    const currentArrived = Number(item.arrangedQuantity) || 0;
-    const currentPending = Math.max(0, item.requiredQuantity - currentArrived);
-    const nextPending = Math.max(0, currentPending + delta);
-    handleDailySetPendingQty(item, nextPending);
-  };
-
   // Save Daily Requirements to Supabase DB from phone
   const handleSaveDailyToDb = async () => {
     setIsSaving(true);
@@ -722,64 +692,32 @@ export const MobileStoreInwardApp: React.FC = () => {
             )}
           </div>
 
-          {/* Unit Balances & Progress Summary Banner (Strict Unit Segregation: Nos with Nos, Kg with Kg) */}
-          <div className="p-3.5 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white shadow-sm space-y-2.5">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-300 font-bold uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                <Boxes className="w-3.5 h-3.5 text-amber-400" />
-                <span>Unit Balances & Inward Progress</span>
-              </span>
-              <span className="font-mono text-emerald-400 font-black">
-                {dailyUnitSummary.progressPct}% Fulfilled
+          {/* Quick Summary Bar: Scheduled | Pending | Arrived */}
+          <div className="grid grid-cols-3 gap-2">
+            <div className="bg-white border border-slate-200 rounded-2xl p-2.5 text-center shadow-xs">
+              <span className="block text-[10px] uppercase font-bold text-slate-500">Scheduled</span>
+              <span className="text-base font-black text-slate-900 font-mono mt-0.5 block">
+                {dailyUnitSummary.totalCount} <span className="text-xs font-normal text-slate-500">Items</span>
               </span>
             </div>
 
-            {/* Strict Segregated Balances */}
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              {Object.keys(dailyUnitSummary.requiredByUnit).length > 0 ? (
-                Object.entries(dailyUnitSummary.requiredByUnit).map(([unit, reqQty]) => {
-                  const arrQty = dailyUnitSummary.arrangedByUnit[unit] || 0;
-                  const penQty = Math.max(0, reqQty - arrQty);
-                  return (
-                    <div key={unit} className="p-2 rounded-xl bg-white/10 border border-white/10">
-                      <div className="flex items-center justify-between mb-0.5">
-                        <span className="text-[10px] font-bold text-amber-300 uppercase">{unit}</span>
-                        <span className="text-[10px] text-slate-300 font-mono">
-                          {Math.round((arrQty / (reqQty || 1)) * 100)}%
-                        </span>
-                      </div>
-                      <div className="flex items-baseline justify-between">
-                        <span className="text-xs font-black text-emerald-300 font-mono">
-                          {arrQty} Arranged
-                        </span>
-                        <span className="text-[10px] font-mono text-amber-200 font-bold">
-                          {penQty} Pending
-                        </span>
-                      </div>
-                      <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                        Total Req: {reqQty} {unit}
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="col-span-2 text-slate-400 text-center py-2 text-xs">
-                  No materials scheduled for this selection.
-                </div>
-              )}
-            </div>
-
-            {/* Overall Progress Bar */}
-            <div className="space-y-1">
-              <div className="w-full h-2 rounded-full bg-slate-700 overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-amber-400 to-emerald-400 rounded-full transition-all duration-300"
-                  style={{ width: `${dailyUnitSummary.progressPct}%` }}
-                />
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-2.5 text-center shadow-xs">
+              <span className="block text-[10px] uppercase font-bold text-amber-800">Pending (बाकी)</span>
+              <span className="text-base font-black text-amber-700 font-mono mt-0.5 block">
+                {dailyUnitSummary.pendingCount} <span className="text-xs font-normal text-amber-700">Items</span>
+              </span>
+              <div className="text-[10px] text-amber-900/80 font-mono mt-0.5 font-bold truncate">
+                {dailyUnitSummary.pendingSummary}
               </div>
-              <div className="flex justify-between text-[10px] text-slate-400 font-mono">
-                <span>{dailyUnitSummary.arrivedCount} of {dailyUnitSummary.totalCount} items completed</span>
-                <span>{dailyUnitSummary.pendingCount} items pending</span>
+            </div>
+
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-2.5 text-center shadow-xs">
+              <span className="block text-[10px] uppercase font-bold text-emerald-800">Arrived (आया)</span>
+              <span className="text-base font-black text-emerald-700 font-mono mt-0.5 block">
+                {dailyUnitSummary.arrivedCount} <span className="text-xs font-normal text-emerald-700">Items</span>
+              </span>
+              <div className="text-[10px] text-emerald-900/80 font-mono mt-0.5 font-bold truncate">
+                {dailyUnitSummary.arrangedSummary}
               </div>
             </div>
           </div>
@@ -957,189 +895,108 @@ export const MobileStoreInwardApp: React.FC = () => {
                     </div>
 
                     {/* ============================================================= */}
-                    {/* QUANTITY WORKFLOW: 1-TAP ARRIVED BUTTON & QUANTITY CONTROLS */}
+                    {/* 3 SIMPLE BOXES: REQUIRED (कुल) | ARRIVED (आया) | PENDING (बाकी) */}
                     {/* ============================================================= */}
-                    <div className="pt-1 border-t border-slate-100 space-y-2.5">
-                      {/* 1. Large High-Visibility "Mark Arrived (आवक)" Button */}
+                    <div className="grid grid-cols-3 gap-2 py-1 text-center">
+                      {/* Box 1: Required */}
+                      <div className="p-2.5 rounded-xl bg-slate-100 border border-slate-200">
+                        <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+                          Required (कुल)
+                        </span>
+                        <span className="text-base font-black text-slate-900 font-mono mt-0.5 block">
+                          {reqQty} <span className="text-[11px] font-normal text-slate-600">{item.unit || 'Nos'}</span>
+                        </span>
+                      </div>
+
+                      {/* Box 2: Arrived */}
+                      <div className={`p-2.5 rounded-xl border ${
+                        arrQty > 0 ? 'bg-emerald-50 border-emerald-300' : 'bg-slate-50 border-slate-200'
+                      }`}>
+                        <span className="block text-[10px] font-bold text-emerald-800 uppercase tracking-wide">
+                          Arrived (आया)
+                        </span>
+                        <span className="text-base font-black text-emerald-700 font-mono mt-0.5 block">
+                          {arrQty} <span className="text-[11px] font-normal text-emerald-600">{item.unit || 'Nos'}</span>
+                        </span>
+                      </div>
+
+                      {/* Box 3: Pending */}
+                      <div className={`p-2.5 rounded-xl border ${
+                        penQty > 0 ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'
+                      }`}>
+                        <span className="block text-[10px] font-bold text-amber-800 uppercase tracking-wide">
+                          Pending (बाकी)
+                        </span>
+                        <span className="text-base font-black text-amber-700 font-mono mt-0.5 block">
+                          {penQty} <span className="text-[11px] font-normal text-amber-600">{item.unit || 'Nos'}</span>
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* ============================================================= */}
+                    {/* SIMPLE ACTION: 1-CLICK MARK ARRIVED & PARTIAL RECEIPT */}
+                    {/* ============================================================= */}
+                    <div className="space-y-2 pt-1 border-t border-slate-100">
                       {isFullyArrived ? (
-                        <div className="flex items-center justify-between p-2 rounded-xl bg-emerald-100 border border-emerald-300">
-                          <div className="flex items-center gap-1.5">
-                            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                        <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-600 text-white font-bold text-xs shadow-xs">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="w-5 h-5 text-white shrink-0" />
                             <div>
-                              <div className="text-xs font-black text-emerald-950">
-                                100% ARRIVED (आवक दर्ज)
-                              </div>
-                              <div className="text-[10px] text-emerald-800 font-mono font-medium">
-                                {arrQty} {item.unit || 'Nos'} verified by Chandramani [CP]
+                              <div className="text-xs font-black">MATERIAL ARRIVED (सामग्री आ गई)</div>
+                              <div className="text-[10px] text-emerald-100 font-mono">
+                                Verified {arrQty} {item.unit || 'Nos'} • Chandramani [CP]
                               </div>
                             </div>
                           </div>
                           <button
                             type="button"
                             onClick={() => handleDailyToggleArrived(item)}
-                            className="px-2.5 py-1 rounded-lg bg-white/90 hover:bg-white text-slate-700 border border-emerald-300 text-[10px] font-bold shadow-xs active:scale-95 flex items-center gap-1"
-                            title="Reset to Pending"
+                            className="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-semibold active:scale-95 shadow-xs"
                           >
-                            <RotateCcw className="w-3 h-3 text-slate-500" />
-                            <span>Reset (0)</span>
+                            Reset (हटाएं)
                           </button>
                         </div>
                       ) : (
                         <button
                           type="button"
                           onClick={() => handleDailyToggleArrived(item)}
-                          className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-sm flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99] transition-all"
+                          className="w-full py-3.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-sm flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99] transition-all"
                         >
-                          <Check className="w-4 h-4 stroke-[3]" />
-                          <span>Mark Fully Arrived ({reqQty} {item.unit || 'Nos'} आवक करें)</span>
+                          <Check className="w-5 h-5 stroke-[3]" />
+                          <span>Mark Arrived ({reqQty} {item.unit || 'Nos'} आ गया)</span>
                         </button>
                       )}
 
-                      {/* 2. DUAL QUANTITY SELECTORS: ARRIVED & PENDING (TOUCH OPTIMIZED) */}
-                      <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                        {/* LEFT COLUMN: ARRIVED QUANTITY (आई मात्रा) */}
-                        <div className="space-y-1.5">
-                          <div className="flex items-center justify-between">
-                            <label className="text-[10px] font-extrabold uppercase tracking-wide text-emerald-800">
-                              Arrived (आई मात्रा):
-                            </label>
-                            <span className="text-[9px] font-mono text-slate-400">
-                              Total: {reqQty}
-                            </span>
-                          </div>
-
-                          {/* Stepper: [-] [ Input ] [+] */}
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => handleDailyAdjustArrived(item, -1)}
-                              disabled={arrQty <= 0}
-                              className="w-8 h-8 rounded-lg bg-white border border-slate-300 text-slate-700 font-bold text-sm flex items-center justify-center active:scale-90 disabled:opacity-30 cursor-pointer shadow-2xs"
-                            >
-                              <Minus className="w-3.5 h-3.5" />
-                            </button>
-                            <input
-                              type="number"
-                              min="0"
-                              value={arrQty}
-                              onChange={(e) => handleDailySetArrivedQty(item, Number(e.target.value))}
-                              className="w-full text-center py-1 text-xs font-black font-mono bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-emerald-500"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleDailyAdjustArrived(item, 1)}
-                              className="w-8 h-8 rounded-lg bg-white border border-slate-300 text-slate-700 font-bold text-sm flex items-center justify-center active:scale-90 cursor-pointer shadow-2xs"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-
-                          {/* Quick Presets for Arrived */}
-                          <div className="flex items-center gap-1 pt-0.5">
-                            <button
-                              type="button"
-                              onClick={() => handleDailySetArrivedQty(item, 0)}
-                              className="flex-1 py-0.5 rounded bg-white hover:bg-slate-100 border border-slate-200 text-[9px] font-bold text-slate-600"
-                            >
-                              0
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDailySetArrivedQty(item, Math.round(reqQty / 2))}
-                              className="flex-1 py-0.5 rounded bg-white hover:bg-slate-100 border border-slate-200 text-[9px] font-bold text-slate-600"
-                            >
-                              50%
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDailySetArrivedQty(item, reqQty)}
-                              className="flex-1 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-[9px] font-black text-emerald-800"
-                            >
-                              Full
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* RIGHT COLUMN: PENDING QUANTITY (बाकी मात्रा) */}
-                        <div className="space-y-1.5 border-l border-slate-200 pl-2">
-                          <div className="flex items-center justify-between">
-                            <label className="text-[10px] font-extrabold uppercase tracking-wide text-amber-800">
-                              Pending (बाकी मात्रा):
-                            </label>
-                            <span className="text-[9px] font-mono text-slate-400">
-                              {item.unit || 'Nos'}
-                            </span>
-                          </div>
-
-                          {/* Stepper for Pending: [-] [ Input ] [+] */}
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => handleDailyAdjustPending(item, -1)}
-                              disabled={penQty <= 0}
-                              className="w-8 h-8 rounded-lg bg-white border border-slate-300 text-slate-700 font-bold text-sm flex items-center justify-center active:scale-90 disabled:opacity-30 cursor-pointer shadow-2xs"
-                              title="Decrease Pending (Increases Arrived)"
-                            >
-                              <Minus className="w-3.5 h-3.5" />
-                            </button>
-                            <input
-                              type="number"
-                              min="0"
-                              max={reqQty}
-                              value={penQty}
-                              onChange={(e) => handleDailySetPendingQty(item, Number(e.target.value))}
-                              className="w-full text-center py-1 text-xs font-black font-mono bg-white border border-slate-300 rounded-lg text-amber-900 focus:outline-none focus:border-amber-500"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleDailyAdjustPending(item, 1)}
-                              className="w-8 h-8 rounded-lg bg-white border border-slate-300 text-slate-700 font-bold text-sm flex items-center justify-center active:scale-90 cursor-pointer shadow-2xs"
-                              title="Increase Pending (Decreases Arrived)"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-
-                          {/* Pending Balance Tag */}
-                          <div className="text-center pt-0.5">
-                            <span
-                              className={`inline-block px-2 py-0.5 rounded text-[10px] font-mono font-black ${
-                                penQty === 0
-                                  ? 'bg-emerald-100 text-emerald-800'
-                                  : 'bg-amber-100 text-amber-900'
-                              }`}
-                            >
-                              {penQty} {item.unit || 'Nos'} Pending
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* 3. Progress Bar & Percent Indicator */}
-                      <div className="space-y-1 pt-0.5">
-                        <div className="w-full h-1.5 rounded-full bg-slate-200 overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all duration-200 ${
-                              isFullyArrived ? 'bg-emerald-500' : arrQty > 0 ? 'bg-blue-500' : 'bg-slate-300'
-                            }`}
-                            style={{ width: `${progressPct}%` }}
-                          />
-                        </div>
-                        <div className="flex justify-between items-center text-[10px] text-slate-500 font-mono">
-                          <span>
-                            {arrQty} of {reqQty} {item.unit || 'Nos'} ({progressPct}%)
-                          </span>
-                          <span
-                            className={`font-bold ${
-                              isFullyArrived
-                                ? 'text-emerald-700'
-                                : arrQty > 0
-                                ? 'text-blue-700'
-                                : 'text-slate-500'
-                            }`}
+                      {/* SIMPLE PARTIAL STEPPER (Only if less quantity received) */}
+                      <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs">
+                        <span className="text-slate-700 font-bold">
+                          Partial (कम माल आया तो):
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleDailyAdjustArrived(item, -1)}
+                            disabled={arrQty <= 0}
+                            className="w-8 h-8 rounded-lg bg-white border border-slate-300 text-slate-800 font-bold text-base flex items-center justify-center active:scale-90 disabled:opacity-30 cursor-pointer shadow-2xs"
                           >
-                            {isFullyArrived ? 'Completed' : arrQty > 0 ? 'Partially Arranged' : 'Pending'}
-                          </span>
+                            -
+                          </button>
+                          <input
+                            type="number"
+                            min="0"
+                            max={reqQty}
+                            value={arrQty}
+                            onChange={(e) => handleDailySetArrivedQty(item, Number(e.target.value))}
+                            className="w-14 text-center py-1 font-mono font-black text-slate-900 bg-white border border-slate-300 rounded-lg text-sm"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleDailyAdjustArrived(item, 1)}
+                            className="w-8 h-8 rounded-lg bg-white border border-slate-300 text-slate-800 font-bold text-base flex items-center justify-center active:scale-90 cursor-pointer shadow-2xs"
+                          >
+                            +
+                          </button>
+                          <span className="text-slate-500 font-mono text-xs ml-0.5">{item.unit || 'Nos'}</span>
                         </div>
                       </div>
                     </div>
