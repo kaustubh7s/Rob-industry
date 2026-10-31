@@ -605,7 +605,7 @@ export interface ProjectCosting {
   notes?: string;
 }
 
-export type BOMStatus = 'Draft' | 'Pending Approval' | 'Approved' | 'Archived';
+export type BOMStatus = 'Draft' | 'Active' | 'Approved' | 'Pending Approval' | 'Archived';
 
 export interface BOMItem {
   id: string;
@@ -620,6 +620,69 @@ export interface BOMItem {
   drawingRef?: string;
   notes?: string;
   children?: BOMItem[];
+}
+
+export interface MasterBOMItem {
+  id: string;
+  srNo: number | string; // exact entered/imported text, number, e.g. "1", "10A", skipped, duplicate
+  description: string;
+  materialType: MaterialType | string;
+  sizeSpecs: string;
+  quantity: number;
+  unit: string;
+  category?: string;
+  notes?: string;
+  unitCost?: number;
+  totalCost?: number;
+  drawingRef?: string;
+  recommendedVendor?: string;
+  projectName?: string;
+  machineName?: string;
+  date?: string;
+  poNo?: string;
+  vendor?: string;
+  orderedBy?: string;
+}
+
+export interface MasterBOM {
+  id: string; // stable unique ID
+  bomNumber: string; // e.g. BOM-MC-01
+  name: string; // e.g. Standard BOM
+  assemblyName?: string; // alias for name
+  machineName: string; // folder machine name
+  machineType: string; // subfolder machine type
+  revision: string; // e.g. Rev A
+  status: BOMStatus;
+  effectiveDate?: string;
+  category?: string;
+  notes?: string;
+  items: MasterBOMItem[];
+  createdBy: string;
+  createdAt: string;
+  updatedBy?: string;
+  updatedAt: string;
+  totalEstimatedCost?: number;
+}
+
+export interface MachineTypeMeta {
+  name: string;
+  parentFolderId?: string;
+  modelVariant?: string;
+  description?: string;
+  internalCode?: string;
+  isArchived?: boolean;
+  updatedAt?: string;
+}
+
+export interface MachineFolder {
+  id: string; // stable unique ID
+  name: string; // Machine Name
+  types: string[]; // List of active Machine Types
+  archivedTypes?: string[]; // List of archived Machine Types
+  typeDetails?: Record<string, MachineTypeMeta>; // Rich metadata for each type
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface BOMRecord {

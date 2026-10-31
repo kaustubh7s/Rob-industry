@@ -199,6 +199,7 @@ export const MATERIAL_TYPE_GROUPS: MaterialCategoryGroup[] = [
   {
     category: 'Electrical & Automation Components',
     items: [
+      'Electrical Component',
       'ELECTRIAL COMPONENTS',
       'MCB',
       'Relay Card',
@@ -257,6 +258,11 @@ export const MATERIAL_TYPE_GROUPS: MaterialCategoryGroup[] = [
  * Starts with primary common items followed by all specific entries
  */
 const DEFAULT_CORE_TYPES = [
+  'Electrical Component',
+  'ELECTRIAL COMPONENTS',
+  'MCB',
+  'SMPS',
+  'Contactor',
   'SS Flat',
   'SS Pipe',
   'SS Circle',

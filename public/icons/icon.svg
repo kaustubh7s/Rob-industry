@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b132b"/>
+      <stop offset="50%" stop-color="#1c2541"/>
+      <stop offset="100%" stop-color="#0a0f1d"/>
+    </linearGradient>
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2563eb"/>
+      <stop offset="45%" stop-color="#4f46e5"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.6"/>
+    </filter>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#38bdf8" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <!-- Base background (for standard & maskable icons) -->
+  <rect width="512" height="512" fill="url(#bgGrad)"/>
+  
+  <!-- Subtle Industrial Circuit/Grid Pattern -->
+  <circle cx="256" cy="256" r="230" fill="none" stroke="#1e293b" stroke-width="2" stroke-dasharray="8 8"/>
+  <circle cx="256" cy="256" r="210" fill="none" stroke="#334155" stroke-width="1.5" stroke-opacity="0.4"/>
+
+  <!-- Outer Glowing Ring -->
+  <rect x="36" y="36" width="440" height="440" rx="96" fill="none" stroke="url(#accentGrad)" stroke-width="4" stroke-opacity="0.35"/>
+
+  <!-- Main Shield / Squircle -->
+  <rect x="56" y="56" width="400" height="400" rx="84" fill="url(#shieldGrad)" filter="url(#shadow)"/>
+  <rect x="56" y="56" width="400" height="400" rx="84" fill="none" stroke="#ffffff" stroke-width="2" stroke-opacity="0.25"/>
+
+  <!-- Precision Engineering / Industrial Accent Marks -->
+  <path d="M120 100 L100 100 L100 120" stroke="#38bdf8" stroke-width="4" stroke-linecap="round" fill="none" opacity="0.8"/>
+  <path d="M392 100 L412 100 L412 120" stroke="#38bdf8" stroke-width="4" stroke-linecap="round" fill="none" opacity="0.8"/>
+  <path d="M100 392 L100 412 L120 412" stroke="#38bdf8" stroke-width="4" stroke-linecap="round" fill="none" opacity="0.8"/>
+  <path d="M412 392 L412 412 L392 412" stroke="#38bdf8" stroke-width="4" stroke-linecap="round" fill="none" opacity="0.8"/>
+
+  <!-- Factory / Gear Silhouette Motif -->
+  <g opacity="0.15" fill="#ffffff" transform="translate(196, 92) scale(0.24)">
+    <path d="M100 0 L150 150 L50 150 Z M250 50 L300 200 L200 200 Z M400 0 L450 150 L350 150 Z"/>
+  </g>
+
+  <!-- RSB Monogram -->
+  <text x="256" y="275" 
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" 
+        font-size="124" 
+        font-weight="900" 
+        letter-spacing="2"
+        text-anchor="middle" 
+        fill="#ffffff" 
+        filter="url(#glow)">RSB</text>
+
+  <!-- Tagline Pill -->
+  <rect x="136" y="320" width="240" height="36" rx="18" fill="#0f172a" fill-opacity="0.75" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="256" y="344" 
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" 
+        font-size="16" 
+        font-weight="800" 
+        letter-spacing="5"
+        text-anchor="middle" 
+        fill="#38bdf8">INDUSTRY ERP</text>
+
+  <!-- Tiny status beacon -->
+  <circle cx="256" cy="386" r="4" fill="#10b981"/>
+  <circle cx="256" cy="386" r="8" fill="#10b981" fill-opacity="0.3"/>
+</svg>
+

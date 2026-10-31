@@ -11,6 +11,9 @@ import {
   VendorItem,
   CustomerItem,
   User,
+  MasterBOM,
+  MasterBOMItem,
+  MachineFolder,
 } from '../types/erp';
 import {
   Workbook,
@@ -35,7 +38,7 @@ import { sortRowsByAscendingSrNo } from '../utils/projectMaterialsHelper';
 
 export interface DbMutationMessage {
   action: 'UPSERT' | 'DELETE' | 'BULK_UPSERT' | 'BULK_DELETE';
-  entity: 'requirement' | 'project' | 'material' | 'vendor' | 'customer';
+  entity: 'requirement' | 'project' | 'material' | 'vendor' | 'customer' | 'master_machine' | 'master_bom';
   id?: string;
   ids?: string[];
   data?: any;
@@ -2032,5 +2035,207 @@ export const setRemoteMaintenanceMode = async (enabled: boolean): Promise<boolea
   }
 };
 
+// =========================================================================
+// MASTER MACHINES & MASTER BOM DATABASE SYNCHRONIZATION
+// =========================================================================
 
+export const dbFetchMasterMachines = async (): Promise<MachineFolder[] | null> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase
+      .from('master_machines')
+      .select('*')
+      .order('name', { ascending: true });
 
+    if (error) {
+      console.warn('Supabase master_machines query notice:', error.message);
+      return null;
+    }
+    if (!data) return [];
+    return data.map((d: any) => {
+      const rawTypes = Array.isArray(d.types) ? d.types : (typeof d.types === 'string' ? JSON.parse(d.types) : []);
+      const activeTypes: string[] = [];
+      const archivedTypes: string[] = [];
+      const typeDetails: Record<string, any> = {};
+
+      rawTypes.forEach((t: any) => {
+        if (typeof t === 'string') {
+          activeTypes.push(t);
+          typeDetails[t] = { name: t };
+        } else if (t && typeof t === 'object' && t.name) {
+          if (t.isArchived) {
+            archivedTypes.push(t.name);
+          } else {
+            activeTypes.push(t.name);
+          }
+          typeDetails[t.name] = t;
+        }
+      });
+
+      return {
+        id: d.id,
+        name: d.name,
+        types: activeTypes,
+        archivedTypes,
+        typeDetails,
+        createdBy: d.created_by,
+        createdAt: d.created_at,
+        updatedAt: d.updated_at,
+      };
+    });
+  } catch (err) {
+    console.warn('Error fetching master machines from Supabase:', err);
+    return null;
+  }
+};
+
+export const dbUpsertMasterMachine = async (machine: MachineFolder): Promise<boolean> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return false;
+  try {
+    const serializedTypes = [
+      ...(machine.types || []).map((t) => machine.typeDetails?.[t] || { name: t, isArchived: false }),
+      ...(machine.archivedTypes || []).map((t) => ({ ...(machine.typeDetails?.[t] || { name: t }), isArchived: true })),
+    ];
+
+    const payload = {
+      id: machine.id,
+      name: machine.name,
+      types: serializedTypes,
+      created_by: machine.createdBy,
+      created_at: toSafeIsoTimestamp(machine.createdAt),
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await supabase.from('master_machines').upsert(payload, { onConflict: 'id' });
+    if (!error) {
+      broadcastDbMutation({
+        action: 'UPSERT',
+        entity: 'master_machine',
+        id: machine.id,
+        data: machine,
+      });
+      return true;
+    }
+    console.warn('Error upserting master machine:', error.message);
+    return false;
+  } catch (err) {
+    console.warn('Exception upserting master machine:', err);
+    return false;
+  }
+};
+
+export const dbDeleteMasterMachine = async (machineId: string): Promise<boolean> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return false;
+  try {
+    const { error } = await supabase.from('master_machines').delete().eq('id', machineId);
+    if (!error) {
+      broadcastDbMutation({
+        action: 'DELETE',
+        entity: 'master_machine',
+        id: machineId,
+      });
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.warn('Exception deleting master machine:', err);
+    return false;
+  }
+};
+
+export const dbFetchMasterBOMs = async (): Promise<MasterBOM[] | null> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase
+      .from('master_boms')
+      .select('*')
+      .order('name', { ascending: true });
+
+    if (error) {
+      console.warn('Supabase master_boms query notice:', error.message);
+      return null;
+    }
+    if (!data) return [];
+    return data.map((d: any) => ({
+      id: d.id,
+      bomNumber: d.bom_number || '',
+      name: d.name || '',
+      assemblyName: d.name || '',
+      machineName: d.machine_name || '',
+      machineType: d.machine_type || '',
+      revision: d.revision || 'Rev A',
+      status: d.status || 'Approved',
+      category: d.category || '',
+      notes: d.notes || '',
+      items: Array.isArray(d.items) ? d.items : (typeof d.items === 'string' ? JSON.parse(d.items) : []),
+      createdBy: d.created_by || 'System',
+      createdAt: d.created_at || new Date().toISOString(),
+      updatedBy: d.updated_by || d.created_by || 'System',
+      updatedAt: d.updated_at || new Date().toISOString(),
+    }));
+  } catch (err) {
+    console.warn('Error fetching master BOMs from Supabase:', err);
+    return null;
+  }
+};
+
+export const dbUpsertMasterBOM = async (bom: MasterBOM): Promise<boolean> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return false;
+  try {
+    const payload = {
+      id: bom.id,
+      bom_number: bom.bomNumber,
+      name: bom.name,
+      machine_name: bom.machineName,
+      machine_type: bom.machineType,
+      revision: bom.revision || 'Rev A',
+      status: bom.status || 'Approved',
+      category: bom.category || null,
+      notes: bom.notes || null,
+      items: bom.items || [],
+      created_by: bom.createdBy,
+      created_at: toSafeIsoTimestamp(bom.createdAt),
+      updated_by: bom.updatedBy || bom.createdBy,
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await supabase.from('master_boms').upsert(payload, { onConflict: 'id' });
+    if (!error) {
+      broadcastDbMutation({
+        action: 'UPSERT',
+        entity: 'master_bom',
+        id: bom.id,
+        data: bom,
+      });
+      return true;
+    }
+    console.warn('Error upserting master BOM:', error.message);
+    return false;
+  } catch (err) {
+    console.warn('Exception upserting master BOM:', err);
+    return false;
+  }
+};
+
+export const dbDeleteMasterBOM = async (bomId: string): Promise<boolean> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return false;
+  try {
+    const { error } = await supabase.from('master_boms').delete().eq('id', bomId);
+    if (!error) {
+      broadcastDbMutation({
+        action: 'DELETE',
+        entity: 'master_bom',
+        id: bomId,
+      });
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.warn('Exception deleting master BOM:', err);
+    return false;
+  }
+};

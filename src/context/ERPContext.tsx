@@ -30,8 +30,12 @@ import {
   MRPRecord,
   ProjectMaterialRequirementItem,
   ActiveProcessingMaterial,
-  DispatchReadyItem,
   TrashItem,
+  MasterBOM,
+  MasterBOMItem,
+  MachineFolder,
+  MachineTypeMeta,
+  DispatchReadyItem,
 } from '../types/erp';
 import {
   INITIAL_USERS,
@@ -76,6 +80,12 @@ import {
   getRemoteMaintenanceMode,
   setRemoteMaintenanceMode,
   DbMutationMessage,
+  dbFetchMasterMachines,
+  dbUpsertMasterMachine,
+  dbDeleteMasterMachine,
+  dbFetchMasterBOMs,
+  dbUpsertMasterBOM,
+  dbDeleteMasterBOM,
 } from '../services/supabaseService';
 import { getSupabaseClient } from '../lib/supabaseClient';
 import {
@@ -140,6 +150,25 @@ interface ERPContextType {
   boms: BOMRecord[];
   rfqs: RFQRecord[];
   vendorDocuments: VendorDocument[];
+
+  // Master Machine Folders & Master BOM Module
+  masterMachines: MachineFolder[];
+  masterBOMs: MasterBOM[];
+  addMachineFolder: (name: string, types?: string[]) => MachineFolder;
+  updateMachineFolder: (id: string, updates: Partial<MachineFolder>) => void;
+  deleteMachineFolder: (id: string) => void;
+  addMachineType: (machineId: string, typeName: string, details?: Partial<MachineTypeMeta>) => void;
+  renameMachineType: (machineId: string, oldTypeName: string, newTypeName: string) => void;
+  updateMachineTypeDetails: (machineId: string, typeName: string, details: Partial<MachineTypeMeta>) => void;
+  deleteMachineType: (machineId: string, typeName: string) => void;
+  moveMachineType: (sourceMachineId: string, targetMachineId: string, typeName: string) => void;
+  duplicateMachineType: (machineId: string, sourceTypeName: string, newTypeName: string, copyBOMs: boolean) => void;
+  archiveMachineType: (machineId: string, typeName: string, archive: boolean) => void;
+  addMasterBOM: (bom: Omit<MasterBOM, 'id' | 'createdAt' | 'updatedAt'>) => MasterBOM;
+  updateMasterBOM: (id: string, updates: Partial<MasterBOM>) => void;
+  duplicateMasterBOM: (sourceId: string, newName?: string, targetMachineName?: string, targetMachineType?: string) => MasterBOM | null;
+  deleteMasterBOM: (id: string) => void;
+  resetMasterBOMsToFactoryDefault: () => void;
 
   // =======================================================================
   // HEART OF ERP: PROJECT MATERIAL REQUIREMENT TABLE STATE & HANDLERS
@@ -391,6 +420,644 @@ export const isRootAdminUser = (u?: User | null): boolean => {
   return isKaustubhUser(u) || isAmitUser(u);
 };
 
+export const INITIAL_MASTER_MACHINES: MachineFolder[] = [
+  {
+    id: 'mach-filling-machine',
+    name: 'Filling machine',
+    types: [
+      '1. Filling',
+      '2. Sealing',
+      '3. Washing',
+      '4. Air Conveyor',
+      '5. Housing & Drive shaft',
+      '6. Cap elevator & Railing & cap shooter',
+      '7. Transfer Wheel',
+      '8. Machine & Base frame',
+      '9. Outlet Conveyor',
+      '10. Electrical',
+      '11. Gear set & Hub set',
+    ],
+    createdBy: 'Kaustubh Admin',
+    createdAt: '2026-01-15T10:00:00.000Z',
+    updatedAt: '2026-01-15T10:00:00.000Z',
+  },
+  {
+    id: 'mach-labelling-machine-amit',
+    name: 'LABELLING MACHINE AMIT',
+    types: [
+      '1. Base Frame + Clading + Panel',
+      '2. Conveyor Assembly',
+      '3. Drive Assembly + Gear Assembly + Shaft + Vacuum Assembly',
+      '4. Drum Assembly',
+      '5. Cutter Assembly',
+      '6. Servo Roller Assembly',
+      '7. Infeed Assembly',
+      '8. Change part Assembly',
+      '9. Electrical',
+      '10. Pneumatic Assembly',
+      '11. Pump Assembly',
+    ],
+    createdBy: 'Amit',
+    createdAt: '2026-01-15T10:00:00.000Z',
+    updatedAt: '2026-01-15T10:00:00.000Z',
+  },
+  {
+    id: 'mach-mono-conveyor',
+    name: 'Mono Conveyor System',
+    types: [
+      '1. Slat Chain Conveyor Assembly',
+      '2. Belt Conveyor Assembly',
+      '3. Drive & Motor Assembly',
+      '4. Guide Rail & Stand Frame',
+    ],
+    createdBy: 'Kaustubh Admin',
+    createdAt: '2026-01-15T10:00:00.000Z',
+    updatedAt: '2026-01-15T10:00:00.000Z',
+  },
+  {
+    id: 'mach-vial-washing',
+    name: 'Automatic Vial Washing Machine',
+    types: [
+      '1. Linear Washing Unit',
+      '2. Rotary Washing Unit',
+      '3. Water Recycling & Pump Skid',
+      '4. Enclosure & Base Structure',
+    ],
+    createdBy: 'Kaustubh Admin',
+    createdAt: '2026-01-15T10:00:00.000Z',
+    updatedAt: '2026-01-15T10:00:00.000Z',
+  },
+];
+
+export const INITIAL_MASTER_BOMS: MasterBOM[] = [
+  // --- Filling machine: Root BOM Files ---
+  {
+    id: 'bom-fm-nut-bolt-list',
+    bomNumber: 'BOM-FM-NBL-01',
+    name: 'Filling machine nut bolt list',
+    assemblyName: 'Filling machine nut bolt list',
+    machineName: 'Filling machine',
+    machineType: 'General / Root',
+    revision: 'Rev A',
+    status: 'Approved',
+    category: 'Fasteners & Hardware',
+    notes: 'Complete standard hardware and fastener bill for rotary monoblock filling unit',
+    createdBy: 'Kaustubh Admin',
+    createdAt: '2026-01-15T10:00:00.000Z',
+    updatedBy: 'Kaustubh Admin',
+    updatedAt: '2026-01-15T10:00:00.000Z',
+    items: [
+      {
+        id: 'fm-nb-1',
+        srNo: 1,
+        description: 'M8 x 25 Hex Head Bolt Full Thread',
+        materialType: 'SS 304 Bolt',
+        sizeSpecs: 'M8 x 25 mm',
+        quantity: 120,
+        unit: 'Nos',
+        category: 'Fasteners',
+        notes: 'SS 304 forged high tensile',
+      },
+      {
+        id: 'fm-nb-2',
+        srNo: 2,
+        description: 'M8 Self Locking Nyloc Nut',
+        materialType: 'SS 304 Nut',
+        sizeSpecs: 'M8 Standard',
+        quantity: 120,
+        unit: 'Nos',
+        category: 'Fasteners',
+        notes: 'Vibration resistant nylon collar',
+      },
+      {
+        id: 'fm-nb-3',
+        srNo: 3,
+        description: 'M10 x 35 Socket Head Cap Screw',
+        materialType: 'SS 304 Bolt',
+        sizeSpecs: 'M10 x 35 mm',
+        quantity: 80,
+        unit: 'Nos',
+        category: 'Fasteners',
+        notes: 'Allen key drive DIN 912',
+      },
+      {
+        id: 'fm-nb-4',
+        srNo: 4,
+        description: 'M6 x 15 Button Head Torx Bolt',
+        materialType: 'SS 304 Bolt',
+        sizeSpecs: 'M6 x 15 mm',
+        quantity: 64,
+        unit: 'Nos',
+        category: 'Fasteners',
+        notes: 'Smooth panel mount finish',
+      },
+      {
+        id: 'fm-nb-5',
+        srNo: 5,
+        description: 'Plain Washer M8 Thick Flange',
+        materialType: 'SS Washer',
+        sizeSpecs: 'OD 20 x ID 8.4 x 1.5 mm',
+        quantity: 240,
+        unit: 'Nos',
+        category: 'Hardware',
+        notes: 'SS 304 punched and deburred',
+      },
+      {
+        id: 'fm-nb-6',
+        srNo: 6,
+        description: 'Spring Lock Washer M10',
+        materialType: 'SS Washer',
+        sizeSpecs: 'M10 Spring Split',
+        quantity: 80,
+        unit: 'Nos',
+        category: 'Hardware',
+        notes: 'DIN 127B spring steel SS',
+      },
+    ],
+  },
+  {
+    id: 'bom-fm-rfc-switchgears',
+    bomNumber: 'BOM-FM-ELEC-01',
+    name: 'RFC switch gears',
+    assemblyName: 'RFC switch gears',
+    machineName: 'Filling machine',
+    machineType: 'General / Root',
+    revision: 'Rev A',
+    status: 'Approved',
+    category: 'Electrical & Automation',
+    notes: 'Power switchgear, contactors, and control gear components for filling machine panel',
+    createdBy: 'Kaustubh Admin',
+    createdAt: '2026-01-15T10:00:00.000Z',
+    updatedBy: 'Kaustubh Admin',
+    updatedAt: '2026-01-15T10:00:00.000Z',
+    items: [
+      {
+        id: 'fm-sg-1',
+        srNo: 1,
+        description: '3-Pole MCB 32A C-Curve 10kA',
+        materialType: 'Electrical Component',
+        sizeSpecs: '32 Ampere 415V AC',
+        quantity: 2,
+        unit: 'Nos',
+        category: 'Electrical',
+        notes: 'Schneider Electric Acti9 series',
+      },
+      {
+        id: 'fm-sg-2',
+        srNo: 2,
+        description: 'SMPS Regulated Power Supply 24V DC 10A',
+        materialType: 'Electrical Component',
+        sizeSpecs: 'Input 230V / Output 24V DC 240W',
+        quantity: 1,
+        unit: 'Nos',
+        category: 'Electrical',
+        notes: 'DIN Rail mount industrial power',
+      },
+      {
+        id: 'fm-sg-3',
+        srNo: 3,
+        description: 'VFD AC Inverter Motor Drive 1.5 kW',
+        materialType: 'Electrical Component',
+        sizeSpecs: '1.5 kW 415V 3-Phase',
+        quantity: 2,
+        unit: 'Nos',
+        category: 'Drive Gear',
+        notes: 'Modbus RS485 communication enabled',
+      },
+      {
+        id: 'fm-sg-4',
+        srNo: 4,
+        description: 'Power Contactor 18A with 24V DC Coil',
+        materialType: 'Electrical Component',
+        sizeSpecs: '18A 3P + 1NO auxiliary',
+        quantity: 3,
+        unit: 'Nos',
+        category: 'Electrical',
+        notes: 'Heavy duty motor starter duty',
+      },
+      {
+        id: 'fm-sg-5',
+        srNo: 5,
+        description: 'Emergency Stop Push Button Mushroom Head IP65',
+        materialType: 'Electrical Component',
+        sizeSpecs: '22.5 mm cutout 2NC contact',
+        quantity: 2,
+        unit: 'Nos',
+        category: 'Safety',
+        notes: 'Turn-to-reset latching mechanism',
+      },
+    ],
+  },
+
+  // --- Filling machine: Assembly Subfolder BOMs ---
+  {
+    id: 'bom-fm-filling-assembly',
+    bomNumber: 'BOM-FM-01',
+    name: 'Standard Rotary Filling Assembly BOM',
+    assemblyName: 'Standard Rotary Filling Assembly BOM',
+    machineName: 'Filling machine',
+    machineType: '1. Filling',
+    revision: 'Rev A',
+    status: 'Approved',
+    category: 'Filling Assembly',
+    notes: 'Standard production BOM with precision SS components for 24-head liquid filling',
+    createdBy: 'Kaustubh Admin',
+    createdAt: '2026-01-15T10:00:00.000Z',
+    updatedBy: 'Kaustubh Admin',
+    updatedAt: '2026-01-15T10:00:00.000Z',
+    items: [
+      {
+        id: 'bi-rmb-1',
+        srNo: 1,
+        description: 'Frame Mounting Bottom Strip',
+        materialType: 'SS Flat',
+        sizeSpecs: '80 x 6 x 485',
+        quantity: 4,
+        unit: 'Nos',
+        category: 'Structural',
+        notes: 'SS 304 laser cut & deburred',
+        recommendedVendor: 'Standard SS Supplier',
+      },
+      {
+        id: 'bi-rmb-2',
+        srNo: 2,
+        description: 'Liquid Feed Manifold Pipe',
+        materialType: 'SS Pipe',
+        sizeSpecs: '25 mm NB x 2 mm thk',
+        quantity: 6,
+        unit: 'Meter',
+        category: 'Piping',
+        notes: 'Sanitary electropolished ID',
+        recommendedVendor: 'Standard SS Supplier',
+      },
+      {
+        id: 'bi-rmb-3',
+        srNo: 3,
+        description: 'Machine Enclosure SS Sheet Paneling',
+        materialType: 'SS Sheet',
+        sizeSpecs: '2 mm x 1250 x 2500',
+        quantity: 2,
+        unit: 'Nos',
+        category: 'Body Cover',
+        notes: '2B finish with protective PVC coating',
+        recommendedVendor: 'Standard SS Supplier',
+      },
+      {
+        id: 'bi-rmb-4',
+        srNo: 4,
+        description: 'Filling Nozzle Plunger Shaft',
+        materialType: 'SS Round',
+        sizeSpecs: '20 mm Dia x 300 mm',
+        quantity: 3,
+        unit: 'Nos',
+        category: 'Moving Parts',
+        notes: 'Ground finish H7 tolerance',
+        recommendedVendor: 'Standard SS Supplier',
+      },
+      {
+        id: 'bi-rmb-5',
+        srNo: 5,
+        description: 'Inlet/Outlet Sanitary SS Flange',
+        materialType: 'SS 304 Flange',
+        sizeSpecs: '1.5 Inch Table E',
+        quantity: 4,
+        unit: 'Nos',
+        category: 'Hardware',
+        notes: 'Tri-clover clamp compatible',
+        recommendedVendor: 'Standard SS Supplier',
+      },
+    ],
+  },
+  {
+    id: 'bom-fm-sealing-assembly',
+    bomNumber: 'BOM-FM-02',
+    name: 'Rotary Capping & Sealing Assembly',
+    assemblyName: 'Rotary Capping & Sealing Assembly',
+    machineName: 'Filling machine',
+    machineType: '2. Sealing',
+    revision: 'Rev A',
+    status: 'Approved',
+    category: 'Sealing Assembly',
+    notes: 'Magnetic torque capping heads and sealing spindle assembly',
+    createdBy: 'Kaustubh Admin',
+    createdAt: '2026-01-15T10:00:00.000Z',
+    updatedBy: 'Kaustubh Admin',
+    updatedAt: '2026-01-15T10:00:00.000Z',
+    items: [
+      {
+        id: 'bi-sea-1',
+        srNo: 1,
+        description: 'Magnetic Capping Chuck Head SS 316',
+        materialType: 'SS Round',
+        sizeSpecs: '55 mm Dia x 120 mm',
+        quantity: 8,
+        unit: 'Nos',
+        category: 'Sealing Head',
+        notes: 'Adjustable magnetic slip torque 0.5 - 2.5 Nm',
+      },
+      {
+        id: 'bi-sea-2',
+        srNo: 2,
+        description: 'Capping Spindle Drive Shaft',
+        materialType: 'SS Round',
+        sizeSpecs: '25 mm Dia x 450 mm',
+        quantity: 8,
+        unit: 'Nos',
+        category: 'Drive Shaft',
+        notes: 'Keyway milled and ground finish',
+      },
+    ],
+  },
+  {
+    id: 'bom-fm-base-frame',
+    bomNumber: 'BOM-FM-08',
+    name: 'Machine Base Frame Structural Assembly',
+    assemblyName: 'Machine Base Frame Structural Assembly',
+    machineName: 'Filling machine',
+    machineType: '8. Machine & Base frame',
+    revision: 'Rev A',
+    status: 'Approved',
+    category: 'Structure',
+    notes: 'Fabricated main base frame with leveling pads and stainless steel skin',
+    createdBy: 'Kaustubh Admin',
+    createdAt: '2026-01-15T10:00:00.000Z',
+    updatedBy: 'Kaustubh Admin',
+    updatedAt: '2026-01-15T10:00:00.000Z',
+    items: [
+      {
+        id: 'bi-bf-1',
+        srNo: 1,
+        description: 'Base Frame Hollow Box Pipe',
+        materialType: 'MS / SS Pipe',
+        sizeSpecs: '75 x 75 x 3 mm thk',
+        quantity: 18,
+        unit: 'Meter',
+        category: 'Structural',
+        notes: 'Welded frame with epoxy primer',
+      },
+      {
+        id: 'bi-bf-2',
+        srNo: 2,
+        description: 'Heavy Duty Machine Leveling Pad M24',
+        materialType: 'SS Leveling Pad',
+        sizeSpecs: 'Base 100 mm Dia x M24 Thread',
+        quantity: 6,
+        unit: 'Nos',
+        category: 'Hardware',
+        notes: 'Anti-vibration rubber base pad',
+      },
+    ],
+  },
+
+  // --- LABELLING MACHINE AMIT: Root & Subfolder BOMs ---
+  {
+    id: 'bom-lm-bearing-list',
+    bomNumber: 'BOM-LM-BRG-01',
+    name: 'LABELLING_MACHINE_120BPM_BEARING',
+    assemblyName: 'LABELLING_MACHINE_120BPM_BEARING',
+    machineName: 'LABELLING MACHINE AMIT',
+    machineType: 'General / Root',
+    revision: 'Rev A',
+    status: 'Approved',
+    category: 'Bearings & Hardware',
+    notes: 'Comprehensive bearing schedule for 120 BPM automatic sticker labelling machine',
+    createdBy: 'Amit',
+    createdAt: '2026-01-15T10:00:00.000Z',
+    updatedBy: 'Amit',
+    updatedAt: '2026-01-15T10:00:00.000Z',
+    items: [
+      {
+        id: 'lm-bg-1',
+        srNo: 1,
+        description: 'Deep Groove Ball Bearing 6204-2RS',
+        materialType: 'Bearing Component',
+        sizeSpecs: 'ID 20 x OD 47 x W 14 mm',
+        quantity: 8,
+        unit: 'Nos',
+        category: 'Bearings',
+        notes: 'SKF / FAG genuine rubber sealed',
+      },
+      {
+        id: 'lm-bg-2',
+        srNo: 2,
+        description: 'High Speed Ball Bearing 6005-2RS',
+        materialType: 'Bearing Component',
+        sizeSpecs: 'ID 25 x OD 47 x W 12 mm',
+        quantity: 6,
+        unit: 'Nos',
+        category: 'Bearings',
+        notes: 'Pre-lubricated high speed synthetic grease',
+      },
+      {
+        id: 'lm-bg-3',
+        srNo: 3,
+        description: 'Pillow Block Bearing Unit UCP 205',
+        materialType: 'Bearing Component',
+        sizeSpecs: 'Shaft 25 mm Center Height 36.5 mm',
+        quantity: 4,
+        unit: 'Nos',
+        category: 'Mounted Units',
+        notes: 'Cast iron housing with grease nipple',
+      },
+      {
+        id: 'lm-bg-4',
+        srNo: 4,
+        description: '2-Bolt Oval Flange Bearing UCFL 204',
+        materialType: 'Bearing Component',
+        sizeSpecs: 'Shaft 20 mm 2-Bolt Flange',
+        quantity: 4,
+        unit: 'Nos',
+        category: 'Mounted Units',
+        notes: 'Side conveyor wall mounting',
+      },
+      {
+        id: 'lm-bg-5',
+        srNo: 5,
+        description: 'Linear Ball Bushing LM 20 UU',
+        materialType: 'Bearing Component',
+        sizeSpecs: 'Shaft 20 mm OD 32 x L 42 mm',
+        quantity: 4,
+        unit: 'Nos',
+        category: 'Linear Motion',
+        notes: 'Dispensing beak height adjustment slide',
+      },
+    ],
+  },
+  {
+    id: 'bom-lm-base-frame',
+    bomNumber: 'BOM-LM-01',
+    name: 'Base Frame + Cladding + Panel Specification',
+    assemblyName: 'Base Frame + Cladding + Panel Specification',
+    machineName: 'LABELLING MACHINE AMIT',
+    machineType: '1. Base Frame + Clading + Panel',
+    revision: 'Rev A',
+    status: 'Approved',
+    category: 'Structural',
+    notes: 'Base frame chassis with stainless steel 304 architectural cladding',
+    createdBy: 'Amit',
+    createdAt: '2026-01-15T10:00:00.000Z',
+    updatedBy: 'Amit',
+    updatedAt: '2026-01-15T10:00:00.000Z',
+    items: [
+      {
+        id: 'lm-bf-1',
+        srNo: 1,
+        description: 'Square Tubular Main Chassis Frame',
+        materialType: 'SS Pipe',
+        sizeSpecs: '50 x 50 x 2.5 mm thk',
+        quantity: 14,
+        unit: 'Meter',
+        category: 'Structural',
+        notes: 'TIG welded & pickled finish',
+      },
+      {
+        id: 'lm-bf-2',
+        srNo: 2,
+        description: 'Cladding Side Door SS 304 Sheet',
+        materialType: 'SS Sheet',
+        sizeSpecs: '1.5 mm x 600 x 900 mm',
+        quantity: 4,
+        unit: 'Nos',
+        category: 'Body Cover',
+        notes: 'Matt finish with acrylic viewing window',
+      },
+    ],
+  },
+  {
+    id: 'bom-lm-conveyor',
+    bomNumber: 'BOM-LM-02',
+    name: 'Conveyor Assembly Specification',
+    assemblyName: 'Conveyor Assembly Specification',
+    machineName: 'LABELLING MACHINE AMIT',
+    machineType: '2. Conveyor Assembly',
+    revision: 'Rev A',
+    status: 'Approved',
+    category: 'Conveyor',
+    notes: 'Slat chain product handling conveyor with bottle spacing separator',
+    createdBy: 'Amit',
+    createdAt: '2026-01-15T10:00:00.000Z',
+    updatedBy: 'Amit',
+    updatedAt: '2026-01-15T10:00:00.000Z',
+    items: [
+      {
+        id: 'lm-cv-1',
+        srNo: 1,
+        description: 'Delrin / SS 812 Slat Chain Conveyor',
+        materialType: 'Hardware',
+        sizeSpecs: 'Width 82.5 mm Pitch 38.1 mm',
+        quantity: 5,
+        unit: 'Meter',
+        category: 'Chain',
+        notes: 'Low friction food grade track',
+      },
+      {
+        id: 'lm-cv-2',
+        srNo: 2,
+        description: 'Conveyor Guide Rail SS Profile',
+        materialType: 'SS Flat',
+        sizeSpecs: '25 x 3 mm x 2000 mm',
+        quantity: 4,
+        unit: 'Nos',
+        category: 'Guide',
+        notes: 'Fitted with green UHMWPE wear strip',
+      },
+    ],
+  },
+  {
+    id: 'bom-lm-drive-vacuum',
+    bomNumber: 'BOM-LM-03',
+    name: 'Drive Assembly + Gear Assembly + Shaft + Vacuum Assembly',
+    assemblyName: 'Drive Assembly + Gear Assembly + Shaft + Vacuum Assembly',
+    machineName: 'LABELLING MACHINE AMIT',
+    machineType: '3. Drive Assembly + Gear Assembly + Shaft + Vacuum Assembly',
+    revision: 'Rev A',
+    status: 'Approved',
+    category: 'Drive Transmission',
+    notes: 'Precision geared drive mechanism with vacuum suction manifold and shafting',
+    createdBy: 'Amit',
+    createdAt: '2026-01-15T10:00:00.000Z',
+    updatedBy: 'Amit',
+    updatedAt: '2026-01-15T10:00:00.000Z',
+    items: [
+      {
+        id: 'lm-dv-1',
+        srNo: 1,
+        description: 'Main Drive Vacuum Transmission Shaft',
+        materialType: 'SS Round',
+        sizeSpecs: '35 mm Dia x 580 mm',
+        quantity: 1,
+        unit: 'Nos',
+        category: 'Shafting',
+        notes: 'Center drilled for vacuum suction passage, H6 tolerance',
+      },
+      {
+        id: 'lm-dv-2',
+        srNo: 2,
+        description: 'Helical Worm Gearbox 1:20 Ratio',
+        materialType: 'Hardware',
+        sizeSpecs: 'Size 50 Input 14mm Output 25mm Hollow',
+        quantity: 1,
+        unit: 'Nos',
+        category: 'Gearbox',
+        notes: 'Aluminum housing synthetic gear oil filled',
+      },
+      {
+        id: 'lm-dv-3',
+        srNo: 3,
+        description: 'Vacuum Distributor Rotary Union',
+        materialType: 'Brass / SS Component',
+        sizeSpecs: '1/2 Inch BSP Single Flow High Speed',
+        quantity: 1,
+        unit: 'Nos',
+        category: 'Vacuum System',
+        notes: 'Rotary carbon graphite seal 1500 RPM rated',
+      },
+    ],
+  },
+
+  // --- Mono Conveyor & Vial Washing ---
+  {
+    id: 'bom-conveyor-slat-std',
+    bomNumber: 'BOM-MC-01',
+    name: 'Standard Slat Conveyor BOM',
+    assemblyName: 'Standard Slat Conveyor BOM',
+    machineName: 'Mono Conveyor System',
+    machineType: '1. Slat Chain Conveyor Assembly',
+    revision: 'Rev A',
+    status: 'Approved',
+    category: 'Material Handling',
+    notes: 'Heavy duty SS 304 slat conveyor with adjustable guide rails',
+    createdBy: 'Kaustubh Admin',
+    createdAt: '2026-01-16T11:00:00.000Z',
+    updatedBy: 'Kaustubh Admin',
+    updatedAt: '2026-01-16T11:00:00.000Z',
+    items: [
+      {
+        id: 'bi-mc-1',
+        srNo: 1,
+        description: 'Conveyor Side Guide Frame Sheet',
+        materialType: 'SS Sheet',
+        sizeSpecs: '2.5 mm x 1000 x 2000',
+        quantity: 2,
+        unit: 'Nos',
+        category: 'Frame',
+        notes: 'CNC bent profile with guide mounting slots',
+      },
+      {
+        id: 'bi-mc-2',
+        srNo: 2,
+        description: 'Return Roller Guide Outer Pipe',
+        materialType: 'SS Pipe',
+        sizeSpecs: '38 mm OD x 1.5 mm thk',
+        quantity: 12,
+        unit: 'Meter',
+        category: 'Roller',
+        notes: 'Seamless SS 304 pipe',
+      },
+    ],
+  },
+];
+
 export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [users, setUsers] = useState<User[]>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_users');
@@ -569,6 +1236,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const [activeVendorId, setActiveVendorId] = useState<string>('vnd-1');
+
   const [activeTab, setActiveTabState] = useState<string>(() => {
     try {
       const saved = localStorage.getItem('RSB_ACTIVE_TAB');
@@ -885,6 +1553,80 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : INITIAL_BOMS;
   });
 
+  const [masterMachines, setMasterMachines] = useState<MachineFolder[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_master_machines');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // If stored data has old types like '24-Head Standard' or 'Standard Model', upgrade to real factory structure
+          const hasOldTypes = parsed.some((m: MachineFolder) =>
+            m.types?.includes('24-Head Standard') ||
+            m.name === 'Rotary Monoblock Filling Machine' ||
+            m.name === 'Labeling Machine 120 BPM'
+          );
+          if (!hasOldTypes) return parsed;
+          return INITIAL_MASTER_MACHINES;
+        }
+      } catch (e) {}
+    }
+    return INITIAL_MASTER_MACHINES;
+  });
+
+  const [masterBOMs, setMasterBOMs] = useState<MasterBOM[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_master_boms');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // If stored BOMs lack the factory root lists, merge or reset
+          const hasFactoryBOMs = parsed.some((b: MasterBOM) =>
+            b.name.includes('nut bolt') || b.name.includes('RFC switch') || b.name.includes('BEARING')
+          );
+          if (hasFactoryBOMs) return parsed;
+          return INITIAL_MASTER_BOMS;
+        }
+      } catch (e) {}
+    }
+    return INITIAL_MASTER_BOMS;
+  });
+
+
+
+  useEffect(() => {
+    let isCancelled = false;
+    const loadRemoteBOMsAndMachines = async () => {
+      try {
+        const [remoteMachines, remoteBoms] = await Promise.all([
+          dbFetchMasterMachines(),
+          dbFetchMasterBOMs(),
+        ]);
+        if (isCancelled) return;
+        if (remoteMachines && remoteMachines.length > 0) {
+          setMasterMachines(remoteMachines);
+        } else if (remoteMachines && remoteMachines.length === 0) {
+          for (const m of INITIAL_MASTER_MACHINES) {
+            await dbUpsertMasterMachine(m);
+          }
+        }
+
+        if (remoteBoms && remoteBoms.length > 0) {
+          setMasterBOMs(remoteBoms);
+        } else if (remoteBoms && remoteBoms.length === 0) {
+          for (const b of INITIAL_MASTER_BOMS) {
+            await dbUpsertMasterBOM(b);
+          }
+        }
+      } catch (err) {
+        console.warn('Remote master BOM sync notice (local active):', err);
+      }
+    };
+    loadRemoteBOMsAndMachines();
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
   const [rfqs, setRfqs] = useState<RFQRecord[]>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_rfqs');
     return saved ? JSON.parse(saved) : INITIAL_RFQS;
@@ -1003,6 +1745,14 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     safeLocalStorageSet(LOCAL_STORAGE_KEY + '_vdocs', vendorDocuments);
   }, [vendorDocuments]);
+
+  useEffect(() => {
+    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_machines', masterMachines);
+  }, [masterMachines]);
+
+  useEffect(() => {
+    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_boms', masterBOMs);
+  }, [masterBOMs]);
 
   // Pure Database Entity Synchronization Helpers
   const safeMergeRequirements = (existing: ProjectMaterialRequirementItem[], remote: ProjectMaterialRequirementItem[]) => {
@@ -5325,6 +6075,454 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     logAudit('BOM Deleted', 'BOM Management', `Deleted BOM ID ${id}`);
   };
 
+  // Master Machine Folder Handlers
+  const addMachineFolder = (name: string, types?: string[]): MachineFolder => {
+    const trimmed = name.trim();
+    const newMachine: MachineFolder = {
+      id: `mach-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      name: trimmed,
+      types: types && types.length > 0 ? types.map((t) => t.trim()).filter(Boolean) : ['Standard Model'],
+      createdBy: currentUser.name,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    setMasterMachines((prev) => [newMachine, ...prev]);
+    dbUpsertMasterMachine(newMachine);
+    logAudit('Machine Folder Created', 'BOM Management', `Created folder "${trimmed}" with ${newMachine.types.length} types`);
+    return newMachine;
+  };
+
+  const updateMachineFolder = (id: string, updates: Partial<MachineFolder>) => {
+    let updatedMachine: MachineFolder | null = null;
+    setMasterMachines((prev) =>
+      prev.map((m) => {
+        if (m.id === id) {
+          updatedMachine = {
+            ...m,
+            ...updates,
+            updatedAt: new Date().toISOString(),
+          };
+          return updatedMachine;
+        }
+        return m;
+      })
+    );
+    if (updatedMachine) {
+      dbUpsertMasterMachine(updatedMachine);
+      logAudit('Machine Folder Updated', 'BOM Management', `Updated folder "${(updatedMachine as MachineFolder).name}"`);
+    }
+  };
+
+  const deleteMachineFolder = (id: string) => {
+    const target = masterMachines.find((m) => m.id === id);
+    if (!target) return;
+    setMasterMachines((prev) => prev.filter((m) => m.id !== id));
+    dbDeleteMasterMachine(id);
+    logAudit('Machine Folder Deleted', 'BOM Management', `Deleted machine folder "${target.name}"`);
+  };
+
+  const addMachineType = (machineId: string, typeName: string, details?: Partial<MachineTypeMeta>) => {
+    const trimmed = typeName.trim();
+    if (!trimmed) return;
+    setMasterMachines((prev) =>
+      prev.map((m) => {
+        if (m.id === machineId) {
+          if (m.types.includes(trimmed)) return m;
+          const updatedTypeDetails = {
+            ...(m.typeDetails || {}),
+            [trimmed]: {
+              name: trimmed,
+              parentFolderId: machineId,
+              modelVariant: details?.modelVariant || 'Standard',
+              description: details?.description || '',
+              internalCode: details?.internalCode || '',
+              isArchived: false,
+              updatedAt: new Date().toISOString(),
+              ...details,
+            },
+          };
+          const updated: MachineFolder = {
+            ...m,
+            types: [...m.types, trimmed],
+            typeDetails: updatedTypeDetails,
+            updatedAt: new Date().toISOString(),
+          };
+          dbUpsertMasterMachine(updated);
+          return updated;
+        }
+        return m;
+      })
+    );
+    logAudit('Machine Type Added', 'BOM Management', `Added type "${trimmed}" to machine`);
+  };
+
+  const renameMachineType = (machineId: string, oldTypeName: string, newTypeName: string) => {
+    const trimmed = newTypeName.trim();
+    if (!trimmed || trimmed === oldTypeName) return;
+    let machineName = '';
+    setMasterMachines((prev) =>
+      prev.map((m) => {
+        if (m.id === machineId) {
+          machineName = m.name;
+          const oldDetails = m.typeDetails?.[oldTypeName];
+          const newTypeDetails = { ...(m.typeDetails || {}) };
+          delete newTypeDetails[oldTypeName];
+          newTypeDetails[trimmed] = {
+            ...(oldDetails || { name: oldTypeName }),
+            name: trimmed,
+            updatedAt: new Date().toISOString(),
+          };
+
+          const isOldArchived = m.archivedTypes?.includes(oldTypeName);
+          const updated: MachineFolder = {
+            ...m,
+            types: m.types.map((t) => (t === oldTypeName ? trimmed : t)),
+            archivedTypes: m.archivedTypes?.map((t) => (t === oldTypeName ? trimmed : t)),
+            typeDetails: newTypeDetails,
+            updatedAt: new Date().toISOString(),
+          };
+          dbUpsertMasterMachine(updated);
+          return updated;
+        }
+        return m;
+      })
+    );
+    if (machineName) {
+      setMasterBOMs((prev) =>
+        prev.map((b) => {
+          if (b.machineName === machineName && b.machineType === oldTypeName) {
+            const updatedBOM = {
+              ...b,
+              machineType: trimmed,
+              updatedAt: new Date().toISOString(),
+            };
+            dbUpsertMasterBOM(updatedBOM);
+            return updatedBOM;
+          }
+          return b;
+        })
+      );
+    }
+    logAudit('Machine Type Renamed', 'BOM Management', `Renamed type "${oldTypeName}" to "${trimmed}"`);
+  };
+
+  const updateMachineTypeDetails = (machineId: string, typeName: string, details: Partial<MachineTypeMeta>) => {
+    setMasterMachines((prev) =>
+      prev.map((m) => {
+        if (m.id === machineId) {
+          const currentMeta = m.typeDetails?.[typeName] || { name: typeName };
+          const updatedMeta = {
+            ...currentMeta,
+            ...details,
+            name: typeName,
+            updatedAt: new Date().toISOString(),
+          };
+          const updated: MachineFolder = {
+            ...m,
+            typeDetails: {
+              ...(m.typeDetails || {}),
+              [typeName]: updatedMeta,
+            },
+            updatedAt: new Date().toISOString(),
+          };
+          dbUpsertMasterMachine(updated);
+          return updated;
+        }
+        return m;
+      })
+    );
+    logAudit('Machine Type Details Updated', 'BOM Management', `Updated details for "${typeName}"`);
+  };
+
+  const deleteMachineType = (machineId: string, typeName: string) => {
+    setMasterMachines((prev) =>
+      prev.map((m) => {
+        if (m.id === machineId) {
+          const newTypeDetails = { ...(m.typeDetails || {}) };
+          delete newTypeDetails[typeName];
+          const updated: MachineFolder = {
+            ...m,
+            types: m.types.filter((t) => t !== typeName),
+            archivedTypes: m.archivedTypes?.filter((t) => t !== typeName),
+            typeDetails: newTypeDetails,
+            updatedAt: new Date().toISOString(),
+          };
+          dbUpsertMasterMachine(updated);
+          return updated;
+        }
+        return m;
+      })
+    );
+    logAudit('Machine Type Deleted', 'BOM Management', `Deleted type "${typeName}"`);
+  };
+
+  const moveMachineType = (sourceMachineId: string, targetMachineId: string, typeName: string) => {
+    if (sourceMachineId === targetMachineId) return;
+    const src = masterMachines.find((m) => m.id === sourceMachineId);
+    const dest = masterMachines.find((m) => m.id === targetMachineId);
+    if (!src || !dest) return;
+
+    const typeMeta = src.typeDetails?.[typeName] || { name: typeName };
+    const isArchived = src.archivedTypes?.includes(typeName);
+
+    setMasterMachines((prev) =>
+      prev.map((m) => {
+        if (m.id === sourceMachineId) {
+          const newDetails = { ...(m.typeDetails || {}) };
+          delete newDetails[typeName];
+          const updated: MachineFolder = {
+            ...m,
+            types: m.types.filter((t) => t !== typeName),
+            archivedTypes: m.archivedTypes?.filter((t) => t !== typeName),
+            typeDetails: newDetails,
+            updatedAt: new Date().toISOString(),
+          };
+          dbUpsertMasterMachine(updated);
+          return updated;
+        }
+        if (m.id === targetMachineId) {
+          const updated: MachineFolder = {
+            ...m,
+            types: isArchived ? m.types : (m.types.includes(typeName) ? m.types : [...m.types, typeName]),
+            archivedTypes: isArchived
+              ? (m.archivedTypes?.includes(typeName) ? m.archivedTypes : [...(m.archivedTypes || []), typeName])
+              : m.archivedTypes,
+            typeDetails: {
+              ...(m.typeDetails || {}),
+              [typeName]: {
+                ...typeMeta,
+                parentFolderId: targetMachineId,
+                updatedAt: new Date().toISOString(),
+              },
+            },
+            updatedAt: new Date().toISOString(),
+          };
+          dbUpsertMasterMachine(updated);
+          return updated;
+        }
+        return m;
+      })
+    );
+
+    // Update master BOMs to reflect destination machineName
+    setMasterBOMs((prev) =>
+      prev.map((b) => {
+        if (b.machineName === src.name && b.machineType === typeName) {
+          const updatedBOM = {
+            ...b,
+            machineName: dest.name,
+            updatedAt: new Date().toISOString(),
+          };
+          dbUpsertMasterBOM(updatedBOM);
+          return updatedBOM;
+        }
+        return b;
+      })
+    );
+    logAudit('Machine Type Moved', 'BOM Management', `Moved type "${typeName}" from "${src.name}" to "${dest.name}"`);
+  };
+
+  const duplicateMachineType = (
+    machineId: string,
+    sourceTypeName: string,
+    newTypeName: string,
+    copyBOMs: boolean
+  ) => {
+    const trimmed = newTypeName.trim();
+    if (!trimmed) return;
+    const mach = masterMachines.find((m) => m.id === machineId);
+    if (!mach) return;
+
+    const sourceMeta = mach.typeDetails?.[sourceTypeName] || { name: sourceTypeName };
+
+    setMasterMachines((prev) =>
+      prev.map((m) => {
+        if (m.id === machineId) {
+          if (m.types.includes(trimmed)) return m;
+          const updated: MachineFolder = {
+            ...m,
+            types: [...m.types, trimmed],
+            typeDetails: {
+              ...(m.typeDetails || {}),
+              [trimmed]: {
+                ...sourceMeta,
+                name: trimmed,
+                description: sourceMeta.description ? `${sourceMeta.description} (Copy)` : '',
+                internalCode: sourceMeta.internalCode ? `${sourceMeta.internalCode}-COPY` : '',
+                isArchived: false,
+                updatedAt: new Date().toISOString(),
+              },
+            },
+            updatedAt: new Date().toISOString(),
+          };
+          dbUpsertMasterMachine(updated);
+          return updated;
+        }
+        return m;
+      })
+    );
+
+    if (copyBOMs) {
+      const bomsToCopy = masterBOMs.filter(
+        (b) => b.machineName === mach.name && b.machineType === sourceTypeName
+      );
+      bomsToCopy.forEach((srcBOM) => {
+        const cloned: MasterBOM = {
+          ...srcBOM,
+          id: `bom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          bomNumber: `${srcBOM.bomNumber}-COPY`,
+          name: `${srcBOM.name} (Copy)`,
+          machineName: mach.name,
+          machineType: trimmed,
+          revision: srcBOM.revision || 'Rev A',
+          items: (srcBOM.items || []).map((it) => ({
+            ...it,
+            id: `mbi-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          })),
+          createdBy: currentUser?.name || 'Engineer',
+          createdAt: new Date().toISOString(),
+          updatedBy: currentUser?.name || 'Engineer',
+          updatedAt: new Date().toISOString(),
+        };
+        addMasterBOM(cloned);
+      });
+    }
+    logAudit('Machine Type Duplicated', 'BOM Management', `Duplicated type "${sourceTypeName}" to "${trimmed}" (copyBOMs: ${copyBOMs})`);
+  };
+
+  const archiveMachineType = (machineId: string, typeName: string, archive: boolean) => {
+    setMasterMachines((prev) =>
+      prev.map((m) => {
+        if (m.id === machineId) {
+          let newTypes = [...m.types];
+          let newArchivedTypes = [...(m.archivedTypes || [])];
+          if (archive) {
+            newTypes = newTypes.filter((t) => t !== typeName);
+            if (!newArchivedTypes.includes(typeName)) {
+              newArchivedTypes.push(typeName);
+            }
+          } else {
+            newArchivedTypes = newArchivedTypes.filter((t) => t !== typeName);
+            if (!newTypes.includes(typeName)) {
+              newTypes.push(typeName);
+            }
+          }
+          const currentMeta = m.typeDetails?.[typeName] || { name: typeName };
+          const updated: MachineFolder = {
+            ...m,
+            types: newTypes,
+            archivedTypes: newArchivedTypes,
+            typeDetails: {
+              ...(m.typeDetails || {}),
+              [typeName]: {
+                ...currentMeta,
+                isArchived: archive,
+                updatedAt: new Date().toISOString(),
+              },
+            },
+            updatedAt: new Date().toISOString(),
+          };
+          dbUpsertMasterMachine(updated);
+          return updated;
+        }
+        return m;
+      })
+    );
+    logAudit(
+      archive ? 'Machine Type Archived' : 'Machine Type Restored',
+      'BOM Management',
+      `${archive ? 'Archived' : 'Restored'} type "${typeName}"`
+    );
+  };
+
+  // Master BOM Handlers
+  const addMasterBOM = (bomData: Omit<MasterBOM, 'id' | 'createdAt' | 'updatedAt'>): MasterBOM => {
+    const newBOM: MasterBOM = {
+      ...bomData,
+      id: `bom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      createdBy: currentUser.name || 'System',
+      updatedBy: currentUser.name || 'System',
+    };
+    setMasterBOMs((prev) => [newBOM, ...prev]);
+    dbUpsertMasterBOM(newBOM);
+    logAudit('Master BOM Created', 'BOM Management', `Created BOM "${newBOM.name}" (${newBOM.bomNumber}) for ${newBOM.machineName}`);
+    addNotification('BOM Created', `Master BOM "${newBOM.name}" created`, 'success', 'bom');
+    return newBOM;
+  };
+
+  const updateMasterBOM = (id: string, updates: Partial<MasterBOM>) => {
+    let updatedBOM: MasterBOM | null = null;
+    setMasterBOMs((prev) =>
+      prev.map((b) => {
+        if (b.id === id) {
+          updatedBOM = {
+            ...b,
+            ...updates,
+            updatedBy: currentUser.name || b.updatedBy,
+            updatedAt: new Date().toISOString(),
+          };
+          return updatedBOM;
+        }
+        return b;
+      })
+    );
+    if (updatedBOM) {
+      dbUpsertMasterBOM(updatedBOM);
+      logAudit('Master BOM Updated', 'BOM Management', `Updated BOM "${(updatedBOM as MasterBOM).name}" (${(updatedBOM as MasterBOM).bomNumber})`);
+    }
+  };
+
+  const duplicateMasterBOM = (
+    sourceId: string,
+    newName?: string,
+    targetMachineName?: string,
+    targetMachineType?: string
+  ): MasterBOM | null => {
+    const src = masterBOMs.find((b) => b.id === sourceId);
+    if (!src) return null;
+    const duplicated: MasterBOM = {
+      ...src,
+      id: `bom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      bomNumber: `${src.bomNumber}-COPY`,
+      name: newName?.trim() || `${src.name} (Copy)`,
+      assemblyName: newName?.trim() || `${src.name} (Copy)`,
+      machineName: targetMachineName || src.machineName,
+      machineType: targetMachineType || src.machineType,
+      revision: 'Rev A',
+      status: 'Approved',
+      createdBy: currentUser.name || 'System',
+      updatedBy: currentUser.name || 'System',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      items: (src.items || []).map((it, idx) => ({
+        ...it,
+        id: `bi-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
+      })),
+    };
+    setMasterBOMs((prev) => [duplicated, ...prev]);
+    dbUpsertMasterBOM(duplicated);
+    logAudit('Master BOM Duplicated', 'BOM Management', `Duplicated "${src.name}" to "${duplicated.name}"`);
+    addNotification('BOM Duplicated', `Created copy "${duplicated.name}"`, 'info', 'bom');
+    return duplicated;
+  };
+
+  const resetMasterBOMsToFactoryDefault = () => {
+    setMasterMachines(INITIAL_MASTER_MACHINES);
+    setMasterBOMs(INITIAL_MASTER_BOMS);
+    localStorage.setItem('RSB_INDUSTRY_master_machines', JSON.stringify(INITIAL_MASTER_MACHINES));
+    localStorage.setItem('RSB_INDUSTRY_master_boms', JSON.stringify(INITIAL_MASTER_BOMS));
+  };
+
+  const deleteMasterBOM = (id: string) => {
+    const target = masterBOMs.find((b) => b.id === id);
+    if (!target) return;
+    setMasterBOMs((prev) => prev.filter((b) => b.id !== id));
+    dbDeleteMasterBOM(id);
+    logAudit('Master BOM Deleted', 'BOM Management', `Deleted BOM "${target.name}" (${target.bomNumber})`);
+  };
+
   // RFQ Handlers
   const addRFQ = (rfq: Omit<RFQRecord, 'id' | 'quotations'>) => {
     const newRFQ: RFQRecord = {
@@ -6019,6 +7217,23 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         approveBOM,
         copyBOM,
         deleteBOM,
+        masterMachines,
+        masterBOMs,
+        addMachineFolder,
+        updateMachineFolder,
+        deleteMachineFolder,
+        addMachineType,
+        renameMachineType,
+        updateMachineTypeDetails,
+        deleteMachineType,
+        moveMachineType,
+        duplicateMachineType,
+        archiveMachineType,
+        addMasterBOM,
+        updateMasterBOM,
+        duplicateMasterBOM,
+        deleteMasterBOM,
+    resetMasterBOMsToFactoryDefault,
         addRFQ,
         submitVendorQuotation,
         approveVendorQuotation,

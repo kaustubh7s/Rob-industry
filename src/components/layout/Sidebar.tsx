@@ -9,6 +9,7 @@ import {
   Sparkles,
   Command,
   FileSpreadsheet,
+  FolderTree,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 
@@ -27,6 +28,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     projectRequirements,
     purchaseOrders,
     trashItems,
+    masterBOMs,
   } = useERP();
 
   // Close drawer on Escape key
@@ -69,6 +71,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       icon: FolderKanban,
       shortcut: 'Ctrl+2',
       badge: projects.length > 0 ? String(projects.length) : null,
+    },
+    {
+      id: 'bom',
+      label: 'BOM Management',
+      icon: FolderTree,
+      shortcut: 'Ctrl+B',
+      badge: masterBOMs.length > 0 ? String(masterBOMs.length) : null,
+      badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
     },
     {
       id: 'procurement',

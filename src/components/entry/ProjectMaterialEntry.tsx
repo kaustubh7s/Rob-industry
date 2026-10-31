@@ -40,6 +40,9 @@ import {
   ShoppingCart,
   RefreshCw,
   X,
+  FolderTree,
+  AlertTriangle,
+  ArrowUpDown,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useERP } from '../../context/ERPContext';
@@ -165,6 +168,8 @@ export const ProjectMaterialEntry: React.FC = () => {
     isMaintenanceMode,
     toggleMaintenanceMode,
     isRootAdmin,
+    masterMachines,
+    masterBOMs,
   } = useERP();
 
   const isStoreIncharge = currentUser?.role === 'store_incharge';
@@ -305,8 +310,21 @@ export const ProjectMaterialEntry: React.FC = () => {
   const [isRatesModalOpen, setIsRatesModalOpen] = useState(false);
   const [isBOMModalOpen, setIsBOMModalOpen] = useState(false);
   const [isFactoryResetModalOpen, setIsFactoryResetModalOpen] = useState(false);
-  const [selectedBOMTemplateKey, setSelectedBOMTemplateKey] = useState<string>(() => Object.keys(MACHINE_BOM_TEMPLATES)[0] || '');
-  const [selectedBOMPartIndices, setSelectedBOMPartIndices] = useState<number[]>([]);
+
+  // Master BOM Loader States (Direct Load into Material Entry Workstation)
+  const [loadBOMModalMachine, setLoadBOMModalMachine] = useState<string>('');
+  const [loadBOMModalType, setLoadBOMModalType] = useState<string>('');
+  const [loadBOMModalBOMId, setLoadBOMModalBOMId] = useState<string>('');
+  const [loadBOMSearch, setLoadBOMSearch] = useState<string>('');
+  const [loadBOMSelectedItems, setLoadBOMSelectedItems] = useState<{ [itemId: string]: boolean }>({});
+  const [loadBOMCustomQuantities, setLoadBOMCustomQuantities] = useState<{ [itemId: string]: number }>({});
+  const [loadBOMExcludedItemIds, setLoadBOMExcludedItemIds] = useState<string[]>([]);
+  const [loadBOMExistingMode, setLoadBOMExistingMode] = useState<'append' | 'replace'>('append');
+  const [loadBOMPreserveSrNo, setLoadBOMPreserveSrNo] = useState<boolean>(true);
+  const [loadBOMSkipDuplicates, setLoadBOMSkipDuplicates] = useState<boolean>(true);
+
+  // Sr. No. Mode: 'auto' (next available number) vs 'manual' (exact custom input preserved)
+  const [srNoMode, setSrNoMode] = useState<'auto' | 'manual'>('auto');
 
   // Full Factory Baseline Reset Handler
   const handleConfirmFactoryReset = () => {
@@ -358,12 +376,16 @@ export const ProjectMaterialEntry: React.FC = () => {
   const [customDescInput, setCustomDescInput] = useState('');
   const [customSizeInput, setCustomSizeInput] = useState('');
 
-  // New Project Form State: Project Name, Client Name, Client Number, Start Date, Target Date
+  // New Project Form State: Project Name, Machine Name, Machine Type, PO Number, PO Date, Vendor, Client
   const [newProjectForm, setNewProjectForm] = useState({
     name: '',
+    machineName: '',
+    machineType: '',
+    poNumber: '',
+    poDate: getTodayFormatted(),
+    vendor: '',
     clientName: '',
     clientNumber: '',
-    machineName: '',
     startDate: new Date().toISOString().split('T')[0],
     targetDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
   });
@@ -421,6 +443,17 @@ export const ProjectMaterialEntry: React.FC = () => {
     }));
     return sortRowsByAscendingSrNo(mapped);
   });
+
+  // Next automatic Sr. No. suggestion based on current active rows (Requirement 8)
+  const nextAutoSrNo = useMemo(() => {
+    if (!rows || rows.length === 0) return 1;
+    let max = 0;
+    rows.forEach((r) => {
+      const num = parseInt(String(r.srNo).replace(/[^0-9]/g, ''), 10);
+      if (!isNaN(num) && num > max) max = num;
+    });
+    return max > 0 ? max + 1 : rows.length + 1;
+  }, [rows]);
 
   const allMaterialTypes = useMemo(() => {
     return Array.from(
@@ -979,10 +1012,18 @@ export const ProjectMaterialEntry: React.FC = () => {
   };
 
 
-  // Direct Project Creation Handler
+  // Direct Project Creation Handler (Requirement 6 & 7)
   const handleCreateProject = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!newProjectForm.name.trim()) return;
+    const projName = newProjectForm.name.trim();
+    if (!projName) return;
+
+    // Check duplicate project name
+    const exists = projects.some((p) => p.name.trim().toLowerCase() === projName.toLowerCase());
+    if (exists) {
+      alert(`A project named "${projName}" already exists. Please enter a unique project name.`);
+      return;
+    }
 
     const formattedStartDate = newProjectForm.startDate || new Date().toISOString().split('T')[0];
     const formattedTargetDate = newProjectForm.targetDate || new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
@@ -991,34 +1032,49 @@ export const ProjectMaterialEntry: React.FC = () => {
     const customerDisplay = clientNameVal
       ? (clientNumVal ? `${clientNameVal} (${clientNumVal})` : clientNameVal)
       : (clientNumVal ? `Client (${clientNumVal})` : 'General Client');
-    const resolvedMachine = newProjectForm.machineName?.trim() || '';
+    const resolvedMachine = newProjectForm.machineName?.trim() || machineName || 'Standard Machine';
+    const resolvedType = newProjectForm.machineType?.trim() || 'Standard Model';
+    const resolvedPoNumber = newProjectForm.poNumber.trim() || poNo.trim() || `PO-2026-${projects.length + 1}`;
+    const resolvedPoDate = newProjectForm.poDate.trim() || entryDate || getTodayFormatted();
+    const resolvedVendor = newProjectForm.vendor.trim() || vendorName || '';
+
+    // Check duplicate PO number warning (preserves manual entry while warning)
+    const duplicatePoProject = projects.find(
+      (p) => (p.poNo || p.poNumber || '').trim().toLowerCase() === resolvedPoNumber.toLowerCase()
+    );
+    if (duplicatePoProject) {
+      const proceed = window.confirm(
+        `Notice: PO Number "${resolvedPoNumber}" is already linked to project "${duplicatePoProject.name}".\n\nDo you want to continue with this PO Number?`
+      );
+      if (!proceed) return;
+    }
 
     const newPrj: Omit<ProjectItem, 'id'> = {
-      name: newProjectForm.name.trim(),
+      name: projName,
       projectNumber: `PRJ-${String(projects.length + 1).padStart(3, '0')}`,
       customer: customerDisplay,
       clientName: clientNameVal || 'General Client',
       clientNumber: clientNumVal,
       orderSource: 'Customer PO',
-      machineType: (resolvedMachine || '') as any,
-      machineName: resolvedMachine || '',
-      poNumber: poNo || `PO-2026-${projects.length + 1}`,
-      poNo: poNo || `PO-2026-${projects.length + 1}`,
-      date: formattedStartDate,
+      machineType: (resolvedType || resolvedMachine) as any,
+      machineName: resolvedMachine,
+      poNumber: resolvedPoNumber,
+      poNo: resolvedPoNumber,
+      date: resolvedPoDate,
       createdDate: formattedStartDate,
       lastUpdatedDate: formattedStartDate,
       startDate: formattedStartDate,
       targetCompletionDate: formattedTargetDate,
       priority: 'high',
       projectValue: 450000,
-      vendor: vendorName || '',
-      vendorName: vendorName || '',
+      vendor: resolvedVendor,
+      vendorName: resolvedVendor,
       orderedBy: activeOrderedBy,
       materialsCount: 0,
       totalQuantity: 0,
       status: 'Material Procurement',
       progressPct: 10,
-      notes: `Project ${newProjectForm.name.trim()} - Client: ${clientNameVal} | Phone: ${clientNumVal || 'N/A'}`,
+      notes: `Project ${projName} - Machine: ${resolvedMachine} (${resolvedType}) | PO: ${resolvedPoNumber}`,
     };
 
     if (resolvedMachine) {
@@ -1033,22 +1089,30 @@ export const ProjectMaterialEntry: React.FC = () => {
     try {
       localStorage.setItem('RSB_ACTIVE_SELECTED_PROJECT', newPrj.name);
     } catch (e) {}
-    setMachineName('');
+
+    // Populate workstation fields directly so user can load BOM right away
+    setMachineName(resolvedMachine);
+    setPoNo(resolvedPoNumber);
+    setEntryDate(resolvedPoDate);
+    setVendorName(resolvedVendor);
     setRows([]);
-    setVendorName('');
-    setPoNo('');
+
     setIsAddProjectModalOpen(false);
     setNewProjectForm({
       name: '',
+      machineName: '',
+      machineType: '',
+      poNumber: '',
+      poDate: getTodayFormatted(),
+      vendor: '',
       clientName: '',
       clientNumber: '',
-      machineName: '',
       startDate: new Date().toISOString().split('T')[0],
       targetDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     });
 
     confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
-    setSaveToast(`✨ Created Project "${newPrj.name}"!`);
+    setSaveToast(`✨ Created Project "${newPrj.name}"! Ready to load machine BOM.`);
     window.dispatchEvent(new CustomEvent('rsb:tour:project-created', { detail: { project: newPrj } }));
     setTimeout(() => setSaveToast(null), 4000);
   };
@@ -1138,56 +1202,157 @@ export const ProjectMaterialEntry: React.FC = () => {
     setTimeout(() => setSaveToast(null), 2500);
   };
 
-  // Open Standard Machine BOM Template Modal
+  // Open Load Machine BOM Modal (Requirement 4 & 5)
   const handleOpenBOMModal = (targetMachine?: string) => {
-    const keys = Object.keys(MACHINE_BOM_TEMPLATES);
-    const key = targetMachine || machineName || (keys[0] || '');
-    const foundKey = keys.find(
-      (k) => k.toLowerCase() === key.trim().toLowerCase()
-    ) || keys[0] || '';
-    setSelectedBOMTemplateKey(foundKey);
-    const tmpl = MACHINE_BOM_TEMPLATES[foundKey];
-    if (tmpl) {
-      setSelectedBOMPartIndices(tmpl.parts.map((_, i) => i));
+    const machName = (targetMachine || machineName || '').trim();
+    let selectedMach = masterMachines.find(
+      (m) => m.name.toLowerCase() === machName.toLowerCase()
+    );
+    if (!selectedMach && masterMachines.length > 0) {
+      selectedMach = masterMachines[0];
     }
+    const resolvedMachName = selectedMach ? selectedMach.name : '';
+    const resolvedTypeName = selectedMach && selectedMach.types.length > 0 ? selectedMach.types[0] : 'Standard Model';
+
+    // Find BOM under this machine & type, or first available
+    const matchingBOM =
+      masterBOMs.find(
+        (b) =>
+          b.machineName.toLowerCase() === resolvedMachName.toLowerCase() &&
+          b.machineType.toLowerCase() === resolvedTypeName.toLowerCase()
+      ) ||
+      masterBOMs.find((b) => b.machineName.toLowerCase() === resolvedMachName.toLowerCase()) ||
+      masterBOMs[0] ||
+      null;
+
+    setLoadBOMModalMachine(resolvedMachName);
+    setLoadBOMModalType(resolvedTypeName);
+    setLoadBOMModalBOMId(matchingBOM ? matchingBOM.id : '');
+    setLoadBOMSearch('');
+    setLoadBOMExcludedItemIds([]);
+    setLoadBOMExistingMode(rows.length > 0 ? 'append' : 'replace');
+    setLoadBOMPreserveSrNo(true);
+    setLoadBOMSkipDuplicates(true);
+
+    if (matchingBOM) {
+      const initSel: Record<string, boolean> = {};
+      const initQty: Record<string, number> = {};
+      (matchingBOM.items || []).forEach((it) => {
+        initSel[it.id] = true;
+        initQty[it.id] = Number(it.quantity) || 1;
+      });
+      setLoadBOMSelectedItems(initSel);
+      setLoadBOMCustomQuantities(initQty);
+    } else {
+      setLoadBOMSelectedItems({});
+      setLoadBOMCustomQuantities({});
+    }
+
     setIsBOMModalOpen(true);
   };
 
-  // 1-Click Load Standard BOM Parts into Table
-  const handleLoadBOMTemplate = () => {
-    const tmpl = MACHINE_BOM_TEMPLATES[selectedBOMTemplateKey];
-    if (!tmpl) return;
+  // Switch BOM inside modal
+  const handleSelectBOMInModal = (bomId: string) => {
+    setLoadBOMModalBOMId(bomId);
+    const bom = masterBOMs.find((b) => b.id === bomId);
+    if (bom) {
+      setLoadBOMModalMachine(bom.machineName);
+      setLoadBOMModalType(bom.machineType);
+      const initSel: Record<string, boolean> = {};
+      const initQty: Record<string, number> = {};
+      (bom.items || []).forEach((it) => {
+        initSel[it.id] = true;
+        initQty[it.id] = Number(it.quantity) || 1;
+      });
+      setLoadBOMSelectedItems(initSel);
+      setLoadBOMCustomQuantities(initQty);
+      setLoadBOMExcludedItemIds([]);
+    }
+  };
 
-    const partsToLoad = tmpl.parts.filter((_, idx) => selectedBOMPartIndices.includes(idx));
-    if (partsToLoad.length === 0) {
-      alert('Please select at least one standard part to load.');
+  // Load Selected Materials directly into active project (Requirement 4 & 5)
+  const handleLoadSelectedBOMMaterials = () => {
+    const bom = masterBOMs.find((b) => b.id === loadBOMModalBOMId);
+    if (!bom) {
+      alert('Please select a valid machine BOM.');
+      return;
+    }
+
+    // Filter items: checked AND not excluded
+    const itemsToConsider = (bom.items || []).filter(
+      (it) => loadBOMSelectedItems[it.id] && !loadBOMExcludedItemIds.includes(it.id)
+    );
+
+    if (itemsToConsider.length === 0) {
+      alert('Please select at least one material to load.');
       return;
     }
 
     const targetProject = selectedProjectName || (projects.length > 0 ? projects[0].name : 'General Project');
 
-    const newRows: EntryRow[] = partsToLoad.map((p, idx) => ({
-      id: `bom-${tmpl.machineName}-${Date.now()}-${idx}`,
-      machineName: tmpl.machineName,
-      date: entryDate || new Date().toLocaleDateString('en-GB'),
-      poNo: poNo || '-',
-      srNo: rows.length + idx + 1,
-      materialType: p.materialType as MaterialType,
-      sizeSpecs: p.sizeSpecification,
-      quantity: p.quantity,
-      unit: p.unit,
-      vendorName: p.recommendedVendor || vendorName || 'Standard Vendor',
-      description: p.description,
-      orderedBy: activeOrderedBy,
-      projectName: targetProject,
-    }));
+    // Duplicate detection against existing rows (if appending)
+    let filteredItems = itemsToConsider;
+    if (loadBOMExistingMode === 'append' && loadBOMSkipDuplicates) {
+      filteredItems = itemsToConsider.filter((it) => {
+        const isDuplicate = rows.some(
+          (r) =>
+            r.description.trim().toLowerCase() === it.description.trim().toLowerCase() &&
+            r.sizeSpecs.trim().toLowerCase() === it.sizeSpecs.trim().toLowerCase()
+        );
+        return !isDuplicate;
+      });
+      if (filteredItems.length === 0) {
+        alert('All selected materials already exist in this project. Uncheck "Skip duplicate rows" if you wish to load them again.');
+        return;
+      }
+    }
 
-    setMachineName(tmpl.machineName);
-    setRows((prev) => normalizeSrNumbers([...prev, ...newRows]));
+    // Build project-specific material rows
+    const baseSrNo = rows.length;
+    const newRows: EntryRow[] = filteredItems.map((it, idx) => {
+      const customQty = loadBOMCustomQuantities[it.id] !== undefined ? loadBOMCustomQuantities[it.id] : it.quantity;
+      const finalSrNo = loadBOMPreserveSrNo
+        ? it.srNo
+        : baseSrNo + idx + 1;
+
+      return {
+        id: `bom-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
+        machineName: bom.machineName,
+        date: entryDate || getTodayFormatted(),
+        poNo: poNo || '-',
+        srNo: finalSrNo,
+        materialType: (it.materialType as MaterialType) || 'SS Flat',
+        sizeSpecs: it.sizeSpecs || '-',
+        quantity: Number(customQty) > 0 ? Number(customQty) : 1,
+        unit: it.unit || 'Nos',
+        vendorName: it.recommendedVendor || vendorName || '',
+        description: it.description,
+        orderedBy: activeOrderedBy,
+        projectName: targetProject,
+      };
+    });
+
+    if (!machineName || machineName === 'Project-1') {
+      setMachineName(bom.machineName);
+    }
+
+    let nextRows: EntryRow[];
+    if (loadBOMExistingMode === 'replace') {
+      nextRows = newRows;
+    } else {
+      nextRows = [...rows, ...newRows];
+    }
+
+    setRows(nextRows);
+    if (selectedProjectName) {
+      try {
+        localStorage.setItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`, JSON.stringify(nextRows));
+      } catch (e) {}
+    }
+
     setIsBOMModalOpen(false);
-
     confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
-    setSaveToast(`⚡ 1-Click Loaded ${newRows.length} standard parts from "${tmpl.machineName}" BOM!`);
+    setSaveToast(`⚡ Loaded ${newRows.length} precision materials from BOM "${bom.name}" into Project "${targetProject}"!`);
     setTimeout(() => setSaveToast(null), 4000);
   };
 
@@ -1197,7 +1362,7 @@ export const ProjectMaterialEntry: React.FC = () => {
     setTimeout(() => setSaveToast(null), 4000);
   };
 
-  // Add single material from quick entry form
+  // Add single material from quick entry form (supports Manual & Auto Sr. No.)
   const handleAddMaterialRow = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!quickDesc.trim()) {
@@ -1207,11 +1372,9 @@ export const ProjectMaterialEntry: React.FC = () => {
 
     const targetProject = selectedProjectName || (projects.length > 0 ? projects[0].name : 'Project-1');
 
-    const targetSrNo = (quickSrNo && !isNaN(Number(quickSrNo)) && Number(quickSrNo) > 0)
-      ? Number(quickSrNo)
-      : (manualSrNo && !isNaN(Number(manualSrNo)) && Number(manualSrNo) > 0)
-      ? Number(manualSrNo)
-      : rows.length + 1;
+    const targetSrNo = srNoMode === 'auto'
+      ? nextAutoSrNo
+      : (quickSrNo.trim() || manualSrNo.trim() || String(nextAutoSrNo));
 
     const newRow: EntryRow = {
       id: `row-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
@@ -2277,22 +2440,45 @@ export const ProjectMaterialEntry: React.FC = () => {
                 Add Material Row (Auto-suggests from frequent sizes & descriptions)
               </h3>
             </div>
-            <span className="text-[11px] text-slate-400 font-medium">
-              Type description or size, then click Add or press Enter ↵
-            </span>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="text-[11px] text-slate-400 font-medium">
+                Type description or size, then click Add or press Enter ↵
+              </span>
+              <div className="inline-flex p-0.5 bg-slate-800 rounded-lg border border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setSrNoMode('auto')}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-all ${
+                    srNoMode === 'auto' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Auto suggests sequential serial numbers"
+                >
+                  ⚡ Auto Sr. No.
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSrNoMode('manual')}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-all ${
+                    srNoMode === 'manual' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Preserves exact manual entries (10A, text, skips)"
+                >
+                  ✏️ Manual Sr. No.
+                </button>
+              </div>
+            </div>
           </div>
 
           <form onSubmit={handleAddMaterialRow} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2 items-end">
-            {/* 0. Sr. No Manual Option */}
+            {/* 0. Sr. No Option (Supports Manual text/number and Auto suggestions) */}
             <div className="lg:col-span-1 space-y-1">
               <label className="text-[10px] font-bold uppercase tracking-wider text-emerald-300 block truncate">
-                Sr. No
+                {srNoMode === 'auto' ? 'Sr (Auto)' : 'Sr (Manual)'}
               </label>
               <input
                 ref={quickSrNoInputRef}
-                type="number"
-                min="1"
-                value={quickSrNo || manualSrNo}
+                type="text"
+                value={srNoMode === 'auto' ? (quickSrNo || String(nextAutoSrNo)) : quickSrNo}
                 onChange={(e) => {
                   setQuickSrNo(e.target.value);
                   setManualSrNo(e.target.value);
@@ -2303,9 +2489,9 @@ export const ProjectMaterialEntry: React.FC = () => {
                     quickMatTypeRef.current?.focus();
                   }
                 }}
-                placeholder={String(rows.length + 1)}
-                className="w-full bg-slate-800 border border-emerald-500/50 rounded-lg px-2 py-1.5 text-xs font-mono font-black text-emerald-300 text-center focus:bg-slate-900 focus:outline-none focus:border-emerald-400 shadow-2xs no-spin [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                title="Manual Serial Number for material item"
+                placeholder={String(nextAutoSrNo)}
+                className="w-full bg-slate-800 border border-emerald-500/50 rounded-lg px-2 py-1.5 text-xs font-mono font-black text-emerald-300 text-center focus:bg-slate-900 focus:outline-none focus:border-emerald-400 shadow-2xs"
+                title={srNoMode === 'auto' ? 'Auto-suggested Sr. No. (sequential)' : 'Manual Sr. No. (accepts text e.g. 10A, skips)'}
               />
             </div>
 
@@ -3227,11 +3413,119 @@ export const ProjectMaterialEntry: React.FC = () => {
             />
           </div>
 
-          {/* 2. Client Name & 3. Client Number (Optional Self-Learning Combobox) */}
+          {/* 2. Machine Folder & Machine Type Selection (Requirement 6) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                Client / Customer Name <span className="text-slate-400 font-normal lowercase">(optional)</span>
+                Machine Name *
+              </label>
+              <input
+                type="text"
+                list="entry-modal-machine-folders"
+                required
+                value={newProjectForm.machineName}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const foundM = masterMachines.find(
+                    (m) => m.name.toLowerCase() === val.toLowerCase()
+                  );
+                  setNewProjectForm({
+                    ...newProjectForm,
+                    machineName: val,
+                    machineType: foundM && foundM.types.length > 0 ? foundM.types[0] : newProjectForm.machineType,
+                  });
+                }}
+                placeholder="Select or enter machine name"
+                className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 font-semibold focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 outline-none text-xs"
+              />
+              <datalist id="entry-modal-machine-folders">
+                {masterMachines.map((m) => (
+                  <option key={m.id} value={m.name} />
+                ))}
+              </datalist>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                Machine Type *
+              </label>
+              <input
+                type="text"
+                list="entry-modal-machine-types"
+                required
+                value={newProjectForm.machineType}
+                onChange={(e) => setNewProjectForm({ ...newProjectForm, machineType: e.target.value })}
+                placeholder="Select or enter type (e.g. 24-Head)"
+                className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 font-semibold focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 outline-none text-xs"
+              />
+              <datalist id="entry-modal-machine-types">
+                {(() => {
+                  const mach = masterMachines.find(
+                    (m) => m.name.toLowerCase() === (newProjectForm.machineName || '').toLowerCase()
+                  );
+                  const types = mach?.types && mach.types.length > 0 ? mach.types : ['Standard Model'];
+                  return types.map((t) => <option key={t} value={t} />);
+                })()}
+              </datalist>
+            </div>
+          </div>
+
+          {/* 3. PO Number (Manual Entry Supported) & PO Date (Requirement 7) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-emerald-700 uppercase tracking-wider block flex items-center gap-1">
+                <span>PO Number *</span>
+                <span className="text-[10px] text-slate-400 font-normal lowercase">(manual entry preserved)</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={newProjectForm.poNumber}
+                onChange={(e) => setNewProjectForm({ ...newProjectForm, poNumber: e.target.value })}
+                placeholder="e.g. PO-2026-88"
+                className="w-full px-3.5 py-2 rounded-xl bg-white border border-emerald-300 text-slate-900 font-mono font-bold focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/10 outline-none text-xs"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                PO Date
+              </label>
+              <input
+                type="text"
+                value={newProjectForm.poDate}
+                onChange={(e) => setNewProjectForm({ ...newProjectForm, poDate: e.target.value })}
+                placeholder={getTodayFormatted()}
+                className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 font-mono font-medium focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 outline-none text-xs"
+              />
+            </div>
+          </div>
+
+          {/* 4. Vendor / Supplier (Optional) */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+              Vendor / Supplier <span className="text-slate-400 font-normal lowercase">(optional)</span>
+            </label>
+            <input
+              type="text"
+              list="entry-modal-vendors"
+              value={newProjectForm.vendor}
+              onChange={(e) => setNewProjectForm({ ...newProjectForm, vendor: e.target.value })}
+              placeholder="Select existing or type new vendor..."
+              className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 font-semibold focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 outline-none text-xs"
+            />
+            <datalist id="entry-modal-vendors">
+              {vendors.map((v) => (
+                <option key={v.id} value={v.name} />
+              ))}
+            </datalist>
+          </div>
+
+          {/* 5. Client Name & Client Number */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                Client / Customer <span className="text-slate-400 font-normal lowercase">(optional)</span>
               </label>
               <input
                 type="text"
@@ -3246,8 +3540,8 @@ export const ProjectMaterialEntry: React.FC = () => {
                     clientNumber: matched?.mobile || newProjectForm.clientNumber,
                   });
                 }}
-                placeholder="Type new or select existing"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 font-semibold placeholder:text-slate-400 focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-sm shadow-xs"
+                placeholder="Type new or select customer"
+                className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 font-semibold focus:border-blue-600 outline-none text-xs"
               />
               <datalist id="entry-learned-customers">
                 {customers.map((c) => (
@@ -3267,9 +3561,15 @@ export const ProjectMaterialEntry: React.FC = () => {
                 value={newProjectForm.clientNumber}
                 onChange={(e) => setNewProjectForm({ ...newProjectForm, clientNumber: e.target.value })}
                 placeholder="e.g. +91 98765 43210"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 font-semibold placeholder:text-slate-400 focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-sm font-mono shadow-xs"
+                className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 font-mono focus:border-blue-600 outline-none text-xs"
               />
             </div>
+          </div>
+
+          {/* 6. Ordered By (Authenticated user audit) */}
+          <div className="p-2.5 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-between text-xs text-slate-600">
+            <span className="font-bold">Ordered By:</span>
+            <span className="font-mono font-bold text-blue-700">{currentUser?.name || 'Authorized Engineer'}</span>
           </div>
 
           {/* 3. Start Date & 4. Target Date */}
@@ -3605,204 +3905,458 @@ export const ProjectMaterialEntry: React.FC = () => {
         <Modal
           isOpen={isBOMModalOpen}
           onClose={() => setIsBOMModalOpen(false)}
-          title={selectedBOMTemplateKey ? `⚡ Standard Factory BOM: ${selectedBOMTemplateKey}` : '⚡ Standard Factory BOM Templates'}
-          subtitle="1-Click load all precision engineered standard parts into the active table"
-          maxWidth="4xl"
+          title="⚡ Load Machine BOM into Active Project"
+          subtitle={`Load pre-engineered machine assemblies and part specifications directly into ${selectedProjectName || 'current project'}`}
+          maxWidth="5xl"
         >
           {(() => {
-            const hasTemplates = Object.keys(MACHINE_BOM_TEMPLATES).length > 0;
-            const tmpl = selectedBOMTemplateKey ? MACHINE_BOM_TEMPLATES[selectedBOMTemplateKey] : null;
+            const currentBOM = masterBOMs.find((b) => b.id === loadBOMModalBOMId);
 
-            if (!hasTemplates || !tmpl) {
-              return (
-                <div className="p-8 text-center space-y-4">
-                  <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto">
-                    <Sparkles className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-white">Factory Clean BOM State</h4>
-                    <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
-                      No sample BOM templates are preloaded. You can build, configure, and save customized BOM structures in the BOM Management module.
-                    </p>
-                  </div>
-                  <div className="flex justify-center gap-2 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setIsBOMModalOpen(false)}
-                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all"
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
-              );
-            }
+            // Machine options
+            const machineList = Array.from(
+              new Set([
+                ...masterMachines.map((m) => m.name),
+                ...masterBOMs.map((b) => b.machineName),
+              ])
+            ).filter(Boolean);
 
-            const allSelected = selectedBOMPartIndices.length === tmpl.parts.length;
+            // Machine types for chosen machine
+            const selectedMachineObj = masterMachines.find((m) => m.name === loadBOMModalMachine);
+            const typeList = Array.from(
+              new Set([
+                ...(selectedMachineObj ? selectedMachineObj.types : []),
+                ...masterBOMs.filter((b) => b.machineName === loadBOMModalMachine).map((b) => b.machineType),
+              ])
+            ).filter(Boolean);
+
+            // Available BOMs for machine & type
+            const filteredBOMs = masterBOMs.filter((b) => {
+              if (loadBOMModalMachine && b.machineName !== loadBOMModalMachine) return false;
+              if (loadBOMModalType && b.machineType !== loadBOMModalType) return false;
+              return true;
+            });
+
+            // Filter BOM material items
+            const rawItems = currentBOM?.items || [];
+            const visibleItems = rawItems
+              .filter((it) => !loadBOMExcludedItemIds.includes(it.id))
+              .filter((it) => {
+                if (!loadBOMSearch.trim()) return true;
+                const q = loadBOMSearch.toLowerCase();
+                return (
+                  it.description.toLowerCase().includes(q) ||
+                  (it.sizeSpecs && it.sizeSpecs.toLowerCase().includes(q)) ||
+                  (it.materialType && it.materialType.toLowerCase().includes(q)) ||
+                  (it.category && it.category.toLowerCase().includes(q)) ||
+                  String(it.srNo).toLowerCase().includes(q)
+                );
+              });
+
+            const selectedCount = visibleItems.filter((it) => loadBOMSelectedItems[it.id]).length;
+            const allVisibleSelected = visibleItems.length > 0 && visibleItems.every((it) => loadBOMSelectedItems[it.id]);
 
             return (
               <div className="space-y-4 text-slate-200">
-                {/* Machine Template Switcher & Overview */}
-                <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold uppercase text-amber-400 font-mono">
-                        {tmpl.category}
-                      </span>
-                      <span className="text-sm font-extrabold text-white">
-                        {tmpl.machineName} Standard BOM
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-400 mt-0.5">{tmpl.description}</p>
+                {/* 1. MACHINE, TYPE & BOM SELECTION ROW */}
+                <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <FolderTree className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Select Machine Folder, Type & Master BOM</span>
                   </div>
 
-                  {/* Switch Machine Dropdown */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-400 font-bold">Select Machine:</span>
-                    <select
-                      value={selectedBOMTemplateKey}
-                      onChange={(e) => {
-                        const nextKey = e.target.value;
-                        setSelectedBOMTemplateKey(nextKey);
-                        const nextTmpl = MACHINE_BOM_TEMPLATES[nextKey];
-                        if (nextTmpl) {
-                          setSelectedBOMPartIndices(nextTmpl.parts.map((_, i) => i));
-                        }
-                      }}
-                      className="px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-white font-bold text-xs focus:border-amber-400 outline-none font-mono"
-                    >
-                      {Object.keys(MACHINE_BOM_TEMPLATES).map((k) => (
-                        <option key={k} value={k}>
-                          {k} ({MACHINE_BOM_TEMPLATES[k].parts.length} Parts)
-                        </option>
-                      ))}
-                    </select>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {/* Machine Folder */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 mb-1">
+                        1. Machine Folder
+                      </label>
+                      <select
+                        value={loadBOMModalMachine}
+                        onChange={(e) => {
+                          const mName = e.target.value;
+                          setLoadBOMModalMachine(mName);
+                          const mObj = masterMachines.find((m) => m.name === mName);
+                          const defaultType = mObj && mObj.types.length > 0 ? mObj.types[0] : '';
+                          setLoadBOMModalType(defaultType);
+                          // Auto-select first matching BOM
+                          const firstMatching = masterBOMs.find(
+                            (b) => b.machineName === mName && (!defaultType || b.machineType === defaultType)
+                          );
+                          if (firstMatching) {
+                            handleSelectBOMInModal(firstMatching.id);
+                          } else {
+                            setLoadBOMModalBOMId('');
+                          }
+                        }}
+                        className="w-full px-3 py-2 rounded-xl bg-slate-850 border border-slate-700 text-white font-medium text-xs focus:border-amber-400 outline-none"
+                      >
+                        <option value="">-- Choose Machine Folder --</option>
+                        {machineList.map((m) => (
+                          <option key={m} value={m}>
+                            📁 {m}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Machine Type */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 mb-1">
+                        2. Machine Type
+                      </label>
+                      <select
+                        value={loadBOMModalType}
+                        onChange={(e) => {
+                          const tName = e.target.value;
+                          setLoadBOMModalType(tName);
+                          const firstMatching = masterBOMs.find(
+                            (b) => b.machineName === loadBOMModalMachine && b.machineType === tName
+                          );
+                          if (firstMatching) {
+                            handleSelectBOMInModal(firstMatching.id);
+                          } else {
+                            setLoadBOMModalBOMId('');
+                          }
+                        }}
+                        className="w-full px-3 py-2 rounded-xl bg-slate-850 border border-slate-700 text-white font-medium text-xs focus:border-amber-400 outline-none"
+                      >
+                        <option value="">-- All Types --</option>
+                        {typeList.map((t) => (
+                          <option key={t} value={t}>
+                            ⚙️ {t}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Master BOM */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 mb-1">
+                        3. Master BOM
+                      </label>
+                      <select
+                        value={loadBOMModalBOMId}
+                        onChange={(e) => handleSelectBOMInModal(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-slate-850 border border-amber-500/50 text-amber-300 font-bold text-xs focus:border-amber-400 outline-none"
+                      >
+                        <option value="">-- Choose BOM Specification --</option>
+                        {filteredBOMs.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            📄 {b.name} ({b.items?.length || 0} items)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
 
-                {/* Metrics Header */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="p-3 rounded-xl bg-slate-850 border border-slate-800 text-center">
-                    <div className="text-[10px] text-slate-400 uppercase font-mono">Standard Parts</div>
-                    <div className="text-base font-black text-amber-400 font-mono mt-0.5">
-                      {tmpl.parts.length} Precision Items
+                {/* 2. BOM NOT SELECTED STATE */}
+                {!currentBOM && (
+                  <div className="p-8 text-center space-y-3 rounded-2xl bg-slate-900/60 border border-slate-800">
+                    <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto">
+                      <FolderTree className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-white">Select a Machine and BOM above</h4>
+                      <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+                        Choose a machine folder and BOM to preview all material rows, customize quantities, exclude parts, and load directly into {selectedProjectName || 'your active project'}.
+                      </p>
                     </div>
                   </div>
-                  <div className="p-3 rounded-xl bg-slate-850 border border-slate-800 text-center">
-                    <div className="text-[10px] text-slate-400 uppercase font-mono">Estimated Raw SS</div>
-                    <div className="text-base font-black text-emerald-400 font-mono mt-0.5">
-                      ~{tmpl.estimatedRawSSKg} KG
-                    </div>
-                  </div>
-                  <div className="p-3 rounded-xl bg-slate-850 border border-slate-800 text-center">
-                    <div className="text-[10px] text-slate-400 uppercase font-mono">Assembly Cycle</div>
-                    <div className="text-base font-black text-purple-400 font-mono mt-0.5">
-                      {tmpl.standardAssemblyDays} Days
-                    </div>
-                  </div>
-                </div>
+                )}
 
-                {/* Parts Selection Table */}
-                <div className="border border-slate-800 rounded-xl overflow-hidden max-h-80 overflow-y-auto">
-                  <table className="w-full text-left text-xs text-slate-300">
-                    <thead className="bg-slate-850 text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800 sticky top-0">
-                      <tr>
-                        <th className="px-3 py-2 w-10 text-center">
-                          <input
-                            type="checkbox"
-                            checked={allSelected}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedBOMPartIndices(tmpl.parts.map((_, i) => i));
-                              } else {
-                                setSelectedBOMPartIndices([]);
-                              }
-                            }}
-                            className="rounded bg-slate-800 text-emerald-500"
-                          />
-                        </th>
-                        <th className="px-3 py-2">Sr</th>
-                        <th className="px-3 py-2">Part Description</th>
-                        <th className="px-3 py-2">Material Type</th>
-                        <th className="px-3 py-2">Size Specification</th>
-                        <th className="px-3 py-2">Qty</th>
-                        <th className="px-3 py-2">Vendor</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/80 font-medium">
-                      {tmpl.parts.map((p, idx) => {
-                        const isChecked = selectedBOMPartIndices.includes(idx);
-                        return (
-                          <tr
-                            key={idx}
-                            onClick={() => {
-                              if (isChecked) {
-                                setSelectedBOMPartIndices((prev) => prev.filter((i) => i !== idx));
-                              } else {
-                                setSelectedBOMPartIndices((prev) => [...prev, idx]);
-                              }
-                            }}
-                            className={`hover:bg-slate-800/60 cursor-pointer transition-colors ${
-                              isChecked ? 'bg-indigo-950/20' : 'opacity-60'
+                {/* 3. BOM ACTIVE PREVIEW & CONFIGURATION */}
+                {currentBOM && (
+                  <div className="space-y-4">
+                    {/* BOM Summary & Options Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {/* BOM Info */}
+                      <div className="p-3 rounded-xl bg-slate-850 border border-slate-800">
+                        <div className="text-[10px] text-slate-400 uppercase font-mono">BOM Specification</div>
+                        <div className="text-xs font-bold text-white truncate mt-0.5">{currentBOM.name}</div>
+                        <div className="text-[11px] text-amber-400 font-mono mt-0.5">
+                          {currentBOM.machineName} &bull; {currentBOM.machineType}
+                        </div>
+                      </div>
+
+                      {/* Conflict / Existing Project Handling */}
+                      <div className="p-3 rounded-xl bg-slate-850 border border-slate-800 flex flex-col justify-center">
+                        <div className="text-[10px] text-slate-400 uppercase font-mono flex items-center justify-between">
+                          <span>Existing Materials Handling</span>
+                          {rows.length > 0 && (
+                            <span className="text-amber-400 font-bold">{rows.length} rows in project</span>
+                          )}
+                        </div>
+                        <div className="flex gap-2 mt-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setLoadBOMExistingMode('append')}
+                            className={`flex-1 py-1 px-2 rounded-lg text-[11px] font-bold transition-all ${
+                              loadBOMExistingMode === 'append'
+                                ? 'bg-indigo-600 text-white shadow-sm'
+                                : 'bg-slate-800 text-slate-400 hover:text-white'
                             }`}
                           >
-                            <td className="px-3 py-2.5 text-center" onClick={(e) => e.stopPropagation()}>
+                            ➕ Append
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setLoadBOMExistingMode('replace')}
+                            className={`flex-1 py-1 px-2 rounded-lg text-[11px] font-bold transition-all ${
+                              loadBOMExistingMode === 'replace'
+                                ? 'bg-red-600 text-white shadow-sm'
+                                : 'bg-slate-800 text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            🔄 Replace
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Sr No & Duplicate Options */}
+                      <div className="p-3 rounded-xl bg-slate-850 border border-slate-800 flex flex-col justify-center space-y-1.5">
+                        <label className="flex items-center gap-2 cursor-pointer text-xs">
+                          <input
+                            type="checkbox"
+                            checked={loadBOMPreserveSrNo}
+                            onChange={(e) => setLoadBOMPreserveSrNo(e.target.checked)}
+                            className="rounded bg-slate-800 text-emerald-500 w-3.5 h-3.5"
+                          />
+                          <span className="text-[11px] font-medium text-slate-300">
+                            Preserve Master Sr. No. (e.g. 10A, text)
+                          </span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer text-xs">
+                          <input
+                            type="checkbox"
+                            checked={loadBOMSkipDuplicates}
+                            onChange={(e) => setLoadBOMSkipDuplicates(e.target.checked)}
+                            className="rounded bg-slate-800 text-emerald-500 w-3.5 h-3.5"
+                          />
+                          <span className="text-[11px] font-medium text-slate-300">
+                            Skip duplicate project rows
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Toolbar: Search, Select All, Exclusion Counter */}
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-900 border border-slate-800">
+                      <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <div className="relative flex-1 sm:w-64">
+                          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            value={loadBOMSearch}
+                            onChange={(e) => setLoadBOMSearch(e.target.value)}
+                            placeholder="Search description, size, type..."
+                            className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs outline-none focus:border-amber-400"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next: Record<string, boolean> = { ...loadBOMSelectedItems };
+                            visibleItems.forEach((it) => {
+                              next[it.id] = !allVisibleSelected;
+                            });
+                            setLoadBOMSelectedItems(next);
+                          }}
+                          className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all whitespace-nowrap cursor-pointer"
+                        >
+                          {allVisibleSelected ? 'Deselect All' : `Select All (${visibleItems.length})`}
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-3 text-xs">
+                        <span className="text-slate-400 font-mono">
+                          Selected: <strong className="text-emerald-400 font-bold">{selectedCount}</strong> / {visibleItems.length}
+                        </span>
+                        {loadBOMExcludedItemIds.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setLoadBOMExcludedItemIds([])}
+                            className="text-[11px] text-amber-400 underline font-medium hover:text-amber-300"
+                          >
+                            Restore {loadBOMExcludedItemIds.length} removed items
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Preview & Selection Table */}
+                    <div className="border border-slate-800 rounded-xl overflow-hidden max-h-80 overflow-y-auto">
+                      <table className="w-full text-left text-xs text-slate-300">
+                        <thead className="bg-slate-850 text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800 sticky top-0 z-10">
+                          <tr>
+                            <th className="px-3 py-2 w-10 text-center">
                               <input
                                 type="checkbox"
-                                checked={isChecked}
+                                checked={allVisibleSelected}
                                 onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setSelectedBOMPartIndices((prev) => [...prev, idx]);
-                                  } else {
-                                    setSelectedBOMPartIndices((prev) => prev.filter((i) => i !== idx));
-                                  }
+                                  const next: Record<string, boolean> = { ...loadBOMSelectedItems };
+                                  visibleItems.forEach((it) => {
+                                    next[it.id] = e.target.checked;
+                                  });
+                                  setLoadBOMSelectedItems(next);
                                 }}
-                                className="rounded bg-slate-800 text-emerald-500"
+                                className="rounded bg-slate-800 text-emerald-500 w-3.5 h-3.5"
                               />
-                            </td>
-                            <td className="px-3 py-2.5 font-mono text-slate-400">{p.srNo}</td>
-                            <td className="px-3 py-2.5 font-bold text-white">{p.description}</td>
-                            <td className="px-3 py-2.5">
-                              <span className="px-2 py-0.5 rounded bg-slate-800 text-amber-300 text-[10px] font-bold">
-                                {p.materialType}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2.5 font-mono text-blue-300 font-bold">{p.sizeSpecification}</td>
-                            <td className="px-3 py-2.5 font-mono text-emerald-300 font-bold">
-                              {p.quantity} {p.unit}
-                            </td>
-                            <td className="px-3 py-2.5 text-slate-400">{p.recommendedVendor}</td>
+                            </th>
+                            <th className="px-3 py-2 w-16">Sr. No.</th>
+                            <th className="px-3 py-2">Part Description</th>
+                            <th className="px-3 py-2">Material Type</th>
+                            <th className="px-3 py-2">Size Specification</th>
+                            <th className="px-3 py-2 w-28">Project Qty</th>
+                            <th className="px-3 py-2 w-16">Unit</th>
+                            <th className="px-3 py-2 text-center w-24">Actions</th>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/80 font-medium">
+                          {visibleItems.length === 0 ? (
+                            <tr>
+                              <td colSpan={8} className="p-6 text-center text-xs text-slate-500">
+                                No materials match the search filter.
+                              </td>
+                            </tr>
+                          ) : (
+                            visibleItems.map((it) => {
+                              const isChecked = !!loadBOMSelectedItems[it.id];
+                              const customQty = loadBOMCustomQuantities[it.id] !== undefined ? loadBOMCustomQuantities[it.id] : it.quantity;
+                              const isDuplicateInProject = rows.some(
+                                (r) =>
+                                  r.description.trim().toLowerCase() === it.description.trim().toLowerCase() &&
+                                  r.sizeSpecs.trim().toLowerCase() === it.sizeSpecs.trim().toLowerCase()
+                              );
 
-                {/* Actions */}
-                <div className="flex items-center justify-between pt-2 border-t border-slate-800">
-                  <span className="text-xs text-slate-400 font-medium">
-                    Selected <strong className="text-white">{selectedBOMPartIndices.length}</strong> of {tmpl.parts.length} parts
-                  </span>
+                              return (
+                                <tr
+                                  key={it.id}
+                                  className={`hover:bg-slate-800/60 transition-colors ${
+                                    isChecked ? 'bg-indigo-950/20' : 'opacity-60'
+                                  }`}
+                                >
+                                  {/* Checkbox */}
+                                  <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={(e) => {
+                                        setLoadBOMSelectedItems((prev) => ({
+                                          ...prev,
+                                          [it.id]: e.target.checked,
+                                        }));
+                                      }}
+                                      className="rounded bg-slate-800 text-emerald-500 w-3.5 h-3.5 cursor-pointer"
+                                    />
+                                  </td>
 
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setIsBOMModalOpen(false)}
-                      className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-bold cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleLoadBOMTemplate}
-                      className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-extrabold shadow-lg shadow-emerald-600/30 transition-all active:scale-95 cursor-pointer"
-                    >
-                      <Zap className="w-4 h-4 text-amber-300" />
-                      <span>1-Click Load into Active Table</span>
-                    </button>
+                                  {/* Sr. No. */}
+                                  <td className="px-3 py-2 font-mono text-slate-400 font-bold text-[11px]">
+                                    {it.srNo}
+                                  </td>
+
+                                  {/* Description */}
+                                  <td className="px-3 py-2 font-bold text-white">
+                                    <div className="flex items-center gap-2">
+                                      <span>{it.description}</span>
+                                      {isDuplicateInProject && (
+                                        <span className="px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-mono">
+                                          In Project
+                                        </span>
+                                      )}
+                                    </div>
+                                    {it.notes && (
+                                      <div className="text-[10px] text-slate-400 font-normal">{it.notes}</div>
+                                    )}
+                                  </td>
+
+                                  {/* Material Type */}
+                                  <td className="px-3 py-2">
+                                    <span className="px-2 py-0.5 rounded bg-slate-800 text-amber-300 text-[10px] font-bold border border-slate-700">
+                                      {it.materialType}
+                                    </span>
+                                  </td>
+
+                                  {/* Size Specification */}
+                                  <td className="px-3 py-2 font-mono text-blue-300 font-bold">
+                                    {it.sizeSpecs || '-'}
+                                  </td>
+
+                                  {/* Project Qty (Editable for this project only) */}
+                                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                                    <div className="flex items-center gap-1">
+                                      <input
+                                        type="number"
+                                        min="0.1"
+                                        step="any"
+                                        value={customQty}
+                                        onChange={(e) => {
+                                          const val = parseFloat(e.target.value) || 0;
+                                          setLoadBOMCustomQuantities((prev) => ({
+                                            ...prev,
+                                            [it.id]: val,
+                                          }));
+                                        }}
+                                        className="w-16 px-1.5 py-1 rounded bg-slate-900 border border-slate-700 text-emerald-400 font-mono font-bold text-xs text-center focus:border-emerald-400 outline-none"
+                                      />
+                                    </div>
+                                  </td>
+
+                                  {/* Unit */}
+                                  <td className="px-3 py-2 text-slate-400 font-mono text-[11px]">
+                                    {it.unit}
+                                  </td>
+
+                                  {/* Action: Remove from Preview */}
+                                  <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setLoadBOMExcludedItemIds((prev) => [...prev, it.id]);
+                                      }}
+                                      title="Remove from project selection (does not delete from Master BOM)"
+                                      className="p-1 rounded hover:bg-red-500/10 text-slate-500 hover:text-red-400 transition-colors cursor-pointer text-[11px]"
+                                    >
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Actions & Safeguard Footer */}
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-800">
+                      <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                        <Lock className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Master BOM remains completely untouched. Only project copies are loaded.</span>
+                      </div>
+
+                      <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <button
+                          type="button"
+                          onClick={() => setIsBOMModalOpen(false)}
+                          className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-bold cursor-pointer transition-all"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          disabled={selectedCount === 0}
+                          onClick={handleLoadSelectedBOMMaterials}
+                          className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-extrabold shadow-lg shadow-emerald-600/30 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                          <Zap className="w-4 h-4 text-amber-300" />
+                          <span>Load Selected Materials ({selectedCount})</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             );
           })()}

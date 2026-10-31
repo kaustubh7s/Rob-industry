@@ -295,3 +295,44 @@ CREATE TABLE public.purchase_orders (
   updated_at timestamp with time zone DEFAULT now(),
   CONSTRAINT purchase_orders_pkey PRIMARY KEY (id)
 );
+
+-- Master Machine Folders (Directory Hierarchy for Machine BOMs)
+CREATE TABLE IF NOT EXISTS public.master_machines (
+  id text NOT NULL,
+  name text NOT NULL,
+  types jsonb DEFAULT '[]'::jsonb,
+  created_by text,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT master_machines_pkey PRIMARY KEY (id)
+);
+
+-- Master Bill of Materials (Master BOMs with precision material specifications)
+CREATE TABLE IF NOT EXISTS public.master_boms (
+  id text NOT NULL,
+  bom_number text NOT NULL,
+  name text NOT NULL,
+  machine_id text,
+  machine_name text NOT NULL,
+  machine_type text NOT NULL,
+  revision text DEFAULT 'Rev A'::text,
+  status text DEFAULT 'Approved'::text,
+  category text,
+  notes text,
+  items jsonb DEFAULT '[]'::jsonb,
+  created_by text,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_by text,
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT master_boms_pkey PRIMARY KEY (id)
+);
+
+-- Enable RLS & Policies
+ALTER TABLE public.master_machines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.master_boms ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read master_machines" ON public.master_machines FOR SELECT USING (true);
+CREATE POLICY "Allow public write master_machines" ON public.master_machines FOR ALL USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow public read master_boms" ON public.master_boms FOR SELECT USING (true);
+CREATE POLICY "Allow public write master_boms" ON public.master_boms FOR ALL USING (true) WITH CHECK (true);

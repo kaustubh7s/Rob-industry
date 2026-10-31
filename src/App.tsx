@@ -185,6 +185,11 @@ const ERPAppContent: React.FC = () => {
           setActiveTab('microsoft');
           return;
         }
+        if (e.key.toLowerCase() === 'b' && !isInputActive) {
+          e.preventDefault();
+          setActiveTab('bom');
+          return;
+        }
         if (e.key.toLowerCase() === 's') {
           e.preventDefault();
           window.dispatchEvent(new CustomEvent('rsb:save-order'));

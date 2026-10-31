@@ -1,0 +1,80 @@
+{
+  "name": "RSB Industry — Manufacturing ERP",
+  "short_name": "RSB ERP",
+  "description": "Advanced Manufacturing ERP System with Microsoft Excel Integration, Inward/Outward Tracking, Job Cards, and SS Engineering Calculations",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": [
+    "window-controls-overlay",
+    "standalone",
+    "minimal-ui"
+  ],
+  "orientation": "any",
+  "background_color": "#020617",
+  "theme_color": "#0f172a",
+  "categories": [
+    "business",
+    "productivity",
+    "utilities",
+    "manufacturing"
+  ],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Material Entry Station",
+      "short_name": "Material Entry",
+      "description": "Material Entry & Inward/Outward Logging",
+      "url": "/?tab=entry",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Microsoft Excel Workspace",
+      "short_name": "Excel Sync",
+      "description": "RSB Excel Workbooks (rsb1, rsb2, rsb3)",
+      "url": "/?tab=microsoft",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "BOM Specifications",
+      "short_name": "BOM Specs",
+      "description": "Machine Bill of Materials & Assembly Specs",
+      "url": "/?tab=machines",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "SS Weight Calculator",
+      "short_name": "Calculator",
+      "description": "Stainless Steel Engineering Weight Calculations",
+      "url": "/?tab=calculator",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
+
