@@ -2233,7 +2233,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               </label>
               <VendorSuggestInput
                 value={matForm.vendor || ''}
-                placeholder="e.g. Manav Metal (type initial to suggest)"
+                placeholder="e.g. MANAV METAL (type initial to suggest)"
                 onChange={(val) => setMatForm({ ...matForm, vendor: val })}
                 inputClassName="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium"
               />

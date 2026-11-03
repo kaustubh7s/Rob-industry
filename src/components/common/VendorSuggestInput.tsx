@@ -3,21 +3,25 @@ import { useERP } from '../../context/ERPContext';
 import { Sparkles, Check } from 'lucide-react';
 
 export const DEFAULT_VENDORS: string[] = [
-  'Manav Metal',
-  'Darshan Enterprises',
-  'MOLDEX',
+  'MANAV METAL',
+  'DARSHAN ENTERPRISES',
   'KINEKAR',
+  'MOLDEX',
   'GEAR WORLD',
   'Smart Profile',
   'RAJAT TECHNOCAST',
   'SHIVRAJ INDUSTRIES',
-  'BALRAJ RAUUBER',
-  'DISHA PLAST',
-  'DISHA PLAST MUMBAI',
-  'H M TRADERS',
-  'LADDAJI',
-  'SBR STEEL',
   'SEARCH',
+  'BALRAJ RAUUBER',
+  'LADDAJI',
+  'DISHA PLAST',
+  'H M TRADERS',
+  'DISHA PLAST MUMBAI',
+  'SBR STEEL',
+  'DARSHAN ELECTRICAL',
+  'RAJAT TECHNO CAST',
+  'V K',
+  'SR METAL',
 ];
 
 export interface VendorSuggestInputProps {
@@ -57,48 +61,59 @@ export const VendorSuggestInput: React.FC<VendorSuggestInputProps> = ({
   const [dismissedForValue, setDismissedForValue] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Collect all known unique vendor names across the ERP
+  // Collect all known unique vendor names across the ERP (preserving official casing)
   const allKnownVendors = useMemo(() => {
-    const set = new Set<string>();
+    // Map lowercased name -> exact official casing from system
+    const map = new Map<string, string>();
 
-    // Priority 1: Default core vendors (starts with Manav Metal)
-    DEFAULT_VENDORS.forEach((v) => {
-      if (v && v.trim()) set.add(v.trim());
-    });
-
-    // Priority 2: Registered vendors master list
+    // Priority 1: Real vendors currently listed or created in the system (Master List)
     (vendors || []).forEach((v) => {
-      if (v?.name && v.name.trim()) set.add(v.name.trim());
+      const name = (v?.name || '').trim();
+      if (name && !map.has(name.toLowerCase())) {
+        map.set(name.toLowerCase(), name);
+      }
     });
 
-    // Priority 3: Vendors used across projects and requirements
-    (projects || []).forEach((p) => {
-      const v = (p?.vendorName || p?.vendor || '').trim();
-      if (v) set.add(v);
-    });
-
+    // Priority 2: Real vendors used in project requirements & projects
     (projectRequirements || []).forEach((r) => {
-      const v = (r?.vendorName || r?.vendor || '').trim();
-      if (v) set.add(v);
+      const name = (r?.vendorName || r?.vendor || '').trim();
+      if (name && !map.has(name.toLowerCase())) {
+        map.set(name.toLowerCase(), name);
+      }
     });
 
-    return Array.from(set);
+    (projects || []).forEach((p) => {
+      const name = (p?.vendorName || p?.vendor || '').trim();
+      if (name && !map.has(name.toLowerCase())) {
+        map.set(name.toLowerCase(), name);
+      }
+    });
+
+    // Priority 3: Default core vendors (real vendors list)
+    DEFAULT_VENDORS.forEach((v) => {
+      const name = (v || '').trim();
+      if (name && !map.has(name.toLowerCase())) {
+        map.set(name.toLowerCase(), name);
+      }
+    });
+
+    return Array.from(map.values());
   }, [vendors, projects, projectRequirements]);
 
   // Compute matched vendor suggestions based on typed initial / text
   const suggestions = useMemo(() => {
-    const query = (value || '').trim().toLowerCase();
+    const trimmed = (value || '').trim();
+    const query = trimmed.toLowerCase();
     if (!query) return [];
 
-    // Filter out if user has already typed the full matching vendor name
     const startsWithMatches: string[] = [];
     const containsMatches: string[] = [];
 
     allKnownVendors.forEach((v) => {
-      const vLower = v.toLowerCase();
-      // Exact match - don't show suggestion badge
-      if (vLower === query) return;
+      // If user has already typed the exact same vendor with identical casing, skip
+      if (v === value) return;
 
+      const vLower = v.toLowerCase();
       if (vLower.startsWith(query)) {
         startsWithMatches.push(v);
       } else if (vLower.includes(query)) {
@@ -106,7 +121,15 @@ export const VendorSuggestInput: React.FC<VendorSuggestInputProps> = ({
       }
     });
 
-    // Prioritize names starting with initial, followed by substring matches
+    // Prioritize MANAV METAL when starting with 'm' or 'man'
+    startsWithMatches.sort((a, b) => {
+      const aUpper = a.toUpperCase();
+      const bUpper = b.toUpperCase();
+      if (aUpper === 'MANAV METAL') return -1;
+      if (bUpper === 'MANAV METAL') return 1;
+      return a.localeCompare(b);
+    });
+
     return [...startsWithMatches, ...containsMatches].slice(0, 4);
   }, [value, allKnownVendors]);
 
@@ -117,7 +140,7 @@ export const VendorSuggestInput: React.FC<VendorSuggestInputProps> = ({
   const applySuggestion = useCallback(
     (suggestedName: string) => {
       onChange(suggestedName);
-      setDismissedForValue(suggestedName.toLowerCase());
+      setDismissedForValue(suggestedName);
       if (inputRef.current) {
         inputRef.current.focus();
       }
@@ -127,7 +150,7 @@ export const VendorSuggestInput: React.FC<VendorSuggestInputProps> = ({
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     // If suggestion badge is visible, pressing Tab or Enter accepts the top suggestion
-    if (topSuggestion && isFocused && dismissedForValue !== value.trim().toLowerCase()) {
+    if (topSuggestion && isFocused && dismissedForValue !== value) {
       if (e.key === 'Tab') {
         e.preventDefault();
         applySuggestion(topSuggestion);
@@ -145,7 +168,7 @@ export const VendorSuggestInput: React.FC<VendorSuggestInputProps> = ({
       }
       if (e.key === 'Escape') {
         e.preventDefault();
-        setDismissedForValue(value.trim().toLowerCase());
+        setDismissedForValue(value);
         return;
       }
     }
@@ -158,7 +181,7 @@ export const VendorSuggestInput: React.FC<VendorSuggestInputProps> = ({
   const showSuggestionBadge =
     isFocused &&
     suggestions.length > 0 &&
-    dismissedForValue !== value.trim().toLowerCase() &&
+    dismissedForValue !== value &&
     !disabled;
 
   return (

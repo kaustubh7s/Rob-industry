@@ -3675,7 +3675,7 @@ export const ProjectMaterialEntry: React.FC = () => {
             <VendorSuggestInput
               value={newProjectForm.vendor}
               onChange={(val) => setNewProjectForm({ ...newProjectForm, vendor: val })}
-              placeholder="e.g. Manav Metal (type initial to suggest)"
+              placeholder="e.g. MANAV METAL (type initial to suggest)"
               inputClassName="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 font-semibold focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 outline-none text-xs"
             />
           </div>

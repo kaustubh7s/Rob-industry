@@ -3504,7 +3504,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                     value={poTargetVendor}
                     onChange={(e) => setPoTargetVendor(e.target.value)}
                     className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-500"
-                    placeholder="e.g. Manav Metal"
+                    placeholder="e.g. MANAV METAL"
                   />
                 </div>
 
@@ -4343,7 +4343,7 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
                     value={directPOForm.vendor}
                     onChange={(val) => setDirectPOForm({ ...directPOForm, vendor: val })}
                     inputClassName="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold text-slate-900 focus:bg-white focus:border-indigo-500"
-                    placeholder="e.g. Manav Metal"
+                    placeholder="e.g. MANAV METAL"
                   />
                 </div>
 
