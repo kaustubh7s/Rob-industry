@@ -32,19 +32,40 @@ document.addEventListener(
   { passive: true }
 );
 
-// Register Service Worker for PWA / Desktop App installation and offline support
+// Service Worker handling:
+// IMPORTANT: Disable and unregister Service Worker on localhost/dev to prevent
+// offline caching from serving the app when the dev server is stopped.
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .register('/sw.js')
-      .then((reg) => {
-        try { reg.update(); } catch (e) {}
-        console.log('RSB Industry ERP: Service Worker registered with scope:', reg.scope);
-      })
-      .catch((err) => {
-        console.warn('RSB Industry ERP: Service Worker registration failed:', err);
+  const isLocalhost =
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname.endsWith('.local');
+
+  if (isLocalhost) {
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      for (const reg of registrations) {
+        reg.unregister();
+      }
+    });
+    if ('caches' in window) {
+      caches.keys().then((keys) => {
+        keys.forEach((key) => caches.delete(key));
       });
-  });
+    }
+  } else {
+    // Production only (PWA / Live Web / Netlify)
+    window.addEventListener('load', () => {
+      navigator.serviceWorker
+        .register('/sw.js')
+        .then((reg) => {
+          try { reg.update(); } catch (e) {}
+          console.log('RSB Industry ERP: Service Worker registered with scope:', reg.scope);
+        })
+        .catch((err) => {
+          console.warn('RSB Industry ERP: Service Worker registration failed:', err);
+        });
+    });
+  }
 }
 
 createRoot(document.getElementById('root')!).render(
