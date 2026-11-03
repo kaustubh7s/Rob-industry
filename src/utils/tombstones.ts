@@ -267,5 +267,101 @@ export function removeMachineTombstone(id: string): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// CROSS-DEVICE CLOUD MERGING & ALL-TOMBSTONES HELPER
+// ---------------------------------------------------------------------------
+export interface TombstoneState {
+  deletedBOMs: string[];
+  deletedMachines: string[];
+  deletedRequirements: string[];
+  deletedProjects: string[];
+  deletedMaterials: string[];
+  deletedVendors: string[];
+}
+
+export function getAllLocalTombstones(): TombstoneState {
+  return {
+    deletedBOMs: Array.from(getDeletedBOMTombstones()),
+    deletedMachines: Array.from(getDeletedMachineTombstones()),
+    deletedRequirements: Array.from(getDeletedRequirementTombstones()),
+    deletedProjects: Array.from(getDeletedProjectTombstones()),
+    deletedMaterials: Array.from(getDeletedMaterialTombstones()),
+    deletedVendors: Array.from(getDeletedVendorTombstones()),
+  };
+}
+
+export function mergeCloudTombstones(cloud: Partial<TombstoneState>): void {
+  if (!cloud) return;
+
+  if (cloud.deletedBOMs && Array.isArray(cloud.deletedBOMs)) {
+    const current = getDeletedBOMTombstones();
+    let changed = false;
+    cloud.deletedBOMs.forEach((id) => {
+      if (id && !current.has(id)) {
+        current.add(id);
+        changed = true;
+      }
+    });
+    if (changed) {
+      try {
+        localStorage.setItem(BOM_TOMBSTONES_KEY, JSON.stringify(Array.from(current)));
+      } catch (e) {}
+    }
+  }
+
+  if (cloud.deletedMachines && Array.isArray(cloud.deletedMachines)) {
+    const current = getDeletedMachineTombstones();
+    let changed = false;
+    cloud.deletedMachines.forEach((id) => {
+      if (id && !current.has(id)) {
+        current.add(id);
+        changed = true;
+      }
+    });
+    if (changed) {
+      try {
+        localStorage.setItem(MACHINE_TOMBSTONES_KEY, JSON.stringify(Array.from(current)));
+      } catch (e) {}
+    }
+  }
+
+  if (cloud.deletedRequirements && Array.isArray(cloud.deletedRequirements)) {
+    addRequirementTombstones(cloud.deletedRequirements);
+  }
+
+  if (cloud.deletedProjects && Array.isArray(cloud.deletedProjects)) {
+    const current = getDeletedProjectTombstones();
+    let changed = false;
+    cloud.deletedProjects.forEach((id) => {
+      if (id && !current.has(id)) {
+        current.add(id);
+        current.add(id.trim().toLowerCase());
+        changed = true;
+      }
+    });
+    if (changed) {
+      try {
+        localStorage.setItem(PROJECT_TOMBSTONES_KEY, JSON.stringify(Array.from(current)));
+      } catch (e) {}
+    }
+  }
+
+  if (cloud.deletedMaterials && Array.isArray(cloud.deletedMaterials)) {
+    addMaterialTombstones(cloud.deletedMaterials);
+  }
+
+  if (cloud.deletedVendors && Array.isArray(cloud.deletedVendors)) {
+    addVendorTombstones(cloud.deletedVendors);
+  }
+}
+
+export function clearAllBOMAndMachineTombstones(): void {
+  try {
+    localStorage.removeItem(BOM_TOMBSTONES_KEY);
+    localStorage.removeItem(MACHINE_TOMBSTONES_KEY);
+  } catch (e) {}
+}
+
+
 
 

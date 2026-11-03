@@ -37,7 +37,16 @@ import {
   addVendorTombstone,
   getDeletedBOMTombstones,
   addBOMTombstone,
+  removeBOMTombstone,
+  getDeletedMachineTombstones,
+  addMachineTombstone,
+  removeMachineTombstone,
+  getAllLocalTombstones,
+  mergeCloudTombstones,
+  clearAllBOMAndMachineTombstones,
+  TombstoneState,
 } from '../utils/tombstones';
+import { INITIAL_MASTER_MACHINES, INITIAL_MASTER_BOMS } from '../data/initialMasterBOMs';
 import { sortRowsByAscendingSrNo } from '../utils/projectMaterialsHelper';
 
 export interface DbMutationMessage {
@@ -1646,7 +1655,9 @@ export const dbFetchWorkbooks = async (): Promise<Workbook[] | null> => {
     }
     if (!data || data.length === 0) return null;
 
-    return data.map((row: any) => ({
+    return data
+      .filter((row: any) => !row.id?.startsWith('sys-'))
+      .map((row: any) => ({
       id: row.id,
       directory_id: row.directory_id || '',
       title: row.title,
@@ -2048,56 +2059,227 @@ export const setRemoteMaintenanceMode = async (enabled: boolean): Promise<boolea
 };
 
 // =========================================================================
-// MASTER MACHINES & MASTER BOM DATABASE SYNCHRONIZATION
+// MASTER MACHINES & MASTER BOM DATABASE SYNCHRONIZATION (CLOUD MIRROR)
+// Universal cross-system synchronization with persistent durable tombstones
 // =========================================================================
+
+const SYS_CLOUD_MACHINES_ID = 'sys-cloud-master-machines';
+const SYS_CLOUD_BOMS_ID = 'sys-cloud-master-boms';
+const SYS_CLOUD_TOMBSTONES_ID = 'sys-cloud-tombstones';
+
+export const dbSyncCloudTombstones = async (): Promise<TombstoneState | null> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase
+      .from('workbooks')
+      .select('sheets_data')
+      .eq('id', SYS_CLOUD_TOMBSTONES_ID)
+      .maybeSingle();
+
+    if (error && error.code !== 'PGRST116') {
+      console.warn('Notice fetching cloud tombstones:', error.message);
+    }
+
+    // 1. Merge remote tombstones into local storage
+    if (data?.sheets_data && typeof data.sheets_data === 'object') {
+      mergeCloudTombstones(data.sheets_data);
+    }
+
+    // 2. Check if local has new tombstones to contribute to cloud
+    const currentLocal = getAllLocalTombstones();
+    const cloudBoms = new Set<string>(data?.sheets_data?.deletedBOMs || []);
+    const cloudMachines = new Set<string>(data?.sheets_data?.deletedMachines || []);
+
+    const hasNewLocalBoms = currentLocal.deletedBOMs.some((id) => !cloudBoms.has(id));
+    const hasNewLocalMachines = currentLocal.deletedMachines.some((id) => !cloudMachines.has(id));
+
+    if (hasNewLocalBoms || hasNewLocalMachines || !data) {
+      const mergedBOMs = Array.from(new Set([...currentLocal.deletedBOMs, ...Array.from(cloudBoms)]));
+      const mergedMachines = Array.from(new Set([...currentLocal.deletedMachines, ...Array.from(cloudMachines)]));
+      const payload: TombstoneState = {
+        deletedBOMs: mergedBOMs,
+        deletedMachines: mergedMachines,
+        deletedRequirements: currentLocal.deletedRequirements,
+        deletedProjects: currentLocal.deletedProjects,
+        deletedMaterials: currentLocal.deletedMaterials,
+        deletedVendors: currentLocal.deletedVendors,
+      };
+
+      await supabase.from('workbooks').upsert({
+        id: SYS_CLOUD_TOMBSTONES_ID,
+        title: 'System Cloud Tombstones',
+        description: 'Tombstones for deleted items across all systems',
+        sheets_data: payload,
+        updated_at: new Date().toISOString(),
+        last_edited_at: new Date().toISOString(),
+      });
+      return payload;
+    }
+
+    return currentLocal;
+  } catch (err) {
+    console.warn('Error in dbSyncCloudTombstones:', err);
+    return null;
+  }
+};
+
+export const dbAddCloudTombstone = async (type: 'bom' | 'machine', id: string): Promise<void> => {
+  const supabase = getSupabaseClient();
+  if (!supabase || !id) return;
+  try {
+    const { data } = await supabase
+      .from('workbooks')
+      .select('sheets_data')
+      .eq('id', SYS_CLOUD_TOMBSTONES_ID)
+      .maybeSingle();
+
+    const existing: TombstoneState = (data?.sheets_data as TombstoneState) || {
+      deletedBOMs: [],
+      deletedMachines: [],
+      deletedRequirements: [],
+      deletedProjects: [],
+      deletedMaterials: [],
+      deletedVendors: [],
+    };
+
+    if (type === 'bom') {
+      const set = new Set(existing.deletedBOMs || []);
+      set.add(id);
+      existing.deletedBOMs = Array.from(set);
+    } else {
+      const set = new Set(existing.deletedMachines || []);
+      set.add(id);
+      existing.deletedMachines = Array.from(set);
+    }
+
+    await supabase.from('workbooks').upsert({
+      id: SYS_CLOUD_TOMBSTONES_ID,
+      title: 'System Cloud Tombstones',
+      description: 'Tombstones for deleted items across all systems',
+      sheets_data: existing,
+      updated_at: new Date().toISOString(),
+      last_edited_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.warn('Notice saving cloud tombstone:', err);
+  }
+};
+
+export const dbRemoveCloudTombstone = async (type: 'bom' | 'machine', id: string): Promise<void> => {
+  const supabase = getSupabaseClient();
+  if (!supabase || !id) return;
+  try {
+    const { data } = await supabase
+      .from('workbooks')
+      .select('sheets_data')
+      .eq('id', SYS_CLOUD_TOMBSTONES_ID)
+      .maybeSingle();
+
+    if (!data?.sheets_data) return;
+    const existing = data.sheets_data as TombstoneState;
+
+    if (type === 'bom' && existing.deletedBOMs) {
+      existing.deletedBOMs = existing.deletedBOMs.filter((x) => x !== id);
+    } else if (type === 'machine' && existing.deletedMachines) {
+      existing.deletedMachines = existing.deletedMachines.filter((x) => x !== id);
+    }
+
+    await supabase.from('workbooks').upsert({
+      id: SYS_CLOUD_TOMBSTONES_ID,
+      title: 'System Cloud Tombstones',
+      sheets_data: existing,
+      updated_at: new Date().toISOString(),
+      last_edited_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.warn('Notice removing cloud tombstone:', err);
+  }
+};
 
 export const dbFetchMasterMachines = async (): Promise<MachineFolder[] | null> => {
   const supabase = getSupabaseClient();
   if (!supabase) return null;
+
+  // 1. Try native table if it exists
   try {
     const { data, error } = await supabase
       .from('master_machines')
       .select('*')
       .order('name', { ascending: true });
 
-    if (error) {
-      console.warn('Supabase master_machines query notice:', error.message);
-      return null;
+    if (!error && data && data.length > 0) {
+      const tombstones = getDeletedMachineTombstones();
+      return data
+        .filter((d: any) => !tombstones.has(d.id))
+        .map((d: any) => {
+          const rawTypes = Array.isArray(d.types) ? d.types : (typeof d.types === 'string' ? JSON.parse(d.types) : []);
+          const activeTypes: string[] = [];
+          const archivedTypes: string[] = [];
+          const typeDetails: Record<string, any> = {};
+
+          rawTypes.forEach((t: any) => {
+            if (typeof t === 'string') {
+              activeTypes.push(t);
+              typeDetails[t] = { name: t };
+            } else if (t && typeof t === 'object' && t.name) {
+              if (t.isArchived) {
+                archivedTypes.push(t.name);
+              } else {
+                activeTypes.push(t.name);
+              }
+              typeDetails[t.name] = t;
+            }
+          });
+
+          return {
+            id: d.id,
+            name: d.name,
+            types: activeTypes,
+            archivedTypes,
+            typeDetails,
+            createdBy: d.created_by,
+            createdAt: d.created_at,
+            updatedAt: d.updated_at,
+          };
+        });
     }
-    if (!data) return [];
-    return data.map((d: any) => {
-      const rawTypes = Array.isArray(d.types) ? d.types : (typeof d.types === 'string' ? JSON.parse(d.types) : []);
-      const activeTypes: string[] = [];
-      const archivedTypes: string[] = [];
-      const typeDetails: Record<string, any> = {};
-
-      rawTypes.forEach((t: any) => {
-        if (typeof t === 'string') {
-          activeTypes.push(t);
-          typeDetails[t] = { name: t };
-        } else if (t && typeof t === 'object' && t.name) {
-          if (t.isArchived) {
-            archivedTypes.push(t.name);
-          } else {
-            activeTypes.push(t.name);
-          }
-          typeDetails[t.name] = t;
-        }
-      });
-
-      return {
-        id: d.id,
-        name: d.name,
-        types: activeTypes,
-        archivedTypes,
-        typeDetails,
-        createdBy: d.created_by,
-        createdAt: d.created_at,
-        updatedAt: d.updated_at,
-      };
-    });
   } catch (err) {
-    console.warn('Error fetching master machines from Supabase:', err);
+    // Fallback to Cloud Mirror
+  }
+
+  // 2. Cloud Mirror via 'workbooks'
+  try {
+    const { data, error } = await supabase
+      .from('workbooks')
+      .select('sheets_data')
+      .eq('id', SYS_CLOUD_MACHINES_ID)
+      .maybeSingle();
+
+    const tombstones = getDeletedMachineTombstones();
+
+    if (!error && data && Array.isArray(data.sheets_data)) {
+      const machines = (data.sheets_data as MachineFolder[]).filter((m) => !tombstones.has(m.id));
+      return machines;
+    }
+
+    // If cloud mirror does not exist yet (first initialization), seed with INITIAL_MASTER_MACHINES
+    if (!data) {
+      const seedMachines = INITIAL_MASTER_MACHINES.filter((m) => !tombstones.has(m.id));
+      await supabase.from('workbooks').upsert({
+        id: SYS_CLOUD_MACHINES_ID,
+        title: 'System Master Machines Mirror',
+        description: 'Persistent cloud storage for machine folders',
+        sheets_data: seedMachines,
+        updated_at: new Date().toISOString(),
+        last_edited_at: new Date().toISOString(),
+      });
+      return seedMachines;
+    }
+
+    return [];
+  } catch (err) {
+    console.warn('Error fetching master machines from Cloud Mirror:', err);
     return null;
   }
 };
@@ -2105,6 +2287,10 @@ export const dbFetchMasterMachines = async (): Promise<MachineFolder[] | null> =
 export const dbUpsertMasterMachine = async (machine: MachineFolder): Promise<boolean> => {
   const supabase = getSupabaseClient();
   if (!supabase) return false;
+
+  removeMachineTombstone(machine.id);
+
+  // 1. Try native table if exists
   try {
     const serializedTypes = [
       ...(machine.types || []).map((t) => machine.typeDetails?.[t] || { name: t, isArchived: false }),
@@ -2119,18 +2305,49 @@ export const dbUpsertMasterMachine = async (machine: MachineFolder): Promise<boo
       created_at: toSafeIsoTimestamp(machine.createdAt),
       updated_at: new Date().toISOString(),
     };
-    const { error } = await supabase.from('master_machines').upsert(payload, { onConflict: 'id' });
-    if (!error) {
-      broadcastDbMutation({
-        action: 'UPSERT',
-        entity: 'master_machine',
-        id: machine.id,
-        data: machine,
-      });
-      return true;
+    await supabase.from('master_machines').upsert(payload, { onConflict: 'id' });
+  } catch (e) {
+    // Native table might not exist
+  }
+
+  // 2. Cloud Mirror via 'workbooks'
+  try {
+    const { data } = await supabase
+      .from('workbooks')
+      .select('sheets_data')
+      .eq('id', SYS_CLOUD_MACHINES_ID)
+      .maybeSingle();
+
+    let currentList: MachineFolder[] = Array.isArray(data?.sheets_data)
+      ? (data.sheets_data as MachineFolder[])
+      : [...INITIAL_MASTER_MACHINES];
+
+    const existingIdx = currentList.findIndex((m) => m.id === machine.id);
+    if (existingIdx >= 0) {
+      currentList[existingIdx] = machine;
+    } else {
+      currentList = [machine, ...currentList];
     }
-    console.warn('Error upserting master machine:', error.message);
-    return false;
+
+    await supabase.from('workbooks').upsert({
+      id: SYS_CLOUD_MACHINES_ID,
+      title: 'System Master Machines Mirror',
+      description: 'Persistent cloud storage for machine folders',
+      sheets_data: currentList,
+      updated_at: new Date().toISOString(),
+      last_edited_at: new Date().toISOString(),
+    });
+
+    // Remove from cloud tombstones if it was there
+    await dbRemoveCloudTombstone('machine', machine.id);
+
+    broadcastDbMutation({
+      action: 'UPSERT',
+      entity: 'master_machine',
+      id: machine.id,
+      data: machine,
+    });
+    return true;
   } catch (err) {
     console.warn('Exception upserting master machine:', err);
     return false;
@@ -2138,30 +2355,48 @@ export const dbUpsertMasterMachine = async (machine: MachineFolder): Promise<boo
 };
 
 export const dbDeleteMasterMachine = async (machineId: string): Promise<boolean> => {
+  addMachineTombstone(machineId);
+
   const supabase = getSupabaseClient();
   if (!supabase) return true;
+
+  // 1. Try native table if exists
   try {
-    const { error } = await supabase.from('master_machines').delete().eq('id', machineId);
-    if (!error) {
-      broadcastDbMutation({
-        action: 'DELETE',
-        entity: 'master_machine',
-        id: machineId,
-      });
-      return true;
-    }
-    // If the table doesn't exist yet in Supabase or schema cache notice, treat as local deletion success
-    if (
-      error.code === '42P01' ||
-      error.code === 'PGRST204' ||
-      error.code === 'PGRST205' ||
-      error.message.includes('schema cache') ||
-      error.message.includes('relation "master_machines" does not exist') ||
-      error.message.includes('Could not find the table')
-    ) {
-      return true;
-    }
-    return false;
+    await supabase.from('master_machines').delete().eq('id', machineId);
+  } catch (e) {}
+
+  // 2. Cloud Mirror via 'workbooks'
+  try {
+    const { data } = await supabase
+      .from('workbooks')
+      .select('sheets_data')
+      .eq('id', SYS_CLOUD_MACHINES_ID)
+      .maybeSingle();
+
+    let currentList: MachineFolder[] = Array.isArray(data?.sheets_data)
+      ? (data.sheets_data as MachineFolder[])
+      : [...INITIAL_MASTER_MACHINES];
+
+    const filtered = currentList.filter((m) => m.id !== machineId);
+
+    await supabase.from('workbooks').upsert({
+      id: SYS_CLOUD_MACHINES_ID,
+      title: 'System Master Machines Mirror',
+      description: 'Persistent cloud storage for machine folders',
+      sheets_data: filtered,
+      updated_at: new Date().toISOString(),
+      last_edited_at: new Date().toISOString(),
+    });
+
+    // Add to cloud tombstones
+    await dbAddCloudTombstone('machine', machineId);
+
+    broadcastDbMutation({
+      action: 'DELETE',
+      entity: 'master_machine',
+      id: machineId,
+    });
+    return true;
   } catch (err) {
     console.warn('Exception deleting master machine:', err);
     return false;
@@ -2171,39 +2406,72 @@ export const dbDeleteMasterMachine = async (machineId: string): Promise<boolean>
 export const dbFetchMasterBOMs = async (): Promise<MasterBOM[] | null> => {
   const supabase = getSupabaseClient();
   if (!supabase) return null;
+
+  // 1. Try native table if it exists
   try {
     const { data, error } = await supabase
       .from('master_boms')
       .select('*')
       .order('name', { ascending: true });
 
-    if (error) {
-      console.warn('Supabase master_boms query notice:', error.message);
-      return null;
+    if (!error && data && data.length > 0) {
+      const tombstones = getDeletedBOMTombstones();
+      return data
+        .filter((d: any) => !tombstones.has(d.id))
+        .map((d: any) => ({
+          id: d.id,
+          bomNumber: d.bom_number || '',
+          name: d.name || '',
+          assemblyName: d.name || '',
+          machineName: d.machine_name || '',
+          machineType: d.machine_type || '',
+          revision: d.revision || 'Rev A',
+          status: d.status || 'Approved',
+          category: d.category || '',
+          notes: d.notes || '',
+          items: Array.isArray(d.items) ? d.items : (typeof d.items === 'string' ? JSON.parse(d.items) : []),
+          createdBy: d.created_by || 'System',
+          createdAt: d.created_at || new Date().toISOString(),
+          updatedBy: d.updated_by || d.created_by || 'System',
+          updatedAt: d.updated_at || new Date().toISOString(),
+        }));
     }
-    if (!data) return [];
-    const tombstones = getDeletedBOMTombstones();
-    return data
-      .filter((d: any) => !tombstones.has(d.id))
-      .map((d: any) => ({
-        id: d.id,
-        bomNumber: d.bom_number || '',
-        name: d.name || '',
-        assemblyName: d.name || '',
-        machineName: d.machine_name || '',
-        machineType: d.machine_type || '',
-        revision: d.revision || 'Rev A',
-        status: d.status || 'Approved',
-        category: d.category || '',
-        notes: d.notes || '',
-        items: Array.isArray(d.items) ? d.items : (typeof d.items === 'string' ? JSON.parse(d.items) : []),
-        createdBy: d.created_by || 'System',
-        createdAt: d.created_at || new Date().toISOString(),
-        updatedBy: d.updated_by || d.created_by || 'System',
-        updatedAt: d.updated_at || new Date().toISOString(),
-      }));
   } catch (err) {
-    console.warn('Error fetching master BOMs from Supabase:', err);
+    // Fallback to Cloud Mirror
+  }
+
+  // 2. Cloud Mirror via 'workbooks'
+  try {
+    const { data, error } = await supabase
+      .from('workbooks')
+      .select('sheets_data')
+      .eq('id', SYS_CLOUD_BOMS_ID)
+      .maybeSingle();
+
+    const tombstones = getDeletedBOMTombstones();
+
+    if (!error && data && Array.isArray(data.sheets_data)) {
+      const boms = (data.sheets_data as MasterBOM[]).filter((b) => !tombstones.has(b.id));
+      return boms;
+    }
+
+    // If cloud mirror does not exist yet (first initialization), seed with INITIAL_MASTER_BOMS
+    if (!data) {
+      const seedBOMs = INITIAL_MASTER_BOMS.filter((b) => !tombstones.has(b.id));
+      await supabase.from('workbooks').upsert({
+        id: SYS_CLOUD_BOMS_ID,
+        title: 'System Master BOMs Mirror',
+        description: 'Persistent cloud storage for master BOMs',
+        sheets_data: seedBOMs,
+        updated_at: new Date().toISOString(),
+        last_edited_at: new Date().toISOString(),
+      });
+      return seedBOMs;
+    }
+
+    return [];
+  } catch (err) {
+    console.warn('Error fetching master BOMs from Cloud Mirror:', err);
     return null;
   }
 };
@@ -2211,6 +2479,10 @@ export const dbFetchMasterBOMs = async (): Promise<MasterBOM[] | null> => {
 export const dbUpsertMasterBOM = async (bom: MasterBOM): Promise<boolean> => {
   const supabase = getSupabaseClient();
   if (!supabase) return false;
+
+  removeBOMTombstone(bom.id);
+
+  // 1. Try native table if exists
   try {
     const payload = {
       id: bom.id,
@@ -2228,18 +2500,47 @@ export const dbUpsertMasterBOM = async (bom: MasterBOM): Promise<boolean> => {
       updated_by: bom.updatedBy || bom.createdBy,
       updated_at: new Date().toISOString(),
     };
-    const { error } = await supabase.from('master_boms').upsert(payload, { onConflict: 'id' });
-    if (!error) {
-      broadcastDbMutation({
-        action: 'UPSERT',
-        entity: 'master_bom',
-        id: bom.id,
-        data: bom,
-      });
-      return true;
+    await supabase.from('master_boms').upsert(payload, { onConflict: 'id' });
+  } catch (e) {}
+
+  // 2. Cloud Mirror via 'workbooks'
+  try {
+    const { data } = await supabase
+      .from('workbooks')
+      .select('sheets_data')
+      .eq('id', SYS_CLOUD_BOMS_ID)
+      .maybeSingle();
+
+    let currentList: MasterBOM[] = Array.isArray(data?.sheets_data)
+      ? (data.sheets_data as MasterBOM[])
+      : [...INITIAL_MASTER_BOMS];
+
+    const existingIdx = currentList.findIndex((b) => b.id === bom.id);
+    if (existingIdx >= 0) {
+      currentList[existingIdx] = bom;
+    } else {
+      currentList = [bom, ...currentList];
     }
-    console.warn('Error upserting master BOM:', error.message);
-    return false;
+
+    await supabase.from('workbooks').upsert({
+      id: SYS_CLOUD_BOMS_ID,
+      title: 'System Master BOMs Mirror',
+      description: 'Persistent cloud storage for master BOMs',
+      sheets_data: currentList,
+      updated_at: new Date().toISOString(),
+      last_edited_at: new Date().toISOString(),
+    });
+
+    // Remove from cloud tombstones if it was there
+    await dbRemoveCloudTombstone('bom', bom.id);
+
+    broadcastDbMutation({
+      action: 'UPSERT',
+      entity: 'master_bom',
+      id: bom.id,
+      data: bom,
+    });
+    return true;
   } catch (err) {
     console.warn('Exception upserting master BOM:', err);
     return false;
@@ -2250,7 +2551,6 @@ export const dbDeleteMasterBOM = async (bomId: string): Promise<{ success: boole
   addBOMTombstone(bomId);
   const supabase = getSupabaseClient();
   if (!supabase) {
-    // Local / Offline mode: tombstone saved, consider deleted
     broadcastDbMutation({
       action: 'DELETE',
       entity: 'master_bom',
@@ -2258,32 +2558,104 @@ export const dbDeleteMasterBOM = async (bomId: string): Promise<{ success: boole
     });
     return { success: true };
   }
+
+  // 1. Try native table if exists
   try {
-    const { error } = await supabase.from('master_boms').delete().eq('id', bomId);
-    if (!error) {
-      broadcastDbMutation({
-        action: 'DELETE',
-        entity: 'master_bom',
-        id: bomId,
-      });
-      return { success: true };
-    }
-    // If the table doesn't exist yet in Supabase or schema cache notice, treat as local deletion success
-    if (
-      error.code === '42P01' ||
-      error.code === 'PGRST204' ||
-      error.code === 'PGRST205' ||
-      error.message.includes('schema cache') ||
-      error.message.includes('relation "master_boms" does not exist') ||
-      error.message.includes('Could not find the table')
-    ) {
-      return { success: true };
-    }
-    console.warn('Error deleting master BOM from Supabase:', error.message);
-    return { success: false, error: error.message };
+    await supabase.from('master_boms').delete().eq('id', bomId);
+  } catch (e) {}
+
+  // 2. Cloud Mirror via 'workbooks'
+  try {
+    const { data } = await supabase
+      .from('workbooks')
+      .select('sheets_data')
+      .eq('id', SYS_CLOUD_BOMS_ID)
+      .maybeSingle();
+
+    let currentList: MasterBOM[] = Array.isArray(data?.sheets_data)
+      ? (data.sheets_data as MasterBOM[])
+      : [...INITIAL_MASTER_BOMS];
+
+    const filtered = currentList.filter((b) => b.id !== bomId);
+
+    await supabase.from('workbooks').upsert({
+      id: SYS_CLOUD_BOMS_ID,
+      title: 'System Master BOMs Mirror',
+      description: 'Persistent cloud storage for master BOMs',
+      sheets_data: filtered,
+      updated_at: new Date().toISOString(),
+      last_edited_at: new Date().toISOString(),
+    });
+
+    // Add to cloud tombstones
+    await dbAddCloudTombstone('bom', bomId);
+
+    broadcastDbMutation({
+      action: 'DELETE',
+      entity: 'master_bom',
+      id: bomId,
+    });
+    return { success: true };
   } catch (err: any) {
     console.warn('Exception deleting master BOM:', err);
     return { success: false, error: err?.message || 'Database error occurred' };
+  }
+};
+
+export const dbResetCloudMasterBOMs = async (
+  machines: MachineFolder[],
+  boms: MasterBOM[]
+): Promise<boolean> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return false;
+  try {
+    clearAllBOMAndMachineTombstones();
+
+    await Promise.all([
+      supabase.from('workbooks').upsert({
+        id: SYS_CLOUD_MACHINES_ID,
+        title: 'System Master Machines Mirror',
+        sheets_data: machines,
+        updated_at: new Date().toISOString(),
+        last_edited_at: new Date().toISOString(),
+      }),
+      supabase.from('workbooks').upsert({
+        id: SYS_CLOUD_BOMS_ID,
+        title: 'System Master BOMs Mirror',
+        sheets_data: boms,
+        updated_at: new Date().toISOString(),
+        last_edited_at: new Date().toISOString(),
+      }),
+      supabase.from('workbooks').upsert({
+        id: SYS_CLOUD_TOMBSTONES_ID,
+        title: 'System Cloud Tombstones',
+        sheets_data: {
+          deletedBOMs: [],
+          deletedMachines: [],
+          deletedRequirements: [],
+          deletedProjects: [],
+          deletedMaterials: [],
+          deletedVendors: [],
+        },
+        updated_at: new Date().toISOString(),
+        last_edited_at: new Date().toISOString(),
+      }),
+    ]);
+
+    broadcastDbMutation({
+      action: 'BULK_UPSERT',
+      entity: 'master_machine',
+      data: machines,
+    });
+    broadcastDbMutation({
+      action: 'BULK_UPSERT',
+      entity: 'master_bom',
+      data: boms,
+    });
+    return true;
+  } catch (err) {
+    console.warn('Notice resetting cloud master BOMs:', err);
+    return false;
   }
 };
 

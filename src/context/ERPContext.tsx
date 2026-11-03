@@ -89,6 +89,8 @@ import {
   dbFetchMasterBOMs,
   dbUpsertMasterBOM,
   dbDeleteMasterBOM,
+  dbSyncCloudTombstones,
+  dbResetCloudMasterBOMs,
   dbFetchDailyRequirements,
   dbUpsertDailyRequirement,
   dbDeleteDailyRequirement,
@@ -118,6 +120,7 @@ import {
   getDeletedMachineTombstones,
   addMachineTombstone,
   removeMachineTombstone,
+  clearAllBOMAndMachineTombstones,
 } from '../utils/tombstones';
 import { isRequirementMatchingProjectName, isRequirementMatchedToProject, sortRowsByAscendingSrNo } from '../utils/projectMaterialsHelper';
 
@@ -462,643 +465,8 @@ export const isRootAdminUser = (u?: User | null): boolean => {
   return isKaustubhUser(u) || isAmitUser(u);
 };
 
-export const INITIAL_MASTER_MACHINES: MachineFolder[] = [
-  {
-    id: 'mach-filling-machine',
-    name: 'Filling machine',
-    types: [
-      '1. Filling',
-      '2. Sealing',
-      '3. Washing',
-      '4. Air Conveyor',
-      '5. Housing & Drive shaft',
-      '6. Cap elevator & Railing & cap shooter',
-      '7. Transfer Wheel',
-      '8. Machine & Base frame',
-      '9. Outlet Conveyor',
-      '10. Electrical',
-      '11. Gear set & Hub set',
-    ],
-    createdBy: 'Kaustubh Admin',
-    createdAt: '2026-01-15T10:00:00.000Z',
-    updatedAt: '2026-01-15T10:00:00.000Z',
-  },
-  {
-    id: 'mach-labelling-machine-amit',
-    name: 'LABELLING MACHINE AMIT',
-    types: [
-      '1. Base Frame + Clading + Panel',
-      '2. Conveyor Assembly',
-      '3. Drive Assembly + Gear Assembly + Shaft + Vacuum Assembly',
-      '4. Drum Assembly',
-      '5. Cutter Assembly',
-      '6. Servo Roller Assembly',
-      '7. Infeed Assembly',
-      '8. Change part Assembly',
-      '9. Electrical',
-      '10. Pneumatic Assembly',
-      '11. Pump Assembly',
-    ],
-    createdBy: 'Amit',
-    createdAt: '2026-01-15T10:00:00.000Z',
-    updatedAt: '2026-01-15T10:00:00.000Z',
-  },
-  {
-    id: 'mach-mono-conveyor',
-    name: 'Mono Conveyor System',
-    types: [
-      '1. Slat Chain Conveyor Assembly',
-      '2. Belt Conveyor Assembly',
-      '3. Drive & Motor Assembly',
-      '4. Guide Rail & Stand Frame',
-    ],
-    createdBy: 'Kaustubh Admin',
-    createdAt: '2026-01-15T10:00:00.000Z',
-    updatedAt: '2026-01-15T10:00:00.000Z',
-  },
-  {
-    id: 'mach-vial-washing',
-    name: 'Automatic Vial Washing Machine',
-    types: [
-      '1. Linear Washing Unit',
-      '2. Rotary Washing Unit',
-      '3. Water Recycling & Pump Skid',
-      '4. Enclosure & Base Structure',
-    ],
-    createdBy: 'Kaustubh Admin',
-    createdAt: '2026-01-15T10:00:00.000Z',
-    updatedAt: '2026-01-15T10:00:00.000Z',
-  },
-];
-
-export const INITIAL_MASTER_BOMS: MasterBOM[] = [
-  // --- Filling machine: Root BOM Files ---
-  {
-    id: 'bom-fm-nut-bolt-list',
-    bomNumber: 'BOM-FM-NBL-01',
-    name: 'Filling machine nut bolt list',
-    assemblyName: 'Filling machine nut bolt list',
-    machineName: 'Filling machine',
-    machineType: 'General / Root',
-    revision: 'Rev A',
-    status: 'Approved',
-    category: 'Fasteners & Hardware',
-    notes: 'Complete standard hardware and fastener bill for rotary monoblock filling unit',
-    createdBy: 'Kaustubh Admin',
-    createdAt: '2026-01-15T10:00:00.000Z',
-    updatedBy: 'Kaustubh Admin',
-    updatedAt: '2026-01-15T10:00:00.000Z',
-    items: [
-      {
-        id: 'fm-nb-1',
-        srNo: 1,
-        description: 'M8 x 25 Hex Head Bolt Full Thread',
-        materialType: 'SS 304 Bolt',
-        sizeSpecs: 'M8 x 25 mm',
-        quantity: 120,
-        unit: 'Nos',
-        category: 'Fasteners',
-        notes: 'SS 304 forged high tensile',
-      },
-      {
-        id: 'fm-nb-2',
-        srNo: 2,
-        description: 'M8 Self Locking Nyloc Nut',
-        materialType: 'SS 304 Nut',
-        sizeSpecs: 'M8 Standard',
-        quantity: 120,
-        unit: 'Nos',
-        category: 'Fasteners',
-        notes: 'Vibration resistant nylon collar',
-      },
-      {
-        id: 'fm-nb-3',
-        srNo: 3,
-        description: 'M10 x 35 Socket Head Cap Screw',
-        materialType: 'SS 304 Bolt',
-        sizeSpecs: 'M10 x 35 mm',
-        quantity: 80,
-        unit: 'Nos',
-        category: 'Fasteners',
-        notes: 'Allen key drive DIN 912',
-      },
-      {
-        id: 'fm-nb-4',
-        srNo: 4,
-        description: 'M6 x 15 Button Head Torx Bolt',
-        materialType: 'SS 304 Bolt',
-        sizeSpecs: 'M6 x 15 mm',
-        quantity: 64,
-        unit: 'Nos',
-        category: 'Fasteners',
-        notes: 'Smooth panel mount finish',
-      },
-      {
-        id: 'fm-nb-5',
-        srNo: 5,
-        description: 'Plain Washer M8 Thick Flange',
-        materialType: 'SS Washer',
-        sizeSpecs: 'OD 20 x ID 8.4 x 1.5 mm',
-        quantity: 240,
-        unit: 'Nos',
-        category: 'Hardware',
-        notes: 'SS 304 punched and deburred',
-      },
-      {
-        id: 'fm-nb-6',
-        srNo: 6,
-        description: 'Spring Lock Washer M10',
-        materialType: 'SS Washer',
-        sizeSpecs: 'M10 Spring Split',
-        quantity: 80,
-        unit: 'Nos',
-        category: 'Hardware',
-        notes: 'DIN 127B spring steel SS',
-      },
-    ],
-  },
-  {
-    id: 'bom-fm-rfc-switchgears',
-    bomNumber: 'BOM-FM-ELEC-01',
-    name: 'RFC switch gears',
-    assemblyName: 'RFC switch gears',
-    machineName: 'Filling machine',
-    machineType: 'General / Root',
-    revision: 'Rev A',
-    status: 'Approved',
-    category: 'Electrical & Automation',
-    notes: 'Power switchgear, contactors, and control gear components for filling machine panel',
-    createdBy: 'Kaustubh Admin',
-    createdAt: '2026-01-15T10:00:00.000Z',
-    updatedBy: 'Kaustubh Admin',
-    updatedAt: '2026-01-15T10:00:00.000Z',
-    items: [
-      {
-        id: 'fm-sg-1',
-        srNo: 1,
-        description: '3-Pole MCB 32A C-Curve 10kA',
-        materialType: 'Electrical Component',
-        sizeSpecs: '32 Ampere 415V AC',
-        quantity: 2,
-        unit: 'Nos',
-        category: 'Electrical',
-        notes: 'Schneider Electric Acti9 series',
-      },
-      {
-        id: 'fm-sg-2',
-        srNo: 2,
-        description: 'SMPS Regulated Power Supply 24V DC 10A',
-        materialType: 'Electrical Component',
-        sizeSpecs: 'Input 230V / Output 24V DC 240W',
-        quantity: 1,
-        unit: 'Nos',
-        category: 'Electrical',
-        notes: 'DIN Rail mount industrial power',
-      },
-      {
-        id: 'fm-sg-3',
-        srNo: 3,
-        description: 'VFD AC Inverter Motor Drive 1.5 kW',
-        materialType: 'Electrical Component',
-        sizeSpecs: '1.5 kW 415V 3-Phase',
-        quantity: 2,
-        unit: 'Nos',
-        category: 'Drive Gear',
-        notes: 'Modbus RS485 communication enabled',
-      },
-      {
-        id: 'fm-sg-4',
-        srNo: 4,
-        description: 'Power Contactor 18A with 24V DC Coil',
-        materialType: 'Electrical Component',
-        sizeSpecs: '18A 3P + 1NO auxiliary',
-        quantity: 3,
-        unit: 'Nos',
-        category: 'Electrical',
-        notes: 'Heavy duty motor starter duty',
-      },
-      {
-        id: 'fm-sg-5',
-        srNo: 5,
-        description: 'Emergency Stop Push Button Mushroom Head IP65',
-        materialType: 'Electrical Component',
-        sizeSpecs: '22.5 mm cutout 2NC contact',
-        quantity: 2,
-        unit: 'Nos',
-        category: 'Safety',
-        notes: 'Turn-to-reset latching mechanism',
-      },
-    ],
-  },
-
-  // --- Filling machine: Assembly Subfolder BOMs ---
-  {
-    id: 'bom-fm-filling-assembly',
-    bomNumber: 'BOM-FM-01',
-    name: 'Standard Rotary Filling Assembly BOM',
-    assemblyName: 'Standard Rotary Filling Assembly BOM',
-    machineName: 'Filling machine',
-    machineType: '1. Filling',
-    revision: 'Rev A',
-    status: 'Approved',
-    category: 'Filling Assembly',
-    notes: 'Standard production BOM with precision SS components for 24-head liquid filling',
-    createdBy: 'Kaustubh Admin',
-    createdAt: '2026-01-15T10:00:00.000Z',
-    updatedBy: 'Kaustubh Admin',
-    updatedAt: '2026-01-15T10:00:00.000Z',
-    items: [
-      {
-        id: 'bi-rmb-1',
-        srNo: 1,
-        description: 'Frame Mounting Bottom Strip',
-        materialType: 'SS Flat',
-        sizeSpecs: '80 x 6 x 485',
-        quantity: 4,
-        unit: 'Nos',
-        category: 'Structural',
-        notes: 'SS 304 laser cut & deburred',
-        recommendedVendor: 'Standard SS Supplier',
-      },
-      {
-        id: 'bi-rmb-2',
-        srNo: 2,
-        description: 'Liquid Feed Manifold Pipe',
-        materialType: 'SS Pipe',
-        sizeSpecs: '25 mm NB x 2 mm thk',
-        quantity: 6,
-        unit: 'Meter',
-        category: 'Piping',
-        notes: 'Sanitary electropolished ID',
-        recommendedVendor: 'Standard SS Supplier',
-      },
-      {
-        id: 'bi-rmb-3',
-        srNo: 3,
-        description: 'Machine Enclosure SS Sheet Paneling',
-        materialType: 'SS Sheet',
-        sizeSpecs: '2 mm x 1250 x 2500',
-        quantity: 2,
-        unit: 'Nos',
-        category: 'Body Cover',
-        notes: '2B finish with protective PVC coating',
-        recommendedVendor: 'Standard SS Supplier',
-      },
-      {
-        id: 'bi-rmb-4',
-        srNo: 4,
-        description: 'Filling Nozzle Plunger Shaft',
-        materialType: 'SS Round',
-        sizeSpecs: '20 mm Dia x 300 mm',
-        quantity: 3,
-        unit: 'Nos',
-        category: 'Moving Parts',
-        notes: 'Ground finish H7 tolerance',
-        recommendedVendor: 'Standard SS Supplier',
-      },
-      {
-        id: 'bi-rmb-5',
-        srNo: 5,
-        description: 'Inlet/Outlet Sanitary SS Flange',
-        materialType: 'SS 304 Flange',
-        sizeSpecs: '1.5 Inch Table E',
-        quantity: 4,
-        unit: 'Nos',
-        category: 'Hardware',
-        notes: 'Tri-clover clamp compatible',
-        recommendedVendor: 'Standard SS Supplier',
-      },
-    ],
-  },
-  {
-    id: 'bom-fm-sealing-assembly',
-    bomNumber: 'BOM-FM-02',
-    name: 'Rotary Capping & Sealing Assembly',
-    assemblyName: 'Rotary Capping & Sealing Assembly',
-    machineName: 'Filling machine',
-    machineType: '2. Sealing',
-    revision: 'Rev A',
-    status: 'Approved',
-    category: 'Sealing Assembly',
-    notes: 'Magnetic torque capping heads and sealing spindle assembly',
-    createdBy: 'Kaustubh Admin',
-    createdAt: '2026-01-15T10:00:00.000Z',
-    updatedBy: 'Kaustubh Admin',
-    updatedAt: '2026-01-15T10:00:00.000Z',
-    items: [
-      {
-        id: 'bi-sea-1',
-        srNo: 1,
-        description: 'Magnetic Capping Chuck Head SS 316',
-        materialType: 'SS Round',
-        sizeSpecs: '55 mm Dia x 120 mm',
-        quantity: 8,
-        unit: 'Nos',
-        category: 'Sealing Head',
-        notes: 'Adjustable magnetic slip torque 0.5 - 2.5 Nm',
-      },
-      {
-        id: 'bi-sea-2',
-        srNo: 2,
-        description: 'Capping Spindle Drive Shaft',
-        materialType: 'SS Round',
-        sizeSpecs: '25 mm Dia x 450 mm',
-        quantity: 8,
-        unit: 'Nos',
-        category: 'Drive Shaft',
-        notes: 'Keyway milled and ground finish',
-      },
-    ],
-  },
-  {
-    id: 'bom-fm-base-frame',
-    bomNumber: 'BOM-FM-08',
-    name: 'Machine Base Frame Structural Assembly',
-    assemblyName: 'Machine Base Frame Structural Assembly',
-    machineName: 'Filling machine',
-    machineType: '8. Machine & Base frame',
-    revision: 'Rev A',
-    status: 'Approved',
-    category: 'Structure',
-    notes: 'Fabricated main base frame with leveling pads and stainless steel skin',
-    createdBy: 'Kaustubh Admin',
-    createdAt: '2026-01-15T10:00:00.000Z',
-    updatedBy: 'Kaustubh Admin',
-    updatedAt: '2026-01-15T10:00:00.000Z',
-    items: [
-      {
-        id: 'bi-bf-1',
-        srNo: 1,
-        description: 'Base Frame Hollow Box Pipe',
-        materialType: 'MS / SS Pipe',
-        sizeSpecs: '75 x 75 x 3 mm thk',
-        quantity: 18,
-        unit: 'Meter',
-        category: 'Structural',
-        notes: 'Welded frame with epoxy primer',
-      },
-      {
-        id: 'bi-bf-2',
-        srNo: 2,
-        description: 'Heavy Duty Machine Leveling Pad M24',
-        materialType: 'SS Leveling Pad',
-        sizeSpecs: 'Base 100 mm Dia x M24 Thread',
-        quantity: 6,
-        unit: 'Nos',
-        category: 'Hardware',
-        notes: 'Anti-vibration rubber base pad',
-      },
-    ],
-  },
-
-  // --- LABELLING MACHINE AMIT: Root & Subfolder BOMs ---
-  {
-    id: 'bom-lm-bearing-list',
-    bomNumber: 'BOM-LM-BRG-01',
-    name: 'LABELLING_MACHINE_120BPM_BEARING',
-    assemblyName: 'LABELLING_MACHINE_120BPM_BEARING',
-    machineName: 'LABELLING MACHINE AMIT',
-    machineType: 'General / Root',
-    revision: 'Rev A',
-    status: 'Approved',
-    category: 'Bearings & Hardware',
-    notes: 'Comprehensive bearing schedule for 120 BPM automatic sticker labelling machine',
-    createdBy: 'Amit',
-    createdAt: '2026-01-15T10:00:00.000Z',
-    updatedBy: 'Amit',
-    updatedAt: '2026-01-15T10:00:00.000Z',
-    items: [
-      {
-        id: 'lm-bg-1',
-        srNo: 1,
-        description: 'Deep Groove Ball Bearing 6204-2RS',
-        materialType: 'Bearing Component',
-        sizeSpecs: 'ID 20 x OD 47 x W 14 mm',
-        quantity: 8,
-        unit: 'Nos',
-        category: 'Bearings',
-        notes: 'SKF / FAG genuine rubber sealed',
-      },
-      {
-        id: 'lm-bg-2',
-        srNo: 2,
-        description: 'High Speed Ball Bearing 6005-2RS',
-        materialType: 'Bearing Component',
-        sizeSpecs: 'ID 25 x OD 47 x W 12 mm',
-        quantity: 6,
-        unit: 'Nos',
-        category: 'Bearings',
-        notes: 'Pre-lubricated high speed synthetic grease',
-      },
-      {
-        id: 'lm-bg-3',
-        srNo: 3,
-        description: 'Pillow Block Bearing Unit UCP 205',
-        materialType: 'Bearing Component',
-        sizeSpecs: 'Shaft 25 mm Center Height 36.5 mm',
-        quantity: 4,
-        unit: 'Nos',
-        category: 'Mounted Units',
-        notes: 'Cast iron housing with grease nipple',
-      },
-      {
-        id: 'lm-bg-4',
-        srNo: 4,
-        description: '2-Bolt Oval Flange Bearing UCFL 204',
-        materialType: 'Bearing Component',
-        sizeSpecs: 'Shaft 20 mm 2-Bolt Flange',
-        quantity: 4,
-        unit: 'Nos',
-        category: 'Mounted Units',
-        notes: 'Side conveyor wall mounting',
-      },
-      {
-        id: 'lm-bg-5',
-        srNo: 5,
-        description: 'Linear Ball Bushing LM 20 UU',
-        materialType: 'Bearing Component',
-        sizeSpecs: 'Shaft 20 mm OD 32 x L 42 mm',
-        quantity: 4,
-        unit: 'Nos',
-        category: 'Linear Motion',
-        notes: 'Dispensing beak height adjustment slide',
-      },
-    ],
-  },
-  {
-    id: 'bom-lm-base-frame',
-    bomNumber: 'BOM-LM-01',
-    name: 'Base Frame + Cladding + Panel Specification',
-    assemblyName: 'Base Frame + Cladding + Panel Specification',
-    machineName: 'LABELLING MACHINE AMIT',
-    machineType: '1. Base Frame + Clading + Panel',
-    revision: 'Rev A',
-    status: 'Approved',
-    category: 'Structural',
-    notes: 'Base frame chassis with stainless steel 304 architectural cladding',
-    createdBy: 'Amit',
-    createdAt: '2026-01-15T10:00:00.000Z',
-    updatedBy: 'Amit',
-    updatedAt: '2026-01-15T10:00:00.000Z',
-    items: [
-      {
-        id: 'lm-bf-1',
-        srNo: 1,
-        description: 'Square Tubular Main Chassis Frame',
-        materialType: 'SS Pipe',
-        sizeSpecs: '50 x 50 x 2.5 mm thk',
-        quantity: 14,
-        unit: 'Meter',
-        category: 'Structural',
-        notes: 'TIG welded & pickled finish',
-      },
-      {
-        id: 'lm-bf-2',
-        srNo: 2,
-        description: 'Cladding Side Door SS 304 Sheet',
-        materialType: 'SS Sheet',
-        sizeSpecs: '1.5 mm x 600 x 900 mm',
-        quantity: 4,
-        unit: 'Nos',
-        category: 'Body Cover',
-        notes: 'Matt finish with acrylic viewing window',
-      },
-    ],
-  },
-  {
-    id: 'bom-lm-conveyor',
-    bomNumber: 'BOM-LM-02',
-    name: 'Conveyor Assembly Specification',
-    assemblyName: 'Conveyor Assembly Specification',
-    machineName: 'LABELLING MACHINE AMIT',
-    machineType: '2. Conveyor Assembly',
-    revision: 'Rev A',
-    status: 'Approved',
-    category: 'Conveyor',
-    notes: 'Slat chain product handling conveyor with bottle spacing separator',
-    createdBy: 'Amit',
-    createdAt: '2026-01-15T10:00:00.000Z',
-    updatedBy: 'Amit',
-    updatedAt: '2026-01-15T10:00:00.000Z',
-    items: [
-      {
-        id: 'lm-cv-1',
-        srNo: 1,
-        description: 'Delrin / SS 812 Slat Chain Conveyor',
-        materialType: 'Hardware',
-        sizeSpecs: 'Width 82.5 mm Pitch 38.1 mm',
-        quantity: 5,
-        unit: 'Meter',
-        category: 'Chain',
-        notes: 'Low friction food grade track',
-      },
-      {
-        id: 'lm-cv-2',
-        srNo: 2,
-        description: 'Conveyor Guide Rail SS Profile',
-        materialType: 'SS Flat',
-        sizeSpecs: '25 x 3 mm x 2000 mm',
-        quantity: 4,
-        unit: 'Nos',
-        category: 'Guide',
-        notes: 'Fitted with green UHMWPE wear strip',
-      },
-    ],
-  },
-  {
-    id: 'bom-lm-drive-vacuum',
-    bomNumber: 'BOM-LM-03',
-    name: 'Drive Assembly + Gear Assembly + Shaft + Vacuum Assembly',
-    assemblyName: 'Drive Assembly + Gear Assembly + Shaft + Vacuum Assembly',
-    machineName: 'LABELLING MACHINE AMIT',
-    machineType: '3. Drive Assembly + Gear Assembly + Shaft + Vacuum Assembly',
-    revision: 'Rev A',
-    status: 'Approved',
-    category: 'Drive Transmission',
-    notes: 'Precision geared drive mechanism with vacuum suction manifold and shafting',
-    createdBy: 'Amit',
-    createdAt: '2026-01-15T10:00:00.000Z',
-    updatedBy: 'Amit',
-    updatedAt: '2026-01-15T10:00:00.000Z',
-    items: [
-      {
-        id: 'lm-dv-1',
-        srNo: 1,
-        description: 'Main Drive Vacuum Transmission Shaft',
-        materialType: 'SS Round',
-        sizeSpecs: '35 mm Dia x 580 mm',
-        quantity: 1,
-        unit: 'Nos',
-        category: 'Shafting',
-        notes: 'Center drilled for vacuum suction passage, H6 tolerance',
-      },
-      {
-        id: 'lm-dv-2',
-        srNo: 2,
-        description: 'Helical Worm Gearbox 1:20 Ratio',
-        materialType: 'Hardware',
-        sizeSpecs: 'Size 50 Input 14mm Output 25mm Hollow',
-        quantity: 1,
-        unit: 'Nos',
-        category: 'Gearbox',
-        notes: 'Aluminum housing synthetic gear oil filled',
-      },
-      {
-        id: 'lm-dv-3',
-        srNo: 3,
-        description: 'Vacuum Distributor Rotary Union',
-        materialType: 'Brass / SS Component',
-        sizeSpecs: '1/2 Inch BSP Single Flow High Speed',
-        quantity: 1,
-        unit: 'Nos',
-        category: 'Vacuum System',
-        notes: 'Rotary carbon graphite seal 1500 RPM rated',
-      },
-    ],
-  },
-
-  // --- Mono Conveyor & Vial Washing ---
-  {
-    id: 'bom-conveyor-slat-std',
-    bomNumber: 'BOM-MC-01',
-    name: 'Standard Slat Conveyor BOM',
-    assemblyName: 'Standard Slat Conveyor BOM',
-    machineName: 'Mono Conveyor System',
-    machineType: '1. Slat Chain Conveyor Assembly',
-    revision: 'Rev A',
-    status: 'Approved',
-    category: 'Material Handling',
-    notes: 'Heavy duty SS 304 slat conveyor with adjustable guide rails',
-    createdBy: 'Kaustubh Admin',
-    createdAt: '2026-01-16T11:00:00.000Z',
-    updatedBy: 'Kaustubh Admin',
-    updatedAt: '2026-01-16T11:00:00.000Z',
-    items: [
-      {
-        id: 'bi-mc-1',
-        srNo: 1,
-        description: 'Conveyor Side Guide Frame Sheet',
-        materialType: 'SS Sheet',
-        sizeSpecs: '2.5 mm x 1000 x 2000',
-        quantity: 2,
-        unit: 'Nos',
-        category: 'Frame',
-        notes: 'CNC bent profile with guide mounting slots',
-      },
-      {
-        id: 'bi-mc-2',
-        srNo: 2,
-        description: 'Return Roller Guide Outer Pipe',
-        materialType: 'SS Pipe',
-        sizeSpecs: '38 mm OD x 1.5 mm thk',
-        quantity: 12,
-        unit: 'Meter',
-        category: 'Roller',
-        notes: 'Seamless SS 304 pipe',
-      },
-    ],
-  },
-];
+import { INITIAL_MASTER_MACHINES, INITIAL_MASTER_BOMS } from '../data/initialMasterBOMs';
+export { INITIAL_MASTER_MACHINES, INITIAL_MASTER_BOMS };
 
 export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [users, setUsers] = useState<User[]>(() => {
@@ -1737,21 +1105,33 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let isCancelled = false;
     const loadRemoteBOMsAndMachines = async () => {
       try {
+        // 1. Synchronize cloud tombstones first so deletions across all devices are applied
+        await dbSyncCloudTombstones();
+
         const [remoteMachines, remoteBoms] = await Promise.all([
           dbFetchMasterMachines(),
           dbFetchMasterBOMs(),
         ]);
         if (isCancelled) return;
+
         const deletedMachineTombstones = getDeletedMachineTombstones();
-        if (remoteMachines && remoteMachines.length > 0) {
+        if (Array.isArray(remoteMachines)) {
           const activeRemoteMachines = remoteMachines.filter((m) => !deletedMachineTombstones.has(m.id));
           setMasterMachines(activeRemoteMachines);
+          safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_machines', activeRemoteMachines);
+          try {
+            localStorage.setItem('RSB_INDUSTRY_master_machines', JSON.stringify(activeRemoteMachines));
+          } catch (e) {}
         }
 
         const deletedTombstones = getDeletedBOMTombstones();
-        if (remoteBoms && remoteBoms.length > 0) {
+        if (Array.isArray(remoteBoms)) {
           const activeRemoteBoms = remoteBoms.filter((b) => !deletedTombstones.has(b.id));
           setMasterBOMs(activeRemoteBoms);
+          safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_boms', activeRemoteBoms);
+          try {
+            localStorage.setItem('RSB_INDUSTRY_master_boms', JSON.stringify(activeRemoteBoms));
+          } catch (e) {}
         }
       } catch (err) {
         console.warn('Remote master BOM sync notice (local active):', err);
@@ -2394,6 +1774,26 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   try { safeLocalStorageSet(LOCAL_STORAGE_KEY + '_vendors', next); } catch (e) {}
                   return next;
                 });
+              } else if (m.entity === 'master_machine' && m.id) {
+                addMachineTombstone(m.id);
+                setMasterMachines((prev) => {
+                  const next = prev.filter((item) => item.id !== m.id);
+                  try {
+                    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_machines', next);
+                    localStorage.setItem('RSB_INDUSTRY_master_machines', JSON.stringify(next));
+                  } catch (e) {}
+                  return next;
+                });
+              } else if (m.entity === 'master_bom' && m.id) {
+                addBOMTombstone(m.id);
+                setMasterBOMs((prev) => {
+                  const next = prev.filter((item) => item.id !== m.id);
+                  try {
+                    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_boms', next);
+                    localStorage.setItem('RSB_INDUSTRY_master_boms', JSON.stringify(next));
+                  } catch (e) {}
+                  return next;
+                });
               }
             } else if (m.action === 'UPSERT') {
               if (m.entity === 'requirement' && m.data && m.data.id) {
@@ -2456,9 +1856,57 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   try { safeLocalStorageSet(LOCAL_STORAGE_KEY + '_vendors', next); } catch (e) {}
                   return next;
                 });
+              } else if (m.entity === 'master_machine' && m.data && m.data.id) {
+                const mach = m.data as MachineFolder;
+                removeMachineTombstone(mach.id);
+                setMasterMachines((prev) => {
+                  const existingIdx = prev.findIndex((item) => item.id === mach.id);
+                  let next: MachineFolder[];
+                  if (existingIdx >= 0) {
+                    next = [...prev];
+                    next[existingIdx] = { ...next[existingIdx], ...mach };
+                  } else {
+                    next = [mach, ...prev];
+                  }
+                  try {
+                    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_machines', next);
+                    localStorage.setItem('RSB_INDUSTRY_master_machines', JSON.stringify(next));
+                  } catch (e) {}
+                  return next;
+                });
+              } else if (m.entity === 'master_bom' && m.data && m.data.id) {
+                const bom = m.data as MasterBOM;
+                removeBOMTombstone(bom.id);
+                setMasterBOMs((prev) => {
+                  const existingIdx = prev.findIndex((b) => b.id === bom.id);
+                  let next: MasterBOM[];
+                  if (existingIdx >= 0) {
+                    next = [...prev];
+                    next[existingIdx] = { ...next[existingIdx], ...bom };
+                  } else {
+                    next = [bom, ...prev];
+                  }
+                  try {
+                    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_boms', next);
+                    localStorage.setItem('RSB_INDUSTRY_master_boms', JSON.stringify(next));
+                  } catch (e) {}
+                  return next;
+                });
               }
             } else if (m.action === 'BULK_UPSERT') {
-              if (m.entity === 'requirement' && Array.isArray(m.data) && m.data.length > 0) {
+              if (m.entity === 'master_machine' && Array.isArray(m.data)) {
+                setMasterMachines(m.data);
+                try {
+                  safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_machines', m.data);
+                  localStorage.setItem('RSB_INDUSTRY_master_machines', JSON.stringify(m.data));
+                } catch (e) {}
+              } else if (m.entity === 'master_bom' && Array.isArray(m.data)) {
+                setMasterBOMs(m.data);
+                try {
+                  safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_boms', m.data);
+                  localStorage.setItem('RSB_INDUSTRY_master_boms', JSON.stringify(m.data));
+                } catch (e) {}
+              } else if (m.entity === 'requirement' && Array.isArray(m.data) && m.data.length > 0) {
                 const newItemsMap = new Map<string, ProjectMaterialRequirementItem>(m.data.map((item: any) => [item.id, item]));
                 m.data.forEach((item: any) => removeRequirementTombstone(item.id));
                 setProjectRequirements((prev) => {
@@ -6710,10 +6158,16 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const resetMasterBOMsToFactoryDefault = () => {
+    clearAllBOMAndMachineTombstones();
     setMasterMachines(INITIAL_MASTER_MACHINES);
     setMasterBOMs(INITIAL_MASTER_BOMS);
-    localStorage.setItem('RSB_INDUSTRY_master_machines', JSON.stringify(INITIAL_MASTER_MACHINES));
-    localStorage.setItem('RSB_INDUSTRY_master_boms', JSON.stringify(INITIAL_MASTER_BOMS));
+    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_machines', INITIAL_MASTER_MACHINES);
+    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_boms', INITIAL_MASTER_BOMS);
+    try {
+      localStorage.setItem('RSB_INDUSTRY_master_machines', JSON.stringify(INITIAL_MASTER_MACHINES));
+      localStorage.setItem('RSB_INDUSTRY_master_boms', JSON.stringify(INITIAL_MASTER_BOMS));
+    } catch {}
+    dbResetCloudMasterBOMs(INITIAL_MASTER_MACHINES, INITIAL_MASTER_BOMS);
   };
 
   const deleteMasterBOM = async (id: string): Promise<{ success: boolean; error?: string }> => {
