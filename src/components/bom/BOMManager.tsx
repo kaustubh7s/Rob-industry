@@ -68,11 +68,12 @@ import { formatDate, getTodayFormatted } from '../../utils/calculations';
 import { MATERIAL_TYPES } from '../../data/materialTypes';
 import { dbBulkUpsertRequirements } from '../../services/supabaseService';
 import { getDeletedBOMTombstones } from '../../utils/tombstones';
+import { isStockMachine, isStockBOM } from '../../data/initialMasterBOMs';
 
 export const BOMManager: React.FC = () => {
   const {
-    masterMachines,
-    masterBOMs,
+    masterMachines: rawMasterMachines,
+    masterBOMs: rawMasterBOMs,
     addMachineFolder,
     updateMachineFolder,
     deleteMachineFolder,
@@ -96,6 +97,28 @@ export const BOMManager: React.FC = () => {
     setActiveTab,
     pushNavStep,
   } = useERP();
+
+  // Bulletproof filter against stock machines & BOMs
+  const masterMachines = useMemo(
+    () => (rawMasterMachines || []).filter((m) => !isStockMachine(m)),
+    [rawMasterMachines]
+  );
+  const masterBOMs = useMemo(
+    () => (rawMasterBOMs || []).filter((b) => !isStockBOM(b)),
+    [rawMasterBOMs]
+  );
+
+  // Self-healing: if any stock machines or BOMs exist in state, permanently delete them
+  useEffect(() => {
+    const dirtyM = (rawMasterMachines || []).filter(isStockMachine);
+    const dirtyB = (rawMasterBOMs || []).filter(isStockBOM);
+    if (dirtyM.length > 0) {
+      dirtyM.forEach((m) => deleteMachineFolder(m.id));
+    }
+    if (dirtyB.length > 0) {
+      dirtyB.forEach((b) => deleteMasterBOM(b.id));
+    }
+  }, [rawMasterMachines, rawMasterBOMs, deleteMachineFolder, deleteMasterBOM]);
 
   // ---------------------------------------------------------------------------
   // NAVIGATION & VIEW STATE

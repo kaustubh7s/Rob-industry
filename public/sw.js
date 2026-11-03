@@ -1,7 +1,7 @@
 // RSB Industry — Production Service Worker
-// Version: rsb-erp-v1.0.0
+// Version: rsb-erp-v2.0.0
 
-const CACHE_NAME = 'rsb-erp-shell-v1';
+const CACHE_NAME = 'rsb-erp-shell-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

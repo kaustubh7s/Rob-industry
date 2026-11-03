@@ -1911,53 +1911,59 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 });
               } else if (m.entity === 'master_machine' && m.data && m.data.id) {
                 const mach = m.data as MachineFolder;
-                removeMachineTombstone(mach.id);
-                setMasterMachines((prev) => {
-                  const existingIdx = prev.findIndex((item) => item.id === mach.id);
-                  let next: MachineFolder[];
-                  if (existingIdx >= 0) {
-                    next = [...prev];
-                    next[existingIdx] = { ...next[existingIdx], ...mach };
-                  } else {
-                    next = [mach, ...prev];
-                  }
-                  try {
-                    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_machines', next);
-                    localStorage.setItem('RSB_INDUSTRY_master_machines', JSON.stringify(next));
-                  } catch (e) {}
-                  return next;
-                });
+                if (!isStockMachine(mach)) {
+                  removeMachineTombstone(mach.id);
+                  setMasterMachines((prev) => {
+                    const existingIdx = prev.findIndex((item) => item.id === mach.id);
+                    let next: MachineFolder[];
+                    if (existingIdx >= 0) {
+                      next = [...prev];
+                      next[existingIdx] = { ...next[existingIdx], ...mach };
+                    } else {
+                      next = [mach, ...prev];
+                    }
+                    try {
+                      safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_machines', next);
+                      localStorage.setItem('RSB_INDUSTRY_master_machines', JSON.stringify(next));
+                    } catch (e) {}
+                    return next;
+                  });
+                }
               } else if (m.entity === 'master_bom' && m.data && m.data.id) {
                 const bom = m.data as MasterBOM;
-                removeBOMTombstone(bom.id);
-                setMasterBOMs((prev) => {
-                  const existingIdx = prev.findIndex((b) => b.id === bom.id);
-                  let next: MasterBOM[];
-                  if (existingIdx >= 0) {
-                    next = [...prev];
-                    next[existingIdx] = { ...next[existingIdx], ...bom };
-                  } else {
-                    next = [bom, ...prev];
-                  }
-                  try {
-                    safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_boms', next);
-                    localStorage.setItem('RSB_INDUSTRY_master_boms', JSON.stringify(next));
-                  } catch (e) {}
-                  return next;
-                });
+                if (!isStockBOM(bom)) {
+                  removeBOMTombstone(bom.id);
+                  setMasterBOMs((prev) => {
+                    const existingIdx = prev.findIndex((b) => b.id === bom.id);
+                    let next: MasterBOM[];
+                    if (existingIdx >= 0) {
+                      next = [...prev];
+                      next[existingIdx] = { ...next[existingIdx], ...bom };
+                    } else {
+                      next = [bom, ...prev];
+                    }
+                    try {
+                      safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_boms', next);
+                      localStorage.setItem('RSB_INDUSTRY_master_boms', JSON.stringify(next));
+                    } catch (e) {}
+                    return next;
+                  });
+                }
               }
             } else if (m.action === 'BULK_UPSERT') {
               if (m.entity === 'master_machine' && Array.isArray(m.data)) {
-                setMasterMachines(m.data);
+                const clean = m.data.filter((item) => !isStockMachine(item));
+                setMasterMachines(clean);
                 try {
-                  safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_machines', m.data);
-                  localStorage.setItem('RSB_INDUSTRY_master_machines', JSON.stringify(m.data));
+                  safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_machines', clean);
+                  localStorage.setItem('RSB_INDUSTRY_master_machines', JSON.stringify(clean));
                 } catch (e) {}
               } else if (m.entity === 'master_bom' && Array.isArray(m.data)) {
-                setMasterBOMs(m.data);
+                const clean = m.data.filter((item) => !isStockBOM(item));
+                setMasterBOMs(clean);
                 try {
-                  safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_boms', m.data);
-                  localStorage.setItem('RSB_INDUSTRY_master_boms', JSON.stringify(m.data));
+                  safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_boms', clean);
+                  localStorage.setItem('RSB_INDUSTRY_master_boms', JSON.stringify(clean));
                 } catch (e) {}
               } else if (m.entity === 'requirement' && Array.isArray(m.data) && m.data.length > 0) {
                 const newItemsMap = new Map<string, ProjectMaterialRequirementItem>(m.data.map((item: any) => [item.id, item]));

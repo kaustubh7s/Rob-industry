@@ -31,6 +31,15 @@ export const isStockMachine = (machine: Partial<MachineFolder> | null | undefine
   if (!machine) return false;
   if (machine.id && STOCK_MACHINE_IDS.has(machine.id)) return true;
   if (machine.name && STOCK_MACHINE_NAMES.has(machine.name)) return true;
+  const nameNorm = machine.name?.trim().toLowerCase();
+  if (
+    nameNorm === 'filling machine' ||
+    nameNorm === 'labelling machine amit' ||
+    nameNorm === 'mono conveyor system' ||
+    nameNorm === 'automatic vial washing machine'
+  ) {
+    return true;
+  }
   return false;
 };
 
@@ -38,6 +47,24 @@ export const isStockBOM = (bom: Partial<MasterBOM> | null | undefined): boolean 
   if (!bom) return false;
   if (bom.id && STOCK_BOM_IDS.has(bom.id)) return true;
   if (bom.machineName && STOCK_MACHINE_NAMES.has(bom.machineName)) return true;
+  const machineNorm = bom.machineName?.trim().toLowerCase();
+  if (
+    machineNorm === 'filling machine' ||
+    machineNorm === 'labelling machine amit' ||
+    machineNorm === 'mono conveyor system' ||
+    machineNorm === 'automatic vial washing machine'
+  ) {
+    return true;
+  }
+  const nameNorm = bom.name?.trim().toLowerCase();
+  if (
+    nameNorm?.includes('filling machine') ||
+    nameNorm?.includes('labelling machine') ||
+    nameNorm?.includes('mono conveyor') ||
+    nameNorm?.includes('vial washing')
+  ) {
+    return true;
+  }
   return false;
 };
 
