@@ -123,6 +123,7 @@ import {
   addMachineTombstone,
   removeMachineTombstone,
   clearAllBOMAndMachineTombstones,
+  mergeCloudTombstones,
 } from '../utils/tombstones';
 import { isRequirementMatchingProjectName, isRequirementMatchedToProject, sortRowsByAscendingSrNo } from '../utils/projectMaterialsHelper';
 
@@ -1117,89 +1118,45 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (isCancelled) return;
 
         const deletedMachineTombstones = getDeletedMachineTombstones();
-
-        // 2. Read local machines to preserve any custom machines created locally (e.g. 'new')
-        let localMachines: MachineFolder[] = [];
-        try {
-          const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_master_machines') || localStorage.getItem('RSB_INDUSTRY_master_machines');
-          if (saved) {
-            const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed)) localMachines = parsed;
-          }
-        } catch (e) {}
-
-        const cleanLocalMachines = localMachines.filter((m) => m && m.id && !deletedMachineTombstones.has(m.id));
-        const cleanRemoteMachines = Array.isArray(remoteMachines)
-          ? remoteMachines.filter((m) => m && m.id && !deletedMachineTombstones.has(m.id))
-          : [];
-
-        // Build merged machine map (remote first, then add any unsynced local machines)
-        const machineMap = new Map<string, MachineFolder>();
-        cleanRemoteMachines.forEach((m) => machineMap.set(m.id, m));
-
-        let hasNewLocalMachines = false;
-        cleanLocalMachines.forEach((lm) => {
-          if (!machineMap.has(lm.id)) {
-            machineMap.set(lm.id, lm);
-            hasNewLocalMachines = true;
-          }
-        });
-
-        const activeRemoteMachines = Array.from(machineMap.values());
-        setMasterMachines(activeRemoteMachines);
-        safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_machines', activeRemoteMachines);
-        try {
-          localStorage.setItem('RSB_INDUSTRY_master_machines', JSON.stringify(activeRemoteMachines));
-        } catch (e) {}
-
-        if (hasNewLocalMachines && activeRemoteMachines.length > 0) {
-          dbSaveAllMasterMachines(activeRemoteMachines);
+        if (Array.isArray(remoteMachines)) {
+          const activeRemoteMachines = remoteMachines.filter((m) => m && m.id && !deletedMachineTombstones.has(m.id));
+          setMasterMachines(activeRemoteMachines);
+          safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_machines', activeRemoteMachines);
+          try {
+            localStorage.setItem('RSB_INDUSTRY_master_machines', JSON.stringify(activeRemoteMachines));
+          } catch (e) {}
         }
 
-        // 3. Same bi-directional merge for BOMs
         const deletedTombstones = getDeletedBOMTombstones();
-        let localBoms: MasterBOM[] = [];
-        try {
-          const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_master_boms') || localStorage.getItem('RSB_INDUSTRY_master_boms');
-          if (saved) {
-            const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed)) localBoms = parsed;
-          }
-        } catch (e) {}
-
-        const cleanLocalBoms = localBoms.filter((b) => b && b.id && !deletedTombstones.has(b.id));
-        const cleanRemoteBoms = Array.isArray(remoteBoms)
-          ? remoteBoms.filter((b) => b && b.id && !deletedTombstones.has(b.id))
-          : [];
-
-        const bomMap = new Map<string, MasterBOM>();
-        cleanRemoteBoms.forEach((b) => bomMap.set(b.id, b));
-
-        let hasNewLocalBoms = false;
-        cleanLocalBoms.forEach((lb) => {
-          if (!bomMap.has(lb.id)) {
-            bomMap.set(lb.id, lb);
-            hasNewLocalBoms = true;
-          }
-        });
-
-        const activeRemoteBoms = Array.from(bomMap.values());
-        setMasterBOMs(activeRemoteBoms);
-        safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_boms', activeRemoteBoms);
-        try {
-          localStorage.setItem('RSB_INDUSTRY_master_boms', JSON.stringify(activeRemoteBoms));
-        } catch (e) {}
-
-        if (hasNewLocalBoms && activeRemoteBoms.length > 0) {
-          dbSaveAllMasterBOMs(activeRemoteBoms);
+        if (Array.isArray(remoteBoms)) {
+          const activeRemoteBoms = remoteBoms.filter((b) => b && b.id && !deletedTombstones.has(b.id));
+          setMasterBOMs(activeRemoteBoms);
+          safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_boms', activeRemoteBoms);
+          try {
+            localStorage.setItem('RSB_INDUSTRY_master_boms', JSON.stringify(activeRemoteBoms));
+          } catch (e) {}
         }
       } catch (err) {
         console.warn('Remote master BOM sync notice (local active):', err);
       }
     };
     loadRemoteBOMsAndMachines();
+
+    const handleSync = () => {
+      loadRemoteBOMsAndMachines();
+    };
+    window.addEventListener('focus', handleSync);
+    const visHandler = () => {
+      if (document.visibilityState === 'visible') handleSync();
+    };
+    document.addEventListener('visibilitychange', visHandler);
+    const interval = setInterval(visHandler, 10000);
+
     return () => {
       isCancelled = true;
+      window.removeEventListener('focus', handleSync);
+      document.removeEventListener('visibilitychange', visHandler);
+      clearInterval(interval);
     };
   }, []);
 
@@ -2277,6 +2234,36 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     } catch (e) {}
                     return next;
                   });
+                }
+              }
+            }
+          )
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'workbooks' },
+            async (payload) => {
+              if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+                const row = payload.new as any;
+                if (!row || !row.id || !isMounted) return;
+
+                if (row.id === 'sys-cloud-master-machines' && Array.isArray(row.sheets_data)) {
+                  const tombstones = getDeletedMachineTombstones();
+                  const clean = (row.sheets_data as MachineFolder[]).filter((m) => m && m.id && !tombstones.has(m.id));
+                  setMasterMachines(clean);
+                  safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_machines', clean);
+                  try {
+                    localStorage.setItem('RSB_INDUSTRY_master_machines', JSON.stringify(clean));
+                  } catch (e) {}
+                } else if (row.id === 'sys-cloud-master-boms' && Array.isArray(row.sheets_data)) {
+                  const tombstones = getDeletedBOMTombstones();
+                  const clean = (row.sheets_data as MasterBOM[]).filter((b) => b && b.id && !tombstones.has(b.id));
+                  setMasterBOMs(clean);
+                  safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_boms', clean);
+                  try {
+                    localStorage.setItem('RSB_INDUSTRY_master_boms', JSON.stringify(clean));
+                  } catch (e) {}
+                } else if (row.id === 'sys-cloud-tombstones' && row.sheets_data) {
+                  mergeCloudTombstones(row.sheets_data);
                 }
               }
             }
