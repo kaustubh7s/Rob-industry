@@ -755,7 +755,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const canGoBack = navIndex > 0;
   const canGoForward = navIndex < navHistory.length - 1;
 
-  const setActiveTab = (tab: string, pushHistory = true) => {
+  const setActiveTab = useCallback((tab: string, pushHistory = true) => {
     setActiveTabState(tab);
     try {
       localStorage.setItem('RSB_ACTIVE_TAB', tab);
@@ -763,7 +763,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         pushNavStep({ tab, subView: tab });
       }
     } catch (e) {}
-  };
+  }, [pushNavStep]);
 
   // Sync with browser Back and Forward navigation
   useEffect(() => {

@@ -200,6 +200,7 @@ export const ProjectMaterialEntry: React.FC = () => {
   // Mode View State: 'entry' | 'projects' | 'procurement' | 'details' | 'members'
   const [activeViewMode, setActiveViewMode] = useState<'entry' | 'projects' | 'procurement' | 'details' | 'members'>(() => {
     if (isStoreIncharge) return 'procurement';
+    if (activeTab === 'details') return 'details';
     if (activeTab === 'projects') return 'projects';
     if (activeTab === 'procurement') return 'procurement';
     if (activeTab === 'members') return 'members';
@@ -219,16 +220,25 @@ export const ProjectMaterialEntry: React.FC = () => {
       }
       return;
     }
+    if (activeTab === 'details') {
+      setActiveViewMode('details');
+      return;
+    }
     if (activeTab === 'entry' || activeTab === 'requirements') {
       setActiveViewMode('entry');
+      setSelectedDetailProject(null);
     } else if (activeTab === 'projects') {
-      setActiveViewMode('projects');
+      if (activeViewMode !== 'details') {
+        setActiveViewMode('projects');
+      }
     } else if (activeTab === 'procurement') {
       setActiveViewMode('procurement');
+      setSelectedDetailProject(null);
     } else if (activeTab === 'members') {
       setActiveViewMode('members');
+      setSelectedDetailProject(null);
     }
-  }, [activeTab, isStoreIncharge, setActiveTab]);
+  }, [activeTab, isStoreIncharge, activeViewMode, setActiveTab]);
 
   const [selectedDetailProject, setSelectedDetailProject] = useState<ProjectItem | null>(null);
 
@@ -2067,6 +2077,7 @@ export const ProjectMaterialEntry: React.FC = () => {
           onSelectProject={(prj) => {
             setSelectedDetailProject(prj);
             setActiveViewMode('details');
+            setActiveTab('details');
             pushNavStep({
               tab: 'projects',
               subView: 'details',
@@ -2091,15 +2102,48 @@ export const ProjectMaterialEntry: React.FC = () => {
     );
   }
 
-  if (activeViewMode === 'details' && selectedDetailProject) {
+  if (activeViewMode === 'details') {
+    if (!selectedDetailProject) {
+      return (
+        <div className="space-y-4">
+          <ProjectsDirectory
+            onSelectProject={(prj) => {
+              setSelectedDetailProject(prj);
+              setActiveViewMode('details');
+              setActiveTab('details');
+              pushNavStep({
+                tab: 'projects',
+                subView: 'details',
+                projectId: prj.id || prj.name,
+              });
+            }}
+            onOpenEntrySheetWithProject={(pName) => {
+              const found = projects.find((p) => p.name === pName);
+              if (found) handleOpenProjectInEntry(found);
+              else handleSwitchView('entry');
+            }}
+            onOpenProcurementBasket={() => {
+              setBasketProjectFilter(undefined);
+              handleSwitchView('procurement');
+            }}
+            onOpenProcurementBasketWithProject={(pName) => {
+              setBasketProjectFilter(pName);
+              handleSwitchView('procurement');
+            }}
+          />
+        </div>
+      );
+    }
+
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-2 pb-2 border-b border-slate-200">
           <button
             type="button"
             onClick={() => {
-              setActiveViewMode('projects');
               setSelectedDetailProject(null);
+              setActiveViewMode('projects');
+              setActiveTab('projects');
               pushNavStep({
                 tab: 'projects',
                 subView: 'projects',
@@ -2119,8 +2163,9 @@ export const ProjectMaterialEntry: React.FC = () => {
         <ProjectDetailsView
           project={selectedDetailProject}
           onBack={() => {
-            setActiveViewMode('projects');
             setSelectedDetailProject(null);
+            setActiveViewMode('projects');
+            setActiveTab('projects');
             pushNavStep({
               tab: 'projects',
               subView: 'projects',
