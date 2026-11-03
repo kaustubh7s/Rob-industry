@@ -2318,9 +2318,10 @@ export const dbUpsertMasterMachine = async (machine: MachineFolder): Promise<boo
       .eq('id', SYS_CLOUD_MACHINES_ID)
       .maybeSingle();
 
+    const tombstones = getDeletedMachineTombstones();
     let currentList: MachineFolder[] = Array.isArray(data?.sheets_data)
-      ? (data.sheets_data as MachineFolder[])
-      : [...INITIAL_MASTER_MACHINES];
+      ? (data.sheets_data as MachineFolder[]).filter((m) => !tombstones.has(m.id))
+      : [];
 
     const existingIdx = currentList.findIndex((m) => m.id === machine.id);
     if (existingIdx >= 0) {
@@ -2373,9 +2374,10 @@ export const dbDeleteMasterMachine = async (machineId: string): Promise<boolean>
       .eq('id', SYS_CLOUD_MACHINES_ID)
       .maybeSingle();
 
+    const tombstones = getDeletedMachineTombstones();
     let currentList: MachineFolder[] = Array.isArray(data?.sheets_data)
-      ? (data.sheets_data as MachineFolder[])
-      : [...INITIAL_MASTER_MACHINES];
+      ? (data.sheets_data as MachineFolder[]).filter((m) => !tombstones.has(m.id))
+      : [];
 
     const filtered = currentList.filter((m) => m.id !== machineId);
 
@@ -2511,9 +2513,10 @@ export const dbUpsertMasterBOM = async (bom: MasterBOM): Promise<boolean> => {
       .eq('id', SYS_CLOUD_BOMS_ID)
       .maybeSingle();
 
+    const tombstones = getDeletedBOMTombstones();
     let currentList: MasterBOM[] = Array.isArray(data?.sheets_data)
-      ? (data.sheets_data as MasterBOM[])
-      : [...INITIAL_MASTER_BOMS];
+      ? (data.sheets_data as MasterBOM[]).filter((b) => !tombstones.has(b.id))
+      : [];
 
     const existingIdx = currentList.findIndex((b) => b.id === bom.id);
     if (existingIdx >= 0) {
@@ -2572,9 +2575,10 @@ export const dbDeleteMasterBOM = async (bomId: string): Promise<{ success: boole
       .eq('id', SYS_CLOUD_BOMS_ID)
       .maybeSingle();
 
+    const tombstones = getDeletedBOMTombstones();
     let currentList: MasterBOM[] = Array.isArray(data?.sheets_data)
-      ? (data.sheets_data as MasterBOM[])
-      : [...INITIAL_MASTER_BOMS];
+      ? (data.sheets_data as MasterBOM[]).filter((b) => !tombstones.has(b.id))
+      : [];
 
     const filtered = currentList.filter((b) => b.id !== bomId);
 
@@ -2599,6 +2603,62 @@ export const dbDeleteMasterBOM = async (bomId: string): Promise<{ success: boole
   } catch (err: any) {
     console.warn('Exception deleting master BOM:', err);
     return { success: false, error: err?.message || 'Database error occurred' };
+  }
+};
+
+export const dbSaveAllMasterMachines = async (machines: MachineFolder[]): Promise<boolean> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return false;
+  try {
+    const tombstones = getDeletedMachineTombstones();
+    const cleanMachines = machines.filter((m) => m && m.id && !tombstones.has(m.id));
+
+    await supabase.from('workbooks').upsert({
+      id: SYS_CLOUD_MACHINES_ID,
+      title: 'System Master Machines Mirror',
+      description: 'Persistent cloud storage for machine folders',
+      sheets_data: cleanMachines,
+      updated_at: new Date().toISOString(),
+      last_edited_at: new Date().toISOString(),
+    });
+
+    broadcastDbMutation({
+      action: 'BULK_UPSERT',
+      entity: 'master_machine',
+      data: cleanMachines,
+    });
+    return true;
+  } catch (err) {
+    console.warn('Error saving all master machines to Cloud Mirror:', err);
+    return false;
+  }
+};
+
+export const dbSaveAllMasterBOMs = async (boms: MasterBOM[]): Promise<boolean> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return false;
+  try {
+    const tombstones = getDeletedBOMTombstones();
+    const cleanBOMs = boms.filter((b) => b && b.id && !tombstones.has(b.id));
+
+    await supabase.from('workbooks').upsert({
+      id: SYS_CLOUD_BOMS_ID,
+      title: 'System Master BOMs Mirror',
+      description: 'Persistent cloud storage for master BOMs',
+      sheets_data: cleanBOMs,
+      updated_at: new Date().toISOString(),
+      last_edited_at: new Date().toISOString(),
+    });
+
+    broadcastDbMutation({
+      action: 'BULK_UPSERT',
+      entity: 'master_bom',
+      data: cleanBOMs,
+    });
+    return true;
+  } catch (err) {
+    console.warn('Error saving all master BOMs to Cloud Mirror:', err);
+    return false;
   }
 };
 
