@@ -18,6 +18,7 @@ import {
   analyzeWorksheet,
 } from '../../utils/excelImportEngine';
 import { sortRowsByAscendingSrNo } from '../../utils/projectMaterialsHelper';
+import { VendorSuggestInput } from '../common/VendorSuggestInput';
 
 interface ExcelImportPreviewModalProps {
   isOpen: boolean;
@@ -283,12 +284,12 @@ export const ExcelImportPreviewModal: React.FC<ExcelImportPreviewModalProps> = (
                   placeholder="PO #"
                   className="w-1/2 bg-slate-900 border border-slate-700 text-slate-200 rounded-lg px-2.5 py-2 text-xs font-medium focus:outline-none focus:border-blue-500"
                 />
-                <input
-                  type="text"
+                <VendorSuggestInput
                   value={targetVendor}
-                  onChange={(e) => setTargetVendor(e.target.value)}
-                  placeholder="Vendor"
-                  className="w-1/2 bg-slate-900 border border-slate-700 text-slate-200 rounded-lg px-2.5 py-2 text-xs font-medium focus:outline-none focus:border-blue-500"
+                  onChange={(val) => setTargetVendor(val)}
+                  placeholder="Vendor (type initial to suggest)"
+                  className="w-1/2"
+                  inputClassName="w-full bg-slate-900 border border-slate-700 text-slate-200 rounded-lg px-2.5 py-2 text-xs font-medium focus:outline-none focus:border-blue-500"
                 />
               </div>
             </div>

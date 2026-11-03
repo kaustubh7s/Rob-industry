@@ -53,6 +53,7 @@ import { Modal } from '../common/Modal';
 import { MATERIAL_TYPES } from '../../data/materialTypes';
 import { GRNModal } from './GRNModal';
 import { GRNItem } from '../../utils/grnPdfGenerator';
+import { VendorSuggestInput } from '../common/VendorSuggestInput';
 
 export const DailyRequirementModule: React.FC = () => {
   const {
@@ -1639,12 +1640,11 @@ export const DailyRequirementModule: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-[11px] font-bold text-slate-600 mb-1">Vendor / Source Supplier</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Apex Fasteners, Shah Metal Syndicate..."
+                <VendorSuggestInput
+                  placeholder="e.g. Manav Metal, Apex Fasteners..."
                   value={manualForm.vendorName}
-                  onChange={(e) => setManualForm({ ...manualForm, vendorName: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 font-medium outline-none focus:border-blue-600 shadow-2xs"
+                  onChange={(val) => setManualForm({ ...manualForm, vendorName: val })}
+                  inputClassName="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 font-medium outline-none focus:border-blue-600 shadow-2xs"
                 />
               </div>
               <div>

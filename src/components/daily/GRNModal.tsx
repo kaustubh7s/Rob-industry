@@ -26,6 +26,7 @@ import {
   parseGRNNumber,
   getGRNCurrentYear,
 } from '../../utils/grnSequenceManager';
+import { VendorSuggestInput } from '../common/VendorSuggestInput';
 
 interface GRNModalProps {
   isOpen: boolean;
@@ -288,12 +289,11 @@ export const GRNModal: React.FC<GRNModalProps> = ({
             {/* Vendor Name */}
             <div>
               <label className="block text-[11px] font-bold text-slate-600 mb-1">Vendor / Supplier *</label>
-              <input
-                type="text"
+              <VendorSuggestInput
                 value={vendorName}
-                onChange={(e) => setVendorName(e.target.value)}
+                onChange={(val) => setVendorName(val)}
                 placeholder="e.g. Manav Metal"
-                className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 font-bold text-xs outline-none focus:border-blue-600 shadow-2xs"
+                inputClassName="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 font-bold text-xs outline-none focus:border-blue-600 shadow-2xs"
               />
             </div>
 

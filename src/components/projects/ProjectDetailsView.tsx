@@ -53,6 +53,7 @@ import {
   generatePurchaseOrderPDF,
   WhatsAppPOMessageOptions,
 } from '../../utils/whatsappHelper';
+import { VendorSuggestInput } from '../common/VendorSuggestInput';
 
 interface ProjectDetailsViewProps {
   project: ProjectItem;
@@ -2061,28 +2062,23 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           );
                         }
                         return (
-                          <div className="relative flex items-center">
-                            <input
-                              type="text"
-                              list="details-vendor-suggestions"
-                              value={vName}
-                              placeholder="Not Assigned"
-                              onChange={(e) => {
-                                const newV = e.target.value;
-                                updateProjectRequirement(m.id, {
-                                  projectName: project.name,
-                                  vendor: newV,
-                                  vendorName: newV,
-                                });
-                              }}
-                              className={`w-full px-2 py-1 rounded text-xs transition-colors border ${
-                                isUnassigned
-                                  ? 'bg-amber-50/70 text-amber-900 border-amber-300/80 placeholder:text-amber-700 placeholder:font-black placeholder:italic hover:border-amber-400 focus:bg-white focus:border-slate-900 focus:text-slate-900'
-                                  : 'bg-transparent border-transparent hover:border-slate-300 focus:border-slate-900 focus:bg-white text-slate-900 font-bold'
-                              }`}
-                              title={isUnassigned ? 'Vendor not assigned yet. Click or select from dropdown.' : `Vendor: ${vName}`}
-                            />
-                          </div>
+                          <VendorSuggestInput
+                            value={vName}
+                            placeholder="Not Assigned"
+                            onChange={(newV) => {
+                              updateProjectRequirement(m.id, {
+                                projectName: project.name,
+                                vendor: newV,
+                                vendorName: newV,
+                              });
+                            }}
+                            inputClassName={`w-full px-2 py-1 rounded text-xs transition-colors border ${
+                              isUnassigned
+                                ? 'bg-amber-50/70 text-amber-900 border-amber-300/80 placeholder:text-amber-700 placeholder:font-black placeholder:italic hover:border-amber-400 focus:bg-white focus:border-slate-900 focus:text-slate-900'
+                                : 'bg-transparent border-transparent hover:border-slate-300 focus:border-slate-900 focus:bg-white text-slate-900 font-bold'
+                            }`}
+                            title={isUnassigned ? 'Vendor not assigned yet. Type initial (e.g. M) to auto-suggest or enter manually.' : `Vendor: ${vName}`}
+                          />
                         );
                       })()}
                     </td>
@@ -2235,13 +2231,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
                 Vendor
               </label>
-              <input
-                type="text"
-                list="details-vendor-suggestions"
+              <VendorSuggestInput
                 value={matForm.vendor || ''}
-                placeholder="Enter or select vendor..."
-                onChange={(e) => setMatForm({ ...matForm, vendor: e.target.value })}
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium"
+                placeholder="e.g. Manav Metal (type initial to suggest)"
+                onChange={(val) => setMatForm({ ...matForm, vendor: val })}
+                inputClassName="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-medium"
               />
             </div>
 

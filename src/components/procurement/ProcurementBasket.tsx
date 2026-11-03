@@ -56,6 +56,7 @@ import {
   WhatsAppPOMessageOptions,
 } from '../../utils/whatsappHelper';
 import { sortRowsByAscendingSrNo } from '../../utils/projectMaterialsHelper';
+import { VendorSuggestInput } from '../common/VendorSuggestInput';
 
 interface ProcurementBasketProps {
   initialProjectFilter?: string;
@@ -4338,12 +4339,10 @@ export const ProcurementBasket: React.FC<ProcurementBasketProps> = ({
 
                 <div>
                   <label className="font-bold text-slate-700 block mb-1">Target Vendor</label>
-                  <input
-                    type="text"
-                    list="vendor-suggestions"
+                  <VendorSuggestInput
                     value={directPOForm.vendor}
-                    onChange={(e) => setDirectPOForm({ ...directPOForm, vendor: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold text-slate-900 focus:bg-white focus:border-indigo-500"
+                    onChange={(val) => setDirectPOForm({ ...directPOForm, vendor: val })}
+                    inputClassName="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold text-slate-900 focus:bg-white focus:border-indigo-500"
                     placeholder="e.g. Manav Metal"
                   />
                 </div>

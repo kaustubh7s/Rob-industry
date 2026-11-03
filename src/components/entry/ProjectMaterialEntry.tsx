@@ -63,6 +63,7 @@ import { getDeletedRequirementTombstones, removeRequirementTombstone } from '../
 import { ExcelImportPreviewModal } from './ExcelImportPreviewModal';
 import { analyzeExcelFile, SheetAnalysisResult, ParsedImportRow } from '../../utils/excelImportEngine';
 import { dbUpsertRequirement, dbBulkUpsertRequirements, dbDeleteRequirement } from '../../services/supabaseService';
+import { VendorSuggestInput } from '../common/VendorSuggestInput';
 import * as XLSX from 'xlsx';
 
 export interface EntryRow {
@@ -3426,21 +3427,17 @@ export const ProjectMaterialEntry: React.FC = () => {
                         {(() => {
                           const isUnassigned = !row.vendorName || row.vendorName.trim() === '' || row.vendorName.trim().toLowerCase() === 'not assigned';
                           return (
-                            <div className="relative flex items-center">
-                              <input
-                                type="text"
-                                list="vendor-suggestions"
-                                value={row.vendorName || ''}
-                                placeholder="Not Assigned"
-                                onChange={(e) => handleCellChange(row.id, 'vendorName', e.target.value)}
-                                className={`w-full px-2 py-1 rounded text-xs transition-colors border ${
-                                  isUnassigned
-                                    ? 'bg-amber-50/70 text-amber-900 border-amber-300/80 placeholder:text-amber-700 placeholder:font-black placeholder:italic hover:border-amber-400 focus:bg-white focus:border-slate-900 focus:text-slate-900'
-                                    : 'bg-transparent border-transparent hover:border-slate-300 focus:border-slate-900 focus:bg-white text-slate-900 font-bold'
-                                }`}
-                                title={isUnassigned ? 'Vendor not assigned yet. Click or select from dropdown.' : `Vendor: ${row.vendorName}`}
-                              />
-                            </div>
+                            <VendorSuggestInput
+                              value={row.vendorName || ''}
+                              placeholder="Not Assigned"
+                              onChange={(val) => handleCellChange(row.id, 'vendorName', val)}
+                              inputClassName={`w-full px-2 py-1 rounded text-xs transition-colors border ${
+                                isUnassigned
+                                  ? 'bg-amber-50/70 text-amber-900 border-amber-300/80 placeholder:text-amber-700 placeholder:font-black placeholder:italic hover:border-amber-400 focus:bg-white focus:border-slate-900 focus:text-slate-900'
+                                  : 'bg-transparent border-transparent hover:border-slate-300 focus:border-slate-900 focus:bg-white text-slate-900 font-bold'
+                              }`}
+                              title={isUnassigned ? 'Vendor not assigned yet. Type initial (e.g. M) to auto-suggest or enter manually.' : `Vendor: ${row.vendorName}`}
+                            />
                           );
                         })()}
                       </td>
@@ -3675,19 +3672,12 @@ export const ProjectMaterialEntry: React.FC = () => {
             <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
               Vendor / Supplier <span className="text-slate-400 font-normal lowercase">(optional)</span>
             </label>
-            <input
-              type="text"
-              list="entry-modal-vendors"
+            <VendorSuggestInput
               value={newProjectForm.vendor}
-              onChange={(e) => setNewProjectForm({ ...newProjectForm, vendor: e.target.value })}
-              placeholder="Select existing or type new vendor..."
-              className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 font-semibold focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 outline-none text-xs"
+              onChange={(val) => setNewProjectForm({ ...newProjectForm, vendor: val })}
+              placeholder="e.g. Manav Metal (type initial to suggest)"
+              inputClassName="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-300 text-slate-900 font-semibold focus:border-blue-600 focus:ring-2 focus:ring-blue-500/10 outline-none text-xs"
             />
-            <datalist id="entry-modal-vendors">
-              {vendors.map((v) => (
-                <option key={v.id} value={v.name} />
-              ))}
-            </datalist>
           </div>
 
           {/* 5. Client Name & Client Number */}
