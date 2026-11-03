@@ -37,8 +37,8 @@ export interface VendorSuggestInputProps {
   onFocus?: () => void;
   autoFocus?: boolean;
   id?: string;
-  /** Positioning of suggestion badge. Defaults to 'above'. */
-  position?: 'above' | 'below';
+  /** Positioning of suggestion badge. Defaults to 'auto'. */
+  position?: 'above' | 'below' | 'auto';
 }
 
 export const VendorSuggestInput: React.FC<VendorSuggestInputProps> = ({
@@ -54,12 +54,83 @@ export const VendorSuggestInput: React.FC<VendorSuggestInputProps> = ({
   onFocus,
   autoFocus = false,
   id,
-  position = 'above',
+  position = 'auto',
 }) => {
   const { vendors = [], projects = [], projectRequirements = [] } = useERP();
   const [isFocused, setIsFocused] = useState(false);
   const [dismissedForValue, setDismissedForValue] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Dynamic bounds detection to guarantee badge never gets clipped or goes out of frame
+  const [placement, setPlacement] = useState<{
+    vertical: 'above' | 'below';
+    horizontal: 'left' | 'right';
+  }>({ vertical: position === 'below' ? 'below' : 'above', horizontal: 'left' });
+
+  const updatePlacement = useCallback(() => {
+    if (!inputRef.current) return;
+    const rect = inputRef.current.getBoundingClientRect();
+
+    // 1. Calculate vertical clearance
+    let spaceAbove = rect.top;
+    let spaceBelow = window.innerHeight - rect.bottom;
+
+    // Check nearest scroll / overflow container (e.g. table container, modal, cards)
+    let parent = inputRef.current.parentElement;
+    while (parent && parent !== document.body) {
+      const style = window.getComputedStyle(parent);
+      const isScrollable = /(auto|scroll|hidden)/.test(style.overflowY + style.overflowX);
+      if (isScrollable) {
+        const parentRect = parent.getBoundingClientRect();
+        const distToParentTop = rect.top - parentRect.top;
+        const distToParentBottom = parentRect.bottom - rect.bottom;
+        if (distToParentTop < spaceAbove) spaceAbove = distToParentTop;
+        if (distToParentBottom < spaceBelow) spaceBelow = distToParentBottom;
+        break;
+      }
+      parent = parent.parentElement;
+    }
+
+    // If space above is tight (< 35px) and there is more room below, flip to below
+    let vertical: 'above' | 'below' = position === 'below' ? 'below' : 'above';
+    if (position === 'auto' || !position) {
+      vertical = (spaceAbove < 35 && spaceBelow > spaceAbove) ? 'below' : 'above';
+    } else if (position === 'above' && spaceAbove < 35 && spaceBelow > spaceAbove) {
+      // Auto-fallback if forced 'above' would get clipped out of frame
+      vertical = 'below';
+    }
+
+    // 2. Calculate horizontal clearance
+    let spaceRight = window.innerWidth - rect.left;
+    let p = inputRef.current.parentElement;
+    while (p && p !== document.body) {
+      const style = window.getComputedStyle(p);
+      const isScrollable = /(auto|scroll|hidden)/.test(style.overflowX);
+      if (isScrollable) {
+        const pRect = p.getBoundingClientRect();
+        const distToParentRight = pRect.right - rect.left;
+        if (distToParentRight < spaceRight) spaceRight = distToParentRight;
+        break;
+      }
+      p = p.parentElement;
+    }
+
+    // If space to the right is less than 220px, align to the right edge of input so it expands inwards
+    const horizontal: 'left' | 'right' = spaceRight < 220 ? 'right' : 'left';
+
+    setPlacement({ vertical, horizontal });
+  }, [position]);
+
+  useEffect(() => {
+    if (!isFocused) return;
+    updatePlacement();
+    window.addEventListener('resize', updatePlacement);
+    window.addEventListener('scroll', updatePlacement, true);
+    return () => {
+      window.removeEventListener('resize', updatePlacement);
+      window.removeEventListener('scroll', updatePlacement, true);
+    };
+  }, [isFocused, updatePlacement, value]);
 
   // Collect all known unique vendor names across the ERP (preserving official casing)
   const allKnownVendors = useMemo(() => {
@@ -185,16 +256,16 @@ export const VendorSuggestInput: React.FC<VendorSuggestInputProps> = ({
     !disabled;
 
   return (
-    <div className={`relative inline-block w-full ${className}`}>
-      {/* SUGGESTION BADGE: Positioned directly ABOVE the input */}
+    <div className={`relative inline-block w-full ${isFocused ? 'z-40' : 'z-10'} ${className}`}>
+      {/* SUGGESTION BADGE: Smart auto-positioned to stay 100% inside the visible frame */}
       {showSuggestionBadge && topSuggestion && (
         <div
-          className={`absolute left-0 z-50 flex items-center gap-1 pointer-events-auto whitespace-nowrap animate-fadeIn select-none ${
-            position === 'below'
-              ? 'top-full mt-1'
-              : 'bottom-full mb-1'
+          className={`absolute z-50 flex items-center gap-1 pointer-events-auto whitespace-nowrap animate-fadeIn select-none ${
+            placement.vertical === 'below' ? 'top-full mt-1.5' : 'bottom-full mb-1.5'
+          } ${
+            placement.horizontal === 'right' ? 'right-0 left-auto' : 'left-0 right-auto'
           }`}
-          style={{ filter: 'drop-shadow(0 4px 6px rgba(0, 0, 0, 0.15))' }}
+          style={{ filter: 'drop-shadow(0 4px 6px rgba(0, 0, 0, 0.2))' }}
         >
           {/* Primary Top Suggestion Pill */}
           <button
@@ -204,21 +275,21 @@ export const VendorSuggestInput: React.FC<VendorSuggestInputProps> = ({
               e.preventDefault(); // Prevents input blur
               applySuggestion(topSuggestion);
             }}
-            className="px-2 py-0.5 rounded-md bg-slate-900 hover:bg-black text-white text-[11px] font-bold border border-slate-700 hover:border-emerald-400 transition-all flex items-center gap-1.5 cursor-pointer shadow-md group"
+            className="px-2 py-0.5 rounded-md bg-slate-900 hover:bg-black text-white text-[11px] font-bold border border-slate-700 hover:border-emerald-400 transition-all flex items-center gap-1.5 cursor-pointer shadow-md group max-w-[calc(100vw-32px)]"
             title={`Click or press Tab ⇥ to auto-fill "${topSuggestion}"`}
           >
             <Sparkles className="w-3 h-3 text-amber-400 animate-pulse shrink-0" />
             <span className="text-slate-300 font-medium text-[10px]">Suggest:</span>
-            <span className="text-emerald-400 font-black tracking-wide underline decoration-emerald-500/50 underline-offset-2">
+            <span className="text-emerald-400 font-black tracking-wide underline decoration-emerald-500/50 underline-offset-2 truncate max-w-[200px]">
               {topSuggestion}
             </span>
-            <kbd className="text-[9px] text-slate-300 bg-slate-800 px-1 py-0.5 rounded border border-slate-700 font-mono font-bold ml-0.5 group-hover:bg-emerald-950 group-hover:text-emerald-300 transition-colors">
+            <kbd className="text-[9px] text-slate-300 bg-slate-800 px-1 py-0.5 rounded border border-slate-700 font-mono font-bold ml-0.5 group-hover:bg-emerald-950 group-hover:text-emerald-300 transition-colors shrink-0">
               Tab ⇥
             </kbd>
           </button>
 
-          {/* Secondary Suggestions (Clickable Pills) */}
-          {otherSuggestions.map((other) => (
+          {/* Secondary Suggestions: at most 1, hidden on very narrow spaces to avoid pushing badge out of frame */}
+          {otherSuggestions.slice(0, 1).map((other) => (
             <button
               key={other}
               type="button"
@@ -227,7 +298,7 @@ export const VendorSuggestInput: React.FC<VendorSuggestInputProps> = ({
                 e.preventDefault();
                 applySuggestion(other);
               }}
-              className="px-2 py-0.5 rounded-md bg-white hover:bg-slate-100 text-slate-800 text-[10px] font-bold border border-slate-300 hover:border-blue-500 transition-all cursor-pointer shadow-xs truncate max-w-[130px]"
+              className="hidden sm:inline-flex px-2 py-0.5 rounded-md bg-white hover:bg-slate-100 text-slate-800 text-[10px] font-bold border border-slate-300 hover:border-blue-500 transition-all cursor-pointer shadow-xs truncate max-w-[120px]"
               title={`Click to fill "${other}"`}
             >
               {other}
