@@ -1992,15 +1992,6 @@ export const BOMManager: React.FC = () => {
                         <FolderPlus className="w-4 h-4 text-blue-600" />
                         <span>+ New Machine Folder</span>
                       </button>
-                      <button
-                        type="button"
-                        onClick={handleSyncFactoryFolders}
-                        className="w-full text-left px-3.5 py-2 hover:bg-amber-50 flex items-center gap-2.5 font-medium text-amber-800 cursor-pointer"
-                        title="Load real folder structure: Filling machine & LABELLING MACHINE AMIT with all assemblies"
-                      >
-                        <Sparkles className="w-4 h-4 text-amber-600" />
-                        <span>⚡ Load Factory Folders</span>
-                      </button>
                       <div className="border-t border-slate-100 my-1" />
                       <button
                         type="button"

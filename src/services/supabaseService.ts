@@ -46,7 +46,14 @@ import {
   clearAllBOMAndMachineTombstones,
   TombstoneState,
 } from '../utils/tombstones';
-import { INITIAL_MASTER_MACHINES, INITIAL_MASTER_BOMS } from '../data/initialMasterBOMs';
+import {
+  INITIAL_MASTER_MACHINES,
+  INITIAL_MASTER_BOMS,
+  isStockMachine,
+  isStockBOM,
+  STOCK_MACHINE_IDS,
+  STOCK_BOM_IDS,
+} from '../data/initialMasterBOMs';
 import { sortRowsByAscendingSrNo } from '../utils/projectMaterialsHelper';
 
 export interface DbMutationMessage {
@@ -2211,7 +2218,7 @@ export const dbFetchMasterMachines = async (): Promise<MachineFolder[] | null> =
     if (!error && data && data.length > 0) {
       const tombstones = getDeletedMachineTombstones();
       return data
-        .filter((d: any) => !tombstones.has(d.id))
+        .filter((d: any) => !tombstones.has(d.id) && !isStockMachine(d))
         .map((d: any) => {
           const rawTypes = Array.isArray(d.types) ? d.types : (typeof d.types === 'string' ? JSON.parse(d.types) : []);
           const activeTypes: string[] = [];
@@ -2259,13 +2266,13 @@ export const dbFetchMasterMachines = async (): Promise<MachineFolder[] | null> =
     const tombstones = getDeletedMachineTombstones();
 
     if (!error && data && Array.isArray(data.sheets_data)) {
-      const machines = (data.sheets_data as MachineFolder[]).filter((m) => !tombstones.has(m.id));
+      const machines = (data.sheets_data as MachineFolder[]).filter((m) => !tombstones.has(m.id) && !isStockMachine(m));
       return machines;
     }
 
     // If cloud mirror does not exist yet (first initialization), seed with INITIAL_MASTER_MACHINES
     if (!data) {
-      const seedMachines = INITIAL_MASTER_MACHINES.filter((m) => !tombstones.has(m.id));
+      const seedMachines = INITIAL_MASTER_MACHINES.filter((m) => !tombstones.has(m.id) && !isStockMachine(m));
       await supabase.from('workbooks').upsert({
         id: SYS_CLOUD_MACHINES_ID,
         title: 'System Master Machines Mirror',
@@ -2285,6 +2292,7 @@ export const dbFetchMasterMachines = async (): Promise<MachineFolder[] | null> =
 };
 
 export const dbUpsertMasterMachine = async (machine: MachineFolder): Promise<boolean> => {
+  if (isStockMachine(machine)) return false;
   const supabase = getSupabaseClient();
   if (!supabase) return false;
 
@@ -2419,7 +2427,7 @@ export const dbFetchMasterBOMs = async (): Promise<MasterBOM[] | null> => {
     if (!error && data && data.length > 0) {
       const tombstones = getDeletedBOMTombstones();
       return data
-        .filter((d: any) => !tombstones.has(d.id))
+        .filter((d: any) => !tombstones.has(d.id) && !isStockBOM(d))
         .map((d: any) => ({
           id: d.id,
           bomNumber: d.bom_number || '',
@@ -2453,13 +2461,13 @@ export const dbFetchMasterBOMs = async (): Promise<MasterBOM[] | null> => {
     const tombstones = getDeletedBOMTombstones();
 
     if (!error && data && Array.isArray(data.sheets_data)) {
-      const boms = (data.sheets_data as MasterBOM[]).filter((b) => !tombstones.has(b.id));
+      const boms = (data.sheets_data as MasterBOM[]).filter((b) => !tombstones.has(b.id) && !isStockBOM(b));
       return boms;
     }
 
     // If cloud mirror does not exist yet (first initialization), seed with INITIAL_MASTER_BOMS
     if (!data) {
-      const seedBOMs = INITIAL_MASTER_BOMS.filter((b) => !tombstones.has(b.id));
+      const seedBOMs = INITIAL_MASTER_BOMS.filter((b) => !tombstones.has(b.id) && !isStockBOM(b));
       await supabase.from('workbooks').upsert({
         id: SYS_CLOUD_BOMS_ID,
         title: 'System Master BOMs Mirror',
@@ -2479,6 +2487,7 @@ export const dbFetchMasterBOMs = async (): Promise<MasterBOM[] | null> => {
 };
 
 export const dbUpsertMasterBOM = async (bom: MasterBOM): Promise<boolean> => {
+  if (isStockBOM(bom)) return false;
   const supabase = getSupabaseClient();
   if (!supabase) return false;
 
@@ -2611,7 +2620,7 @@ export const dbSaveAllMasterMachines = async (machines: MachineFolder[]): Promis
   if (!supabase) return false;
   try {
     const tombstones = getDeletedMachineTombstones();
-    const cleanMachines = machines.filter((m) => m && m.id && !tombstones.has(m.id));
+    const cleanMachines = machines.filter((m) => m && m.id && !tombstones.has(m.id) && !isStockMachine(m));
 
     await supabase.from('workbooks').upsert({
       id: SYS_CLOUD_MACHINES_ID,
@@ -2639,7 +2648,7 @@ export const dbSaveAllMasterBOMs = async (boms: MasterBOM[]): Promise<boolean> =
   if (!supabase) return false;
   try {
     const tombstones = getDeletedBOMTombstones();
-    const cleanBOMs = boms.filter((b) => b && b.id && !tombstones.has(b.id));
+    const cleanBOMs = boms.filter((b) => b && b.id && !tombstones.has(b.id) && !isStockBOM(b));
 
     await supabase.from('workbooks').upsert({
       id: SYS_CLOUD_BOMS_ID,

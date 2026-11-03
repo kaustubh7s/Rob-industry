@@ -468,8 +468,22 @@ export const isRootAdminUser = (u?: User | null): boolean => {
   return isKaustubhUser(u) || isAmitUser(u);
 };
 
-import { INITIAL_MASTER_MACHINES, INITIAL_MASTER_BOMS } from '../data/initialMasterBOMs';
-export { INITIAL_MASTER_MACHINES, INITIAL_MASTER_BOMS };
+import {
+  INITIAL_MASTER_MACHINES,
+  INITIAL_MASTER_BOMS,
+  isStockMachine,
+  isStockBOM,
+  STOCK_MACHINE_IDS,
+  STOCK_BOM_IDS,
+} from '../data/initialMasterBOMs';
+export {
+  INITIAL_MASTER_MACHINES,
+  INITIAL_MASTER_BOMS,
+  isStockMachine,
+  isStockBOM,
+  STOCK_MACHINE_IDS,
+  STOCK_BOM_IDS,
+};
 
 export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [users, setUsers] = useState<User[]>(() => {
@@ -1083,11 +1097,22 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          return parsed.filter((m: MachineFolder) => !deletedMachineTombstones.has(m.id));
+          const cleaned = parsed.filter(
+            (m: MachineFolder) => m && m.id && !deletedMachineTombstones.has(m.id) && !isStockMachine(m)
+          );
+          if (cleaned.length !== parsed.length) {
+            safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_machines', cleaned);
+            try {
+              localStorage.setItem('RSB_INDUSTRY_master_machines', JSON.stringify(cleaned));
+            } catch (e) {}
+          }
+          return cleaned;
         }
       } catch (e) {}
     }
-    return INITIAL_MASTER_MACHINES.filter((m) => !deletedMachineTombstones.has(m.id));
+    return INITIAL_MASTER_MACHINES.filter(
+      (m) => m && m.id && !deletedMachineTombstones.has(m.id) && !isStockMachine(m)
+    );
   });
 
   const [masterBOMs, setMasterBOMs] = useState<MasterBOM[]>(() => {
@@ -1097,11 +1122,22 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          return parsed.filter((b: MasterBOM) => !deletedTombstones.has(b.id));
+          const cleaned = parsed.filter(
+            (b: MasterBOM) => b && b.id && !deletedTombstones.has(b.id) && !isStockBOM(b)
+          );
+          if (cleaned.length !== parsed.length) {
+            safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_boms', cleaned);
+            try {
+              localStorage.setItem('RSB_INDUSTRY_master_boms', JSON.stringify(cleaned));
+            } catch (e) {}
+          }
+          return cleaned;
         }
       } catch (e) {}
     }
-    return INITIAL_MASTER_BOMS.filter((b) => !deletedTombstones.has(b.id));
+    return INITIAL_MASTER_BOMS.filter(
+      (b) => b && b.id && !deletedTombstones.has(b.id) && !isStockBOM(b)
+    );
   });
 
   useEffect(() => {
@@ -1119,7 +1155,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const deletedMachineTombstones = getDeletedMachineTombstones();
         if (Array.isArray(remoteMachines)) {
-          const activeRemoteMachines = remoteMachines.filter((m) => m && m.id && !deletedMachineTombstones.has(m.id));
+          const activeRemoteMachines = remoteMachines.filter((m) => m && m.id && !deletedMachineTombstones.has(m.id) && !isStockMachine(m));
           setMasterMachines(activeRemoteMachines);
           safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_machines', activeRemoteMachines);
           try {
@@ -1129,7 +1165,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const deletedTombstones = getDeletedBOMTombstones();
         if (Array.isArray(remoteBoms)) {
-          const activeRemoteBoms = remoteBoms.filter((b) => b && b.id && !deletedTombstones.has(b.id));
+          const activeRemoteBoms = remoteBoms.filter((b) => b && b.id && !deletedTombstones.has(b.id) && !isStockBOM(b));
           setMasterBOMs(activeRemoteBoms);
           safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_boms', activeRemoteBoms);
           try {
@@ -2248,7 +2284,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
                 if (row.id === 'sys-cloud-master-machines' && Array.isArray(row.sheets_data)) {
                   const tombstones = getDeletedMachineTombstones();
-                  const clean = (row.sheets_data as MachineFolder[]).filter((m) => m && m.id && !tombstones.has(m.id));
+                  const clean = (row.sheets_data as MachineFolder[]).filter((m) => m && m.id && !tombstones.has(m.id) && !isStockMachine(m));
                   setMasterMachines(clean);
                   safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_machines', clean);
                   try {
@@ -2256,7 +2292,7 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   } catch (e) {}
                 } else if (row.id === 'sys-cloud-master-boms' && Array.isArray(row.sheets_data)) {
                   const tombstones = getDeletedBOMTombstones();
-                  const clean = (row.sheets_data as MasterBOM[]).filter((b) => b && b.id && !tombstones.has(b.id));
+                  const clean = (row.sheets_data as MasterBOM[]).filter((b) => b && b.id && !tombstones.has(b.id) && !isStockBOM(b));
                   setMasterBOMs(clean);
                   safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_boms', clean);
                   try {
