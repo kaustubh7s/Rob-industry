@@ -115,6 +115,9 @@ import {
   getDeletedBOMTombstones,
   addBOMTombstone,
   removeBOMTombstone,
+  getDeletedMachineTombstones,
+  addMachineTombstone,
+  removeMachineTombstone,
 } from '../utils/tombstones';
 import { isRequirementMatchingProjectName, isRequirementMatchedToProject, sortRowsByAscendingSrNo } from '../utils/projectMaterialsHelper';
 
@@ -1703,23 +1706,17 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [masterMachines, setMasterMachines] = useState<MachineFolder[]>(() => {
+    const deletedMachineTombstones = getDeletedMachineTombstones();
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY + '_master_machines');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          // If stored data has old types like '24-Head Standard' or 'Standard Model', upgrade to real factory structure
-          const hasOldTypes = parsed.some((m: MachineFolder) =>
-            m.types?.includes('24-Head Standard') ||
-            m.name === 'Rotary Monoblock Filling Machine' ||
-            m.name === 'Labeling Machine 120 BPM'
-          );
-          if (!hasOldTypes) return parsed;
-          return INITIAL_MASTER_MACHINES;
+        if (Array.isArray(parsed)) {
+          return parsed.filter((m: MachineFolder) => !deletedMachineTombstones.has(m.id));
         }
       } catch (e) {}
     }
-    return INITIAL_MASTER_MACHINES;
+    return INITIAL_MASTER_MACHINES.filter((m) => !deletedMachineTombstones.has(m.id));
   });
 
   const [masterBOMs, setMasterBOMs] = useState<MasterBOM[]>(() => {
@@ -1728,14 +1725,8 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const filtered = parsed.filter((b: MasterBOM) => !deletedTombstones.has(b.id));
-          // If stored BOMs lack the factory root lists, merge or reset
-          const hasFactoryBOMs = filtered.some((b: MasterBOM) =>
-            b.name.includes('nut bolt') || b.name.includes('RFC switch') || b.name.includes('BEARING')
-          );
-          if (hasFactoryBOMs) return filtered;
-          return INITIAL_MASTER_BOMS.filter((b) => !deletedTombstones.has(b.id));
+        if (Array.isArray(parsed)) {
+          return parsed.filter((b: MasterBOM) => !deletedTombstones.has(b.id));
         }
       } catch (e) {}
     }
@@ -1751,24 +1742,16 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           dbFetchMasterBOMs(),
         ]);
         if (isCancelled) return;
+        const deletedMachineTombstones = getDeletedMachineTombstones();
         if (remoteMachines && remoteMachines.length > 0) {
-          setMasterMachines(remoteMachines);
-        } else if (remoteMachines && remoteMachines.length === 0) {
-          for (const m of INITIAL_MASTER_MACHINES) {
-            await dbUpsertMasterMachine(m);
-          }
+          const activeRemoteMachines = remoteMachines.filter((m) => !deletedMachineTombstones.has(m.id));
+          setMasterMachines(activeRemoteMachines);
         }
 
         const deletedTombstones = getDeletedBOMTombstones();
         if (remoteBoms && remoteBoms.length > 0) {
           const activeRemoteBoms = remoteBoms.filter((b) => !deletedTombstones.has(b.id));
           setMasterBOMs(activeRemoteBoms);
-        } else if (remoteBoms && remoteBoms.length === 0) {
-          for (const b of INITIAL_MASTER_BOMS) {
-            if (!deletedTombstones.has(b.id)) {
-              await dbUpsertMasterBOM(b);
-            }
-          }
         }
       } catch (err) {
         console.warn('Remote master BOM sync notice (local active):', err);
@@ -3126,14 +3109,38 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const setCurrentUserRole = (role: UserRole | string) => {
-    const matched = users.find((u) => u.role === role || u.id === role);
+    const roleStr = String(role).toLowerCase();
+    const matched =
+      users.find((u) => u.role === role || u.id === role || u.name?.toLowerCase() === roleStr) ||
+      INITIAL_USERS.find((u) => u.role === role || u.id === role || u.name?.toLowerCase() === roleStr);
     if (matched) {
       setCurrentUser(matched);
       try {
         sessionStorage.setItem(AUTH_SESSION_KEY, matched.id);
+        localStorage.setItem(AUTH_SESSION_KEY, matched.id);
+        sessionStorage.setItem('rsb_auth_session', matched.id);
+        localStorage.setItem('rsb_auth_session', matched.id);
+        sessionStorage.setItem('RSB_ACTIVE_USER', matched.id);
+        localStorage.setItem('RSB_ACTIVE_USER', matched.id);
       } catch {}
       if (matched.vendorId) {
         setActiveVendorId(matched.vendorId);
+      }
+      const isStore =
+        matched.role === 'store_incharge' ||
+        matched.role === 'store_manager' ||
+        matched.id === 'usr-chandramani' ||
+        matched.id === 'chandramani' ||
+        (matched.name || '').toLowerCase().includes('chandramani') ||
+        (matched.department || '').toLowerCase().includes('stores') ||
+        (matched.email || '').toLowerCase().includes('chandramani') ||
+        (matched.permissions?.canEditMaterials === false && matched.permissions?.canVerifyInward === true);
+
+      if (isStore) {
+        setActiveTabState('daily_requirements');
+        try {
+          localStorage.setItem('RSB_ACTIVE_TAB', 'daily_requirements');
+        } catch {}
       }
       setUsers((prev) => {
         const next = prev.map((u) =>
@@ -3329,11 +3336,30 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       sessionStorage.setItem(AUTH_SESSION_KEY, targetUser.id);
       localStorage.setItem(AUTH_SESSION_KEY, targetUser.id);
+      sessionStorage.setItem('rsb_auth_session', targetUser.id);
+      localStorage.setItem('rsb_auth_session', targetUser.id);
+      sessionStorage.setItem('RSB_ACTIVE_USER', targetUser.id);
+      localStorage.setItem('RSB_ACTIVE_USER', targetUser.id);
       sessionStorage.setItem(LAST_ACTIVITY_KEY, now);
       localStorage.setItem(LAST_ACTIVITY_KEY, now);
     } catch {}
     if (targetUser.vendorId) {
       setActiveVendorId(targetUser.vendorId);
+    }
+    const isStore =
+      targetUser.role === 'store_incharge' ||
+      targetUser.role === 'store_manager' ||
+      targetUser.id === 'usr-chandramani' ||
+      targetUser.id === 'chandramani' ||
+      (targetUser.name || '').toLowerCase().includes('chandramani') ||
+      (targetUser.department || '').toLowerCase().includes('stores') ||
+      (targetUser.permissions?.canEditMaterials === false && targetUser.permissions?.canVerifyInward === true);
+
+    if (isStore) {
+      setActiveTabState('daily_requirements');
+      try {
+        localStorage.setItem('RSB_ACTIVE_TAB', 'daily_requirements');
+      } catch {}
     }
     setUsers((prev) => {
       const hasUser = prev.some((u) => u.id === targetUser.id);
@@ -6239,7 +6265,14 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    setMasterMachines((prev) => [newMachine, ...prev]);
+    setMasterMachines((prev) => {
+      const next = [newMachine, ...prev];
+      safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_machines', next);
+      try {
+        localStorage.setItem('RSB_INDUSTRY_master_machines', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
     dbUpsertMasterMachine(newMachine);
     logAudit('Machine Folder Created', 'BOM Management', `Created folder "${trimmed}" with ${newMachine.types.length} types`);
     return newMachine;
@@ -6247,8 +6280,8 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateMachineFolder = (id: string, updates: Partial<MachineFolder>) => {
     let updatedMachine: MachineFolder | null = null;
-    setMasterMachines((prev) =>
-      prev.map((m) => {
+    setMasterMachines((prev) => {
+      const next = prev.map((m) => {
         if (m.id === id) {
           updatedMachine = {
             ...m,
@@ -6258,8 +6291,13 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return updatedMachine;
         }
         return m;
-      })
-    );
+      });
+      safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_machines', next);
+      try {
+        localStorage.setItem('RSB_INDUSTRY_master_machines', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
     if (updatedMachine) {
       dbUpsertMasterMachine(updatedMachine);
       logAudit('Machine Folder Updated', 'BOM Management', `Updated folder "${(updatedMachine as MachineFolder).name}"`);
@@ -6269,9 +6307,18 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteMachineFolder = (id: string) => {
     const target = masterMachines.find((m) => m.id === id);
     if (!target) return;
-    setMasterMachines((prev) => prev.filter((m) => m.id !== id));
+    addMachineTombstone(id);
+    setMasterMachines((prev) => {
+      const next = prev.filter((m) => m.id !== id);
+      safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_machines', next);
+      try {
+        localStorage.setItem('RSB_INDUSTRY_master_machines', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
     dbDeleteMasterMachine(id);
     logAudit('Machine Folder Deleted', 'BOM Management', `Deleted machine folder "${target.name}"`);
+    addNotification('Machine Deleted', `Machine folder "${target.name}" deleted successfully`, 'info', 'bom');
   };
 
   const addMachineType = (machineId: string, typeName: string, details?: Partial<MachineTypeMeta>) => {
@@ -6672,25 +6719,24 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteMasterBOM = async (id: string): Promise<{ success: boolean; error?: string }> => {
     addBOMTombstone(id);
     const target = masterBOMs.find((b) => b.id === id);
-    const res = await dbDeleteMasterBOM(id);
-    if (res.success) {
-      setMasterBOMs((prev) => {
-        const next = prev.filter((b) => b.id !== id);
-        safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_boms', next);
-        try {
-          localStorage.setItem('RSB_INDUSTRY_master_boms', JSON.stringify(next));
-        } catch {}
-        return next;
-      });
-      if (target) {
-        logAudit('Master BOM Deleted', 'BOM Management', `Deleted BOM "${target.name}" (${target.bomNumber})`);
-        addNotification('BOM Deleted', `Master BOM "${target.name}" deleted successfully`, 'info', 'bom');
-      }
-      return { success: true };
-    } else {
-      removeBOMTombstone(id);
-      return { success: false, error: res.error || 'Failed to delete BOM from database' };
+    setMasterBOMs((prev) => {
+      const next = prev.filter((b) => b.id !== id);
+      safeLocalStorageSet(LOCAL_STORAGE_KEY + '_master_boms', next);
+      try {
+        localStorage.setItem('RSB_INDUSTRY_master_boms', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+    if (target) {
+      logAudit('Master BOM Deleted', 'BOM Management', `Deleted BOM "${target.name}" (${target.bomNumber})`);
+      addNotification('BOM Deleted', `Master BOM "${target.name}" deleted successfully`, 'info', 'bom');
     }
+    try {
+      await dbDeleteMasterBOM(id);
+    } catch (e) {
+      console.warn('dbDeleteMasterBOM async notice:', e);
+    }
+    return { success: true };
   };
 
   // =========================================================================

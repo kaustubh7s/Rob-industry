@@ -227,4 +227,45 @@ export function removeBOMTombstone(id: string): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// MASTER MACHINE TOMBSTONES
+// Durable deletion tracking for Machine folders
+// ---------------------------------------------------------------------------
+const MACHINE_TOMBSTONES_KEY = 'RSB_ERP_STATE_V6_deleted_machines';
+
+export function getDeletedMachineTombstones(): Set<string> {
+  try {
+    const raw = localStorage.getItem(MACHINE_TOMBSTONES_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return new Set(Array.isArray(parsed) ? parsed : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export function addMachineTombstone(id: string): void {
+  if (!id) return;
+  try {
+    const current = getDeletedMachineTombstones();
+    current.add(id);
+    localStorage.setItem(MACHINE_TOMBSTONES_KEY, JSON.stringify(Array.from(current)));
+  } catch (e) {
+    console.error('Failed to save machine tombstone:', e);
+  }
+}
+
+export function removeMachineTombstone(id: string): void {
+  if (!id) return;
+  try {
+    const current = getDeletedMachineTombstones();
+    if (current.delete(id)) {
+      localStorage.setItem(MACHINE_TOMBSTONES_KEY, JSON.stringify(Array.from(current)));
+    }
+  } catch (e) {
+    console.error('Failed to remove machine tombstone:', e);
+  }
+}
+
+
 

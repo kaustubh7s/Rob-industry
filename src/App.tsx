@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { ERPProvider, useERP } from './context/ERPContext';
 import { Header } from './components/layout/Header';
@@ -80,15 +80,40 @@ const ERPAppContent: React.FC = () => {
     currentUser?.role === 'admin' ||
     true;
 
+  const isSuperOrAdmin =
+    currentUser?.role === 'super_admin' ||
+    currentUser?.role === 'admin' ||
+    currentUser?.role === 'kaustubh' ||
+    Boolean(currentUser?.permissions?.canManageUsers);
+
+  const isStoreIncharge =
+    currentUser?.role === 'store_incharge' ||
+    currentUser?.role === 'store_manager' ||
+    currentUser?.id === 'usr-chandramani' ||
+    currentUser?.id === 'chandramani' ||
+    currentUser?.name?.toLowerCase().includes('chandramani') ||
+    currentUser?.department?.toLowerCase().includes('stores') ||
+    (currentUser?.permissions?.canEditMaterials === false && currentUser?.permissions?.canVerifyInward === true);
+
+  // Security Role Access Guard: Keep store incharge strictly within authorized inward stations
+  useEffect(() => {
+    if (isStoreIncharge) {
+      const unauthorizedTabs = ['entry', 'requirements', 'projects', 'details', 'bom', 'trash', 'members'];
+      if (unauthorizedTabs.includes(activeTab)) {
+        setActiveTab('daily_requirements');
+      }
+    }
+  }, [isStoreIncharge, activeTab, setActiveTab]);
+
   const handleOpenQuickAction = (action?: 'order' | 'inward' | 'outward' | 'job' | 'qc') => {
     if (action) setQuickActionInitial(action);
     setIsQuickActionOpen(true);
   };
 
   // Easy & Reliable Keyboard Shortcuts for:
-  // 1 / Alt+1 / Ctrl+1 / Alt+M -> Material Entry
-  // 2 / Alt+2 / Ctrl+2 / Alt+P -> Projects Directory
-  // 3 / Alt+3 / Ctrl+3 / Alt+O / Alt+B -> Order Basket
+  // 1 / Alt+1 / Ctrl+1 / Alt+M -> Material Entry (or Daily Requirements for Stores)
+  // 2 / Alt+2 / Ctrl+2 / Alt+P -> Projects Directory (or PO Basket for Stores)
+  // 3 / Alt+3 / Ctrl+3 / Alt+O -> Order Basket (or Microsoft Excel for Stores)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const activeEl = document.activeElement;
@@ -123,33 +148,55 @@ const ERPAppContent: React.FC = () => {
         const key = e.key.toLowerCase();
         if (key === '1' || key === 'm') {
           e.preventDefault();
-          setActiveTab('entry');
+          if (isStoreIncharge) {
+            setActiveTab('daily_requirements');
+          } else {
+            setActiveTab('entry');
+          }
           return;
         }
         if (key === '2' || key === 'p') {
           e.preventDefault();
-          setActiveTab('projects');
+          if (!isStoreIncharge) {
+            setActiveTab('projects');
+          }
           return;
         }
-        if (key === '3' || key === 'o' || key === 'b') {
+        if (key === '3' || key === 'o') {
           e.preventDefault();
           setActiveTab('procurement');
           return;
         }
+        if (key === 'b') {
+          e.preventDefault();
+          if (!isStoreIncharge) {
+            setActiveTab('bom');
+          }
+          return;
+        }
         if (key === '4' || key === 't') {
           e.preventDefault();
-          window.dispatchEvent(new CustomEvent('rsb:open-trash'));
-          setActiveTab('entry');
+          if (!isStoreIncharge) {
+            window.dispatchEvent(new CustomEvent('rsb:open-trash'));
+            setActiveTab('entry');
+          }
           return;
         }
         if (key === '5') {
           e.preventDefault();
-          setActiveTab('members');
+          if (isSuperOrAdmin) {
+            setActiveTab('members');
+          }
           return;
         }
         if (key === '6' || key === 'w') {
           e.preventDefault();
           setActiveTab('microsoft');
+          return;
+        }
+        if (key === 'd') {
+          e.preventDefault();
+          setActiveTab('daily_requirements');
           return;
         }
       }
@@ -158,28 +205,44 @@ const ERPAppContent: React.FC = () => {
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
         if (e.key === '1') {
           e.preventDefault();
-          setActiveTab('entry');
+          if (isStoreIncharge) {
+            setActiveTab('daily_requirements');
+          } else {
+            setActiveTab('entry');
+          }
           return;
         }
         if (e.key === '2') {
           e.preventDefault();
-          setActiveTab('projects');
+          if (isStoreIncharge) {
+            setActiveTab('procurement');
+          } else {
+            setActiveTab('projects');
+          }
           return;
         }
         if (e.key === '3') {
           e.preventDefault();
-          setActiveTab('procurement');
+          if (isStoreIncharge) {
+            setActiveTab('microsoft');
+          } else {
+            setActiveTab('procurement');
+          }
           return;
         }
         if (e.key === '4') {
           e.preventDefault();
-          window.dispatchEvent(new CustomEvent('rsb:open-trash'));
-          setActiveTab('entry');
+          if (!isStoreIncharge) {
+            window.dispatchEvent(new CustomEvent('rsb:open-trash'));
+            setActiveTab('entry');
+          }
           return;
         }
         if (e.key === '5') {
           e.preventDefault();
-          setActiveTab('members');
+          if (isSuperOrAdmin) {
+            setActiveTab('members');
+          }
           return;
         }
         if (e.key === '6') {
@@ -187,9 +250,16 @@ const ERPAppContent: React.FC = () => {
           setActiveTab('microsoft');
           return;
         }
+        if (e.key.toLowerCase() === 'd' && !isInputActive) {
+          e.preventDefault();
+          setActiveTab('daily_requirements');
+          return;
+        }
         if (e.key.toLowerCase() === 'b' && !isInputActive) {
           e.preventDefault();
-          setActiveTab('bom');
+          if (!isStoreIncharge) {
+            setActiveTab('bom');
+          }
           return;
         }
         if (e.key.toLowerCase() === 's') {
@@ -215,6 +285,16 @@ const ERPAppContent: React.FC = () => {
     return () => window.removeEventListener('rsb:start-tour', handleStartTour);
   }, []);
 
+  // Custom Back Navigation (handles subfolder / machine hierarchy inside BOM gracefully)
+  const handleCustomBack = useCallback(() => {
+    if (activeTab === 'bom') {
+      const ev = new CustomEvent('rsb:bom-go-back', { cancelable: true });
+      const handled = !window.dispatchEvent(ev);
+      if (handled) return;
+    }
+    goBack();
+  }, [activeTab, goBack]);
+
   // Keyboard Navigation: Alt+Left / Alt+Right or Cmd+[ / Cmd+] to navigate back/forward
   useEffect(() => {
     const handleKeyNav = (e: KeyboardEvent) => {
@@ -228,7 +308,7 @@ const ERPAppContent: React.FC = () => {
 
       if ((e.altKey && e.key === 'ArrowLeft') || (e.metaKey && e.key === '[')) {
         e.preventDefault();
-        goBack();
+        handleCustomBack();
       } else if ((e.altKey && e.key === 'ArrowRight') || (e.metaKey && e.key === ']')) {
         e.preventDefault();
         goForward();
@@ -236,7 +316,7 @@ const ERPAppContent: React.FC = () => {
     };
     window.addEventListener('keydown', handleKeyNav);
     return () => window.removeEventListener('keydown', handleKeyNav);
-  }, []);
+  }, [handleCustomBack, goForward]);
 
   // Screen Lock / Unauthenticated Gate
   if (!isAuthenticated) {
@@ -275,13 +355,13 @@ const ERPAppContent: React.FC = () => {
         <div className="fixed top-[60px] left-3 sm:left-4 z-30 flex items-center bg-white/95 hover:bg-white text-slate-700 shadow-md border border-slate-200/90 rounded-xl p-0.5 backdrop-blur-xs select-none transition-all">
           <button
             type="button"
-            onClick={goBack}
+            onClick={handleCustomBack}
             className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center transition-all ${
-              canGoBack
+              canGoBack || activeTab === 'bom'
                 ? 'hover:bg-slate-100 active:scale-90 text-slate-700 hover:text-slate-950 cursor-pointer'
                 : 'text-slate-300 opacity-40 cursor-not-allowed'
             }`}
-            title={canGoBack ? 'Back (Alt + ←)' : 'Back (No previous page)'}
+            title={canGoBack || activeTab === 'bom' ? 'Back (Alt + ←)' : 'Back (No previous page)'}
             aria-label="Back"
           >
             <ArrowLeft className="w-4 h-4 stroke-[2.3]" />
@@ -310,6 +390,8 @@ const ERPAppContent: React.FC = () => {
           isOpen={isSidebarOpen}
           onClose={() => setIsSidebarOpen(false)}
           onOpenTutorial={() => setIsTutorialOpen(true)}
+          currentUser={currentUser}
+          isStoreUser={isStoreIncharge}
         />
 
         {/* 100% Full Screen Main Viewport */}
@@ -373,7 +455,7 @@ const ERPAppContent: React.FC = () => {
               'quality', 'vendors', 'customers', 'machines', 'purchase',
               'sales', 'costing', 'reports', 'admin'
             ].includes(activeTab) && (
-              <ProjectMaterialEntry />
+              isStoreIncharge ? <DailyRequirementModule /> : <ProjectMaterialEntry />
             )}
           </div>
         </main>
@@ -390,7 +472,13 @@ const ERPAppContent: React.FC = () => {
       <EasyTutorialModal
         isOpen={isTutorialOpen}
         onClose={() => setIsTutorialOpen(false)}
-        onSelectTab={(tabId) => setActiveTab(tabId)}
+        onSelectTab={(tabId) => {
+          if (isStoreIncharge && (tabId === 'entry' || tabId === 'projects' || tabId === 'bom')) {
+            setActiveTab('daily_requirements');
+          } else {
+            setActiveTab(tabId);
+          }
+        }}
       />
 
       {/* SS Weight Quick Calculator Modal */}

@@ -147,8 +147,15 @@ export const ExcelImportPreviewModal: React.FC<ExcelImportPreviewModalProps> = (
       });
 
       // Apply overrides if specified
-      if (targetProject) copy.projectName = copy.projectName || targetProject;
-      if (targetMachine) copy.machineName = copy.machineName || targetMachine;
+      const finalPrj = (targetProject || copy.projectName || '').trim();
+      if (finalPrj) copy.projectName = finalPrj;
+
+      // If nothing entered in Machine / Equipment Name, keep project name in machine name too
+      const finalMch = targetMachine?.trim()
+        ? targetMachine.trim()
+        : (copy.machineName?.trim() ? copy.machineName.trim() : finalPrj);
+      if (finalMch) copy.machineName = finalMch;
+
       if (targetVendor) copy.vendorName = copy.vendorName || targetVendor;
       if (targetPoNo) copy.poNo = copy.poNo || targetPoNo;
 
@@ -159,12 +166,16 @@ export const ExcelImportPreviewModal: React.FC<ExcelImportPreviewModalProps> = (
   }, [analysis, customMappings, targetProject, targetMachine, targetVendor, targetPoNo]);
 
   const handleConfirm = () => {
+    const finalPrj = targetProject.trim();
+    // If nothing entered in Machine / Equipment Name, make machine name and project name same
+    const finalMch = targetMachine.trim() ? targetMachine.trim() : (finalPrj || undefined);
+
     onConfirmImport(effectiveRows, {
       sheetName: activeSheet,
-      overrideProject: targetProject || undefined,
-      overrideMachine: targetMachine || undefined,
-      overrideVendor: targetVendor || undefined,
-      overridePoNo: targetPoNo || undefined,
+      overrideProject: finalPrj || undefined,
+      overrideMachine: finalMch,
+      overrideVendor: targetVendor.trim() || undefined,
+      overridePoNo: targetPoNo.trim() || undefined,
     });
   };
 
@@ -242,15 +253,20 @@ export const ExcelImportPreviewModal: React.FC<ExcelImportPreviewModalProps> = (
 
             {/* Target Machine */}
             <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-1.5">
-                Machine / Equipment Name
+              <label className="block text-xs font-semibold text-slate-400 mb-1.5 flex items-center justify-between">
+                <span>Machine / Equipment Name</span>
+                {!targetMachine.trim() && targetProject.trim() && (
+                  <span className="text-[10px] text-cyan-400 font-semibold">
+                    (Auto: Same as Project)
+                  </span>
+                )}
               </label>
               <input
                 type="text"
                 value={targetMachine}
                 onChange={(e) => setTargetMachine(e.target.value)}
-                placeholder="e.g. Mono Conveyor Line"
-                className="w-full bg-slate-900 border border-slate-700 text-slate-200 rounded-lg px-3 py-2 text-xs font-medium focus:outline-none focus:border-blue-500"
+                placeholder={targetProject.trim() ? targetProject.trim() : "e.g. Mono Conveyor Line"}
+                className="w-full bg-slate-900 border border-slate-700 text-slate-200 rounded-lg px-3 py-2 text-xs font-medium focus:outline-none focus:border-blue-500 placeholder:text-slate-500"
               />
             </div>
 
@@ -362,6 +378,7 @@ export const ExcelImportPreviewModal: React.FC<ExcelImportPreviewModalProps> = (
                     <th className="px-3 py-2.5 w-20 text-right font-bold">Qty</th>
                     <th className="px-3 py-2.5 w-16 font-bold">Unit</th>
                     <th className="px-3 py-2.5 font-bold">Project</th>
+                    <th className="px-3 py-2.5 font-bold text-cyan-300">Machine</th>
                     <th className="px-3 py-2.5 font-bold">Vendor</th>
                   </tr>
                 </thead>
@@ -389,6 +406,9 @@ export const ExcelImportPreviewModal: React.FC<ExcelImportPreviewModalProps> = (
                       <td className="px-3 py-2 text-slate-400 font-sans truncate max-w-[120px]">
                         {row.projectName || targetProject || '—'}
                       </td>
+                      <td className="px-3 py-2 text-cyan-300 font-sans truncate max-w-[120px]">
+                        {row.machineName || targetMachine || row.projectName || targetProject || '—'}
+                      </td>
                       <td className="px-3 py-2 text-slate-400 font-sans truncate max-w-[120px]">
                         {row.vendorName || targetVendor || '—'}
                       </td>
@@ -396,7 +416,7 @@ export const ExcelImportPreviewModal: React.FC<ExcelImportPreviewModalProps> = (
                   ))}
                   {effectiveRows.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="px-4 py-8 text-center text-slate-500 font-sans">
+                      <td colSpan={9} className="px-4 py-8 text-center text-slate-500 font-sans">
                         No material rows identified. Please verify the header row mapping above.
                       </td>
                     </tr>

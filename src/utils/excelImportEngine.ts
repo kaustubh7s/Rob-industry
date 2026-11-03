@@ -383,7 +383,7 @@ export function analyzeWorksheet(workbook: XLSX.WorkBook, sheetName: string): Sh
     const unit = colMap.has('unit') ? String(row[colMap.get('unit')!] || '').trim() : 'Nos';
     const matTypeRaw = colMap.has('materialType') ? String(row[colMap.get('materialType')!] || '').trim() : '';
     const prj = colMap.has('projectName') ? String(row[colMap.get('projectName')!] || '').trim() : detectedMetadata.projectName || detectedMetadata.customerName || '';
-    const mch = colMap.has('machineName') ? String(row[colMap.get('machineName')!] || '').trim() : detectedMetadata.machineName || '';
+    const mch = colMap.has('machineName') ? String(row[colMap.get('machineName')!] || '').trim() : (detectedMetadata.machineName || prj || '');
     const date = colMap.has('date') ? String(row[colMap.get('date')!] || '').trim() : detectedMetadata.date || '';
     const po = colMap.has('poNo') ? String(row[colMap.get('poNo')!] || '').trim() : detectedMetadata.poNumber || '';
     const vendor = colMap.has('vendorName') ? String(row[colMap.get('vendorName')!] || '').trim() : detectedMetadata.vendorName || '';

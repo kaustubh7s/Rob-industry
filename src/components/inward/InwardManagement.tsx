@@ -14,6 +14,7 @@ import {
   TrendingUp,
   Scale,
   Printer,
+  FileCheck,
   Sparkles,
   Zap,
 } from 'lucide-react';
@@ -35,6 +36,8 @@ import { autoCalculateWeightFromSpec } from '../../utils/calculations';
 import { EasyGuideBanner } from '../common/EasyGuideBanner';
 import { PrintableSlipModal } from '../common/PrintableSlipModal';
 import { MATERIAL_TYPES } from '../../data/materialTypes';
+import { GRNModal } from '../daily/GRNModal';
+import { GRNItem } from '../../utils/grnPdfGenerator';
 
 interface InwardManagementProps {
   onOpenQuickAction?: (action?: 'order' | 'inward' | 'outward' | 'job' | 'qc') => void;
@@ -51,6 +54,16 @@ export const InwardManagement: React.FC<InwardManagementProps> = ({ onOpenQuickA
   const [isNewInwardModalOpen, setIsNewInwardModalOpen] = useState(false);
   const [selectedSlipData, setSelectedSlipData] = useState<InwardEntry | null>(null);
   const [isSlipModalOpen, setIsSlipModalOpen] = useState(false);
+
+  // Official RSB GRN Modal State
+  const [isGRNModalOpen, setIsGRNModalOpen] = useState(false);
+  const [grnInitialData, setGrnInitialData] = useState<{
+    items: GRNItem[];
+    vendor?: string;
+    project?: string;
+    po?: string;
+    date?: string;
+  }>({ items: [] });
 
   // New inward form
   const [form, setForm] = useState({
@@ -174,6 +187,60 @@ export const InwardManagement: React.FC<InwardManagementProps> = ({ onOpenQuickA
     setIsSlipModalOpen(true);
   };
 
+  const handleOpenGRNModal = (entry?: InwardEntry) => {
+    if (entry) {
+      const item: GRNItem = {
+        id: entry.id,
+        description: `${entry.materialType} ${entry.sizeSpecs}`,
+        materialType: entry.materialType,
+        sizeSpecification: entry.sizeSpecs,
+        poQuantity: entry.quantity,
+        receivedQuantity: entry.quantity,
+        unit: entry.unit || 'Nos',
+        qualityStatus:
+          entry.qualityStatus === 'Approved'
+            ? 'Accepted'
+            : entry.qualityStatus === 'QC Pending'
+            ? 'Under Inspection'
+            : entry.qualityStatus === 'Rejected'
+            ? 'Rejected'
+            : 'Conditional',
+        inspectionNotes: entry.remarks || 'Gate inward receipt verified',
+      };
+      setGrnInitialData({
+        items: [item],
+        vendor: entry.vendor,
+        project: '',
+        po: entry.poNumber,
+        date: entry.date,
+      });
+    } else {
+      if (filteredInward.length === 0) {
+        alert('No inward entries found to generate GRN.');
+        return;
+      }
+      const items: GRNItem[] = filteredInward.slice(0, 50).map((inw, idx) => ({
+        id: inw.id || `inw-${idx}`,
+        description: `${inw.materialType} ${inw.sizeSpecs}`,
+        materialType: inw.materialType,
+        sizeSpecification: inw.sizeSpecs,
+        poQuantity: inw.quantity,
+        receivedQuantity: inw.quantity,
+        unit: inw.unit || 'Nos',
+        qualityStatus: inw.qualityStatus === 'Approved' ? 'Accepted' : 'Under Inspection',
+        inspectionNotes: inw.remarks || 'Gate inward recorded',
+      }));
+      setGrnInitialData({
+        items,
+        vendor: filteredInward[0]?.vendor || 'Manav Metal',
+        project: '',
+        po: filteredInward[0]?.poNumber || '',
+        date: new Date().toISOString().split('T')[0],
+      });
+    }
+    setIsGRNModalOpen(true);
+  };
+
   return (
     <div className="space-y-4">
       {/* Friendly Guide Banner */}
@@ -215,6 +282,15 @@ export const InwardManagement: React.FC<InwardManagementProps> = ({ onOpenQuickA
           >
             <Plus className="w-4 h-4" />
             <span>+ New Inward Entry (आवक दर्ज करें)</span>
+          </button>
+
+          <button
+            onClick={() => handleOpenGRNModal()}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white text-xs font-bold rounded-xl transition-all shadow-xs"
+            title="Generate Official RSB GRN (Goods Receipt Note) PDF"
+          >
+            <FileCheck className="w-4 h-4 text-amber-300" />
+            <span>Official GRN PDF</span>
           </button>
 
           <button
@@ -425,6 +501,13 @@ export const InwardManagement: React.FC<InwardManagementProps> = ({ onOpenQuickA
                   </td>
 
                   <td className="py-3 px-3.5 text-right space-x-1">
+                    <button
+                      onClick={() => handleOpenGRNModal(inw)}
+                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 hover:text-amber-300 transition-colors"
+                      title="Generate Official RSB GRN PDF"
+                    >
+                      <FileCheck className="w-3.5 h-3.5" />
+                    </button>
                     <button
                       onClick={() => handleOpenPrintSlip(inw)}
                       className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
@@ -673,6 +756,19 @@ export const InwardManagement: React.FC<InwardManagementProps> = ({ onOpenQuickA
         type="inward"
         data={selectedSlipData}
       />
+
+      {/* OFFICIAL RSB GRN MODAL */}
+      {isGRNModalOpen && (
+        <GRNModal
+          isOpen={isGRNModalOpen}
+          onClose={() => setIsGRNModalOpen(false)}
+          initialItems={grnInitialData.items}
+          defaultVendor={grnInitialData.vendor}
+          defaultProject={grnInitialData.project}
+          defaultPO={grnInitialData.po}
+          defaultDate={grnInitialData.date}
+        />
+      )}
     </div>
   );
 };

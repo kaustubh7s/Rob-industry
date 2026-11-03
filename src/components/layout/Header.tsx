@@ -90,6 +90,21 @@ export const Header: React.FC<HeaderProps> = ({
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
+  const isSuperOrAdmin =
+    currentUser?.role === 'super_admin' ||
+    currentUser?.role === 'admin' ||
+    currentUser?.role === 'kaustubh' ||
+    Boolean(currentUser?.permissions?.canManageUsers);
+
+  const isStoreIncharge =
+    currentUser?.role === 'store_incharge' ||
+    currentUser?.role === 'store_manager' ||
+    currentUser?.id === 'usr-chandramani' ||
+    currentUser?.id === 'chandramani' ||
+    (currentUser?.name || '').toLowerCase().includes('chandramani') ||
+    (currentUser?.department || '').toLowerCase().includes('stores') ||
+    (currentUser?.permissions?.canEditMaterials === false && currentUser?.permissions?.canVerifyInward === true);
+
   const roleOptions = useMemo(() => {
     return users
       .filter((u) => {
@@ -160,6 +175,8 @@ export const Header: React.FC<HeaderProps> = ({
       trimmed === 'Rahul@123' ||
       trimmed === 'rahul@123' ||
       trimmed === 'store@123' ||
+      trimmed === 'chandramani@123' ||
+      trimmed.toLowerCase() === 'chandramani@123' ||
       trimmed === '7276kakakakaka'
     ) {
       setCurrentUserRole(pendingUser.id || pendingUser.role);
@@ -195,11 +212,15 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={() => {
-              setActiveTab('entry');
+              if (isStoreIncharge) {
+                setActiveTab('daily_requirements');
+              } else {
+                setActiveTab('entry');
+              }
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
             className="flex items-center gap-2.5 shrink-0 group cursor-pointer text-left bg-transparent border-0 p-1 -m-1 rounded-xl hover:bg-slate-800/80 transition-all focus:outline-hidden focus:ring-1 focus:ring-blue-500/50"
-            title="Go to Home / Primary Workstation (Material Entry)"
+            title={isStoreIncharge ? "Go to Daily Requirement (Material Inward आवक)" : "Go to Home / Primary Workstation (Material Entry)"}
           >
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 text-white flex items-center justify-center font-black text-xs tracking-tight shadow-sm ring-1 ring-white/10 shrink-0 group-hover:scale-105 group-hover:shadow-md group-hover:shadow-blue-500/25 transition-all">
               RSB
@@ -209,7 +230,7 @@ export const Header: React.FC<HeaderProps> = ({
                 RSB PRIVATE LIMITED
               </h1>
               <span className="text-[9px] px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 font-bold opacity-0 group-hover:opacity-100 transition-opacity">
-                Home
+                {isStoreIncharge ? 'Daily Inward' : 'Home'}
               </span>
             </div>
           </button>
@@ -237,20 +258,22 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
           </button>
 
-          {/* Interactive Gliding Tour Button */}
-          <button
-            type="button"
-            onClick={() => {
-              if (onOpenTour) onOpenTour();
-              else window.dispatchEvent(new CustomEvent('rsb:start-tour'));
-            }}
-            className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs border bg-gradient-to-r from-cyan-950/90 to-blue-950/90 hover:from-cyan-900 hover:to-blue-900 border-cyan-500/50 text-cyan-300 hover:text-white active:scale-95 group"
-            title="Start Interactive Gliding Walkthrough Tour (6 Steps)"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-cyan-400 group-hover:scale-110 group-hover:rotate-12 transition-transform" />
-            <span className="font-extrabold tracking-wide">TOUR</span>
-            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping shrink-0" />
-          </button>
+          {/* Interactive Gliding Tour Button (Admin / Production) */}
+          {!isStoreIncharge && (
+            <button
+              type="button"
+              onClick={() => {
+                if (onOpenTour) onOpenTour();
+                else window.dispatchEvent(new CustomEvent('rsb:start-tour'));
+              }}
+              className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs border bg-gradient-to-r from-cyan-950/90 to-blue-950/90 hover:from-cyan-900 hover:to-blue-900 border-cyan-500/50 text-cyan-300 hover:text-white active:scale-95 group"
+              title="Start Interactive Gliding Walkthrough Tour (6 Steps)"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-cyan-400 group-hover:scale-110 group-hover:rotate-12 transition-transform" />
+              <span className="font-extrabold tracking-wide">TOUR</span>
+              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping shrink-0" />
+            </button>
+          )}
 
           {/* Strictly Kaustubh Admin Level Only: Maintenance Mode Button */}
           {isKaustubhAdmin && (
@@ -436,52 +459,58 @@ export const Header: React.FC<HeaderProps> = ({
                   <span>My Profile</span>
                 </button>
 
-                {/* 2. Security Center */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsProfileDropdownOpen(false);
-                    setIsSecurityCenterOpen(true);
-                  }}
-                  className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between text-slate-200 hover:bg-slate-800 hover:text-white transition-colors cursor-pointer"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <ShieldAlert className="w-4 h-4 text-amber-400" />
-                    <span>Security Center</span>
-                  </div>
-                  <span className="text-[10px] font-mono text-slate-400">PIN Auth</span>
-                </button>
+                {/* 2. Security Center (Admin Only) */}
+                {isSuperOrAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsProfileDropdownOpen(false);
+                      setIsSecurityCenterOpen(true);
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between text-slate-200 hover:bg-slate-800 hover:text-white transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <ShieldAlert className="w-4 h-4 text-amber-400" />
+                      <span>Security Center</span>
+                    </div>
+                    <span className="text-[10px] font-mono text-slate-400">PIN Auth</span>
+                  </button>
+                )}
 
-                {/* 3. Member Authorizations */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsProfileDropdownOpen(false);
-                    setActiveTab('members');
-                  }}
-                  className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between text-slate-200 hover:bg-slate-800 hover:text-white transition-colors cursor-pointer"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <ShieldCheck className="w-4 h-4 text-purple-400" />
-                    <span>Member Authorizations</span>
-                  </div>
-                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-purple-950 text-purple-300 border border-purple-800">
-                    Tier 1-4
-                  </span>
-                </button>
+                {/* 3. Member Authorizations (Admin Only) */}
+                {isSuperOrAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsProfileDropdownOpen(false);
+                      setActiveTab('members');
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between text-slate-200 hover:bg-slate-800 hover:text-white transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <ShieldCheck className="w-4 h-4 text-purple-400" />
+                      <span>Member Authorizations</span>
+                    </div>
+                    <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-purple-950 text-purple-300 border border-purple-800">
+                      Tier 1-4
+                    </span>
+                  </button>
+                )}
 
-                {/* 4. Settings */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsProfileDropdownOpen(false);
-                    setIsSupabaseOpen(true);
-                  }}
-                  className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-2.5 text-slate-200 hover:bg-slate-800 hover:text-white transition-colors cursor-pointer"
-                >
-                  <SettingsIcon className="w-4 h-4 text-slate-400" />
-                  <span>Settings & Cloud Sync</span>
-                </button>
+                {/* 4. Settings (Admin Only) */}
+                {isSuperOrAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsProfileDropdownOpen(false);
+                      setIsSupabaseOpen(true);
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-2.5 text-slate-200 hover:bg-slate-800 hover:text-white transition-colors cursor-pointer"
+                  >
+                    <SettingsIcon className="w-4 h-4 text-slate-400" />
+                    <span>Settings & Cloud Sync</span>
+                  </button>
+                )}
 
                 <div className="pt-1 border-t border-slate-800 mt-1">
                   {/* 5. Logout */}

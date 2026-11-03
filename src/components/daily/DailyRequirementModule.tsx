@@ -14,6 +14,7 @@ import {
   Download,
   FileSpreadsheet,
   FileText,
+  FileCheck,
   Boxes,
   FolderTree,
   Folder,
@@ -50,6 +51,8 @@ import {
 } from '../../types/erp';
 import { Modal } from '../common/Modal';
 import { MATERIAL_TYPES } from '../../data/materialTypes';
+import { GRNModal } from './GRNModal';
+import { GRNItem } from '../../utils/grnPdfGenerator';
 
 export const DailyRequirementModule: React.FC = () => {
   const {
@@ -94,6 +97,16 @@ export const DailyRequirementModule: React.FC = () => {
   const [editModalItem, setEditModalItem] = useState<DailyRequirementItem | null>(null);
   const [deleteModalItem, setDeleteModalItem] = useState<DailyRequirementItem | null>(null);
   const [historyModalItem, setHistoryModalItem] = useState<DailyRequirementItem | null>(null);
+
+  // GRN (Goods Receipt Note) PDF Modal State
+  const [isGRNModalOpen, setIsGRNModalOpen] = useState(false);
+  const [grnInitialData, setGrnInitialData] = useState<{
+    items: GRNItem[];
+    vendor?: string;
+    project?: string;
+    po?: string;
+    date?: string;
+  }>({ items: [] });
 
   // Form State for Manual Entry
   const [manualForm, setManualForm] = useState({
@@ -803,6 +816,51 @@ export const DailyRequirementModule: React.FC = () => {
     doc.save(`RSB_Daily_Requirements_${activeView === 'detail' ? selectedDate : 'All'}.pdf`);
   };
 
+  // Open Official RSB GRN (Goods Receipt Note) PDF Modal
+  const handleOpenGRNModal = (itemsToUse?: DailyRequirementItem[], targetDate?: string) => {
+    const sourceItems = itemsToUse || (activeView === 'detail' ? detailRequirements : filteredRequirements);
+
+    if (sourceItems.length === 0) {
+      alert('No daily requirements available to generate GRN.');
+      return;
+    }
+
+    // Prefer items that have arrived or partially arrived (arrangedQuantity > 0), or take all if none marked yet
+    const arrivedItems = sourceItems.filter((item) => (item.arrangedQuantity || 0) > 0);
+    const chosenItems = arrivedItems.length > 0 ? arrivedItems : sourceItems;
+
+    // Detect vendor, project, and PO from items if available
+    const detectedVendor = chosenItems.find((i) => i.vendorName)?.vendorName || '';
+    const detectedProject = chosenItems.find((i) => i.projectName)?.projectName || '';
+    const detectedPO = chosenItems.find((i) => i.bomNumber)?.bomNumber || '';
+
+    const converted: GRNItem[] = chosenItems.map((item, idx) => {
+      const reqQty = Number(item.requiredQuantity) || 1;
+      const arrQty = Number(item.arrangedQuantity) || 0;
+      return {
+        id: item.id || `grn-item-${idx}`,
+        description: item.description,
+        materialType: item.materialType,
+        sizeSpecification: item.sizeSpecification,
+        poQuantity: reqQty,
+        receivedQuantity: arrQty > 0 ? arrQty : reqQty,
+        unit: item.unit || 'Nos',
+        qualityStatus: 'Accepted',
+        inspectionNotes: item.notes || 'Sound condition, verified at inward gate',
+        targetProject: item.projectName,
+      };
+    });
+
+    setGrnInitialData({
+      items: converted,
+      vendor: detectedVendor || 'Manav Metal',
+      project: detectedProject || '',
+      po: detectedPO || '',
+      date: targetDate || (activeView === 'detail' ? selectedDate : new Date().toISOString().split('T')[0]),
+    });
+    setIsGRNModalOpen(true);
+  };
+
   const formatDateFriendly = (dStr: string) => {
     try {
       const d = new Date(dStr);
@@ -850,6 +908,15 @@ export const DailyRequirementModule: React.FC = () => {
             >
               <Plus className="w-4 h-4" />
               <span>+ New Requirement</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleOpenGRNModal()}
+              className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 active:scale-95 text-white font-bold text-xs shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+              title="Generate Official RSB GRN (Goods Receipt Note / आवक पावती) with Letterhead & Signatures"
+            >
+              <FileCheck className="w-4 h-4 text-amber-300" />
+              <span>Official GRN PDF</span>
             </button>
             <button
               type="button"
@@ -1100,6 +1167,16 @@ export const DailyRequirementModule: React.FC = () => {
                   </div>
                 );
               })}
+
+              <button
+                type="button"
+                onClick={() => handleOpenGRNModal(detailRequirements, selectedDate)}
+                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                title="Generate Official RSB GRN PDF for this Date"
+              >
+                <FileCheck className="w-3.5 h-3.5 text-amber-300" />
+                <span>Generate GRN PDF</span>
+              </button>
             </div>
           </div>
 
@@ -1386,6 +1463,20 @@ export const DailyRequirementModule: React.FC = () => {
                           title="Export this date to Excel"
                         >
                           <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                        </button>
+
+                        {/* GRN PDF Button for this Date */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenGRNModal(items, dateStr);
+                          }}
+                          className="px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs shadow-2xs cursor-pointer shrink-0 flex items-center gap-1 transition-all"
+                          title="Generate Official RSB GRN PDF for this Date's Inward"
+                        >
+                          <FileCheck className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>GRN</span>
                         </button>
                       </div>
                     </div>
@@ -1962,6 +2053,20 @@ export const DailyRequirementModule: React.FC = () => {
             </div>
           </div>
         </Modal>
+      )}
+      {/* ===================================================================== */}
+      {/* MODAL 6: OFFICIAL RSB GRN (GOODS RECEIPT NOTE) PDF GENERATOR          */}
+      {/* ===================================================================== */}
+      {isGRNModalOpen && (
+        <GRNModal
+          isOpen={isGRNModalOpen}
+          onClose={() => setIsGRNModalOpen(false)}
+          initialItems={grnInitialData.items}
+          defaultVendor={grnInitialData.vendor}
+          defaultProject={grnInitialData.project}
+          defaultPO={grnInitialData.po}
+          defaultDate={grnInitialData.date}
+        />
       )}
     </div>
   );

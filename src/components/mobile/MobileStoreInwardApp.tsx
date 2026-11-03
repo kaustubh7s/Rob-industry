@@ -31,11 +31,15 @@ import {
   Building2,
   Tag,
   RotateCcw,
+  FileCheck,
+  FileText,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 import { getMaterialsForProject } from '../../utils/projectMaterialsHelper';
 import { dbBulkUpsertRequirements, dbUpsertDailyRequirement } from '../../services/supabaseService';
 import { DailyRequirementItem, DailyRequirementStatus } from '../../types/erp';
+import { GRNModal } from '../daily/GRNModal';
+import { GRNItem } from '../../utils/grnPdfGenerator';
 import confetti from 'canvas-confetti';
 
 export const MobileStoreInwardApp: React.FC = () => {
@@ -87,6 +91,16 @@ export const MobileStoreInwardApp: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'PENDING' | 'ARRIVED'>('ALL');
   const [isSaving, setIsSaving] = useState(false);
   const [saveToast, setSaveToast] = useState<string | null>(null);
+
+  // GRN Modal State for Mobile Chandramani View
+  const [isGRNModalOpen, setIsGRNModalOpen] = useState(false);
+  const [grnInitialData, setGrnInitialData] = useState<{
+    items: GRNItem[];
+    vendor?: string;
+    project?: string;
+    po?: string;
+    date?: string;
+  }>({ items: [] });
 
   // -------------------------------------------------------------------------
   // SWIPE-UP INWARD QUANTITY MODAL STATE (ASK QUANTITY WHEN CLICKING AN ITEM)
@@ -489,6 +503,122 @@ export const MobileStoreInwardApp: React.FC = () => {
     setFilterStatus('ALL');
   };
 
+  const handleOpenGRNModal = (singleItem?: any) => {
+    if (singleItem) {
+      const itemQty = Number(singleItem.quantity) || 1;
+      const arrivedQty = Number(singleItem.arrivedQty) || 0;
+      const convertedItem: GRNItem = {
+        id: singleItem.id || 'grn-1',
+        description: singleItem.description,
+        materialType: singleItem.materialType || 'SS Flat',
+        sizeSpecification: singleItem.sizeSpecs || singleItem.sizeSpecification || '-',
+        sizeSpecs: singleItem.sizeSpecs || singleItem.sizeSpecification || '-',
+        poQuantity: itemQty,
+        orderedQty: itemQty,
+        receivedQuantity: arrivedQty > 0 ? arrivedQty : itemQty,
+        receivedQty: arrivedQty > 0 ? arrivedQty : itemQty,
+        unit: singleItem.unit || 'Nos',
+        qualityStatus: 'Accepted',
+        qcStatus: 'Accepted',
+        inspectionNotes: 'Verified at Stores Inward Gate by Chandramani',
+        targetProject: singleItem.projectName || activeProject?.name || '',
+      };
+
+      setGrnInitialData({
+        items: [convertedItem],
+        vendor: singleItem.vendorName || 'Manav Metal',
+        project: singleItem.projectName || activeProject?.name || '',
+        po: '',
+        date: dailySelectedDate || new Date().toISOString().split('T')[0],
+      });
+      setIsGRNModalOpen(true);
+      return;
+    }
+
+    if (activeFolderMode === 'DAILY') {
+      const source = filteredDailyRequirements;
+      if (source.length === 0) {
+        alert('No daily requirements found to generate GRN.');
+        return;
+      }
+      const arrivedOnly = source.filter((i) => (Number(i.arrangedQuantity) || 0) > 0);
+      const chosen = arrivedOnly.length > 0 ? arrivedOnly : source;
+
+      const converted: GRNItem[] = chosen.map((item, idx) => {
+        const req = Number(item.requiredQuantity) || 1;
+        const arr = Number(item.arrangedQuantity) || 0;
+        return {
+          id: item.id || `grn-item-${idx}`,
+          description: item.description,
+          materialType: item.materialType,
+          sizeSpecification: item.sizeSpecification,
+          sizeSpecs: item.sizeSpecification,
+          poQuantity: req,
+          orderedQty: req,
+          receivedQuantity: arr > 0 ? arr : req,
+          receivedQty: arr > 0 ? arr : req,
+          unit: item.unit || 'Nos',
+          qualityStatus: 'Accepted',
+          qcStatus: 'Accepted',
+          inspectionNotes: item.notes || 'Sound condition, verified at Stores',
+          targetProject: item.projectName,
+        };
+      });
+
+      const vendor = chosen.find((i) => i.vendorName)?.vendorName || '';
+      const project = chosen.find((i) => i.projectName)?.projectName || '';
+      const po = chosen.find((i) => i.bomNumber)?.bomNumber || '';
+
+      setGrnInitialData({
+        items: converted,
+        vendor: vendor || 'Manav Metal',
+        project: project || '',
+        po: po || '',
+        date: dailySelectedDate || new Date().toISOString().split('T')[0],
+      });
+      setIsGRNModalOpen(true);
+    } else {
+      const source = activeProjectMaterials;
+      if (source.length === 0) {
+        alert('No project materials found to generate GRN.');
+        return;
+      }
+      const getArrQty = (it: any) => Number(it.receivedQuantity ?? (it.isReceived ? it.quantity : 0)) || 0;
+      const arrivedOnly = source.filter((i) => getArrQty(i) > 0);
+      const chosen = arrivedOnly.length > 0 ? arrivedOnly : source;
+
+      const converted: GRNItem[] = chosen.map((item, idx) => {
+        const req = Number(item.quantity) || 1;
+        const arr = getArrQty(item);
+        return {
+          id: item.id || `grn-item-${idx}`,
+          description: item.description,
+          materialType: item.materialType,
+          sizeSpecification: item.sizeSpecs,
+          sizeSpecs: item.sizeSpecs,
+          poQuantity: req,
+          orderedQty: req,
+          receivedQuantity: arr > 0 ? arr : req,
+          receivedQty: arr > 0 ? arr : req,
+          unit: item.unit || 'Nos',
+          qualityStatus: 'Accepted',
+          qcStatus: 'Accepted',
+          inspectionNotes: 'Verified at Stores Inward by Chandramani',
+          targetProject: activeProject?.name || '',
+        };
+      });
+
+      setGrnInitialData({
+        items: converted,
+        vendor: 'Manav Metal',
+        project: activeProject?.name || '',
+        po: '',
+        date: new Date().toISOString().split('T')[0],
+      });
+      setIsGRNModalOpen(true);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col justify-between pb-28 font-sans select-none">
       {/* 1. TOP MOBILE HEADER */}
@@ -509,16 +639,28 @@ export const MobileStoreInwardApp: React.FC = () => {
             </div>
           </div>
 
-          {/* Dedicated Logout Button */}
-          <button
-            type="button"
-            onClick={() => logout()}
-            className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-xs"
-            title="Log Out"
-          >
-            <LogOut className="w-3.5 h-3.5 text-rose-600" />
-            <span>Logout</span>
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => handleOpenGRNModal()}
+              className="px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 active:scale-95 text-white text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer"
+              title="Official RSB Goods Receipt Note (GRN) PDF"
+            >
+              <FileCheck className="w-3.5 h-3.5 text-amber-300" />
+              <span>GRN PDF</span>
+            </button>
+
+            {/* Dedicated Logout Button */}
+            <button
+              type="button"
+              onClick={() => logout()}
+              className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer active:scale-95 shadow-xs"
+              title="Log Out"
+            >
+              <LogOut className="w-3.5 h-3.5 text-rose-600" />
+              <span>Logout</span>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -671,6 +813,16 @@ export const MobileStoreInwardApp: React.FC = () => {
                 </button>
               </div>
             )}
+
+            {/* Generate Official GRN PDF Button for this Date */}
+            <button
+              type="button"
+              onClick={() => handleOpenGRNModal()}
+              className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 text-white font-black text-xs flex items-center justify-center gap-2 shadow-sm active:scale-98 transition-all cursor-pointer"
+            >
+              <FileCheck className="w-4 h-4 text-amber-300" />
+              <span>📄 Official GRN PDF (आवक पावती प्रिंट / शेयर)</span>
+            </button>
           </div>
 
           {/* Quick Summary Bar: Scheduled | Pending | Arrived */}
@@ -1244,16 +1396,27 @@ export const MobileStoreInwardApp: React.FC = () => {
                       {folderProgressPct}%
                     </span>
                   </div>
-                  {folderPendingCount > 0 && (
+                  <div className="flex items-center gap-1.5">
                     <button
                       type="button"
-                      onClick={handleMarkAllFiltered}
-                      className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] flex items-center gap-1"
+                      onClick={() => handleOpenGRNModal()}
+                      className="px-2 py-1 rounded-lg bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+                      title="Generate GRN PDF for this Project / Machine"
                     >
-                      <CheckCheck className="w-3.5 h-3.5" />
-                      <span>Mark All Arrived</span>
+                      <FileCheck className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>GRN PDF</span>
                     </button>
-                  )}
+                    {folderPendingCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleMarkAllFiltered}
+                        className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] flex items-center gap-1"
+                      >
+                        <CheckCheck className="w-3.5 h-3.5" />
+                        <span>Mark All Arrived</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Filter Pills & Search */}
@@ -1427,47 +1590,59 @@ export const MobileStoreInwardApp: React.FC = () => {
             </div>
           )}
 
-          {activeFolderMode === 'DAILY' ? (
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={handleSaveDailyToDb}
-              disabled={isSaving}
-              className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-md flex items-center justify-center gap-2 transition-all active:scale-[0.99] cursor-pointer disabled:opacity-50"
+              onClick={() => handleOpenGRNModal()}
+              className="py-3 px-3.5 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-black text-xs shadow-md flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer shrink-0"
+              title="Official RSB Goods Receipt Note (GRN) PDF"
             >
-              {isSaving ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Saving Inward Receipts...</span>
-                </>
-              ) : (
-                <>
-                  <Database className="w-5 h-5 text-white" />
-                  <span>Save Inward Receipts (सेव करें)</span>
-                </>
-              )}
+              <FileCheck className="w-4 h-4 text-amber-300" />
+              <span>GRN PDF</span>
             </button>
-          ) : (
-            activeProject && (
+
+            {activeFolderMode === 'DAILY' ? (
               <button
                 type="button"
-                onClick={handleSaveToDb}
+                onClick={handleSaveDailyToDb}
                 disabled={isSaving}
-                className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-md flex items-center justify-center gap-2 transition-all active:scale-[0.99] cursor-pointer disabled:opacity-50"
+                className="flex-1 py-3 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs sm:text-sm shadow-md flex items-center justify-center gap-1.5 transition-all active:scale-[0.99] cursor-pointer disabled:opacity-50"
               >
                 {isSaving ? (
                   <>
                     <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span>Saving Inward...</span>
+                    <span>Saving...</span>
                   </>
                 ) : (
                   <>
-                    <Database className="w-5 h-5 text-emerald-100" />
-                    <span>Save Inward Receipts (सेव करें)</span>
+                    <Database className="w-4 h-4 text-white" />
+                    <span>Save Receipts (सेव करें)</span>
                   </>
                 )}
               </button>
-            )
-          )}
+            ) : (
+              activeProject && (
+                <button
+                  type="button"
+                  onClick={handleSaveToDb}
+                  disabled={isSaving}
+                  className="flex-1 py-3 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs sm:text-sm shadow-md flex items-center justify-center gap-1.5 transition-all active:scale-[0.99] cursor-pointer disabled:opacity-50"
+                >
+                  {isSaving ? (
+                    <>
+                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Database className="w-4 h-4 text-emerald-100" />
+                      <span>Save Receipts (सेव करें)</span>
+                    </>
+                  )}
+                </button>
+              )
+            )}
+          </div>
         </div>
       </footer>
 
@@ -1600,17 +1775,45 @@ export const MobileStoreInwardApp: React.FC = () => {
               </div>
             </div>
 
-            {/* Confirm & Save Button */}
-            <button
-              type="button"
-              onClick={handleConfirmInwardQty}
-              className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-md flex items-center justify-center gap-2 active:scale-[0.99] cursor-pointer transition-all"
-            >
-              <Check className="w-5 h-5 stroke-[3]" />
-              <span>Save Inward Receipts (सेव करें)</span>
-            </button>
+            {/* Actions: Direct GRN PDF & Save */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  handleOpenGRNModal(inwardModalItem);
+                }}
+                className="py-3.5 px-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 font-bold text-xs flex items-center justify-center gap-1 active:scale-95 cursor-pointer shrink-0 transition-all"
+                title="Generate Official GRN PDF for this Item"
+              >
+                <FileCheck className="w-4 h-4 text-indigo-600" />
+                <span>GRN</span>
+              </button>
+
+              {/* Confirm & Save Button */}
+              <button
+                type="button"
+                onClick={handleConfirmInwardQty}
+                className="flex-1 py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-md flex items-center justify-center gap-2 active:scale-[0.99] cursor-pointer transition-all"
+              >
+                <Check className="w-5 h-5 stroke-[3]" />
+                <span>Save Receipts (सेव करें)</span>
+              </button>
+            </div>
           </div>
         </div>
+      )}
+
+      {/* OFFICIAL RSB GRN MODAL FOR CHANDRAMANI MOBILE VIEW */}
+      {isGRNModalOpen && (
+        <GRNModal
+          isOpen={isGRNModalOpen}
+          onClose={() => setIsGRNModalOpen(false)}
+          initialItems={grnInitialData.items}
+          defaultVendor={grnInitialData.vendor}
+          defaultProject={grnInitialData.project}
+          defaultPO={grnInitialData.po}
+          defaultDate={grnInitialData.date}
+        />
       )}
     </div>
   );

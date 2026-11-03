@@ -173,7 +173,15 @@ export const ProjectMaterialEntry: React.FC = () => {
     pushNavStep,
   } = useERP();
 
-  const isStoreIncharge = currentUser?.role === 'store_incharge';
+  const isStoreIncharge =
+    currentUser?.role === 'store_incharge' ||
+    currentUser?.role === 'store_manager' ||
+    currentUser?.id === 'usr-chandramani' ||
+    currentUser?.id === 'chandramani' ||
+    (currentUser?.name || '').toLowerCase().includes('chandramani') ||
+    (currentUser?.department || '').toLowerCase().includes('stores') ||
+    (currentUser?.permissions?.canEditMaterials === false && currentUser?.permissions?.canVerifyInward === true);
+
   const isKaustubhAdmin =
     currentUser?.id === 'usr-kaustubh' ||
     currentUser?.email?.toLowerCase() === 'kaustubh@rsbequipments.com' ||
@@ -191,7 +199,7 @@ export const ProjectMaterialEntry: React.FC = () => {
 
   // Mode View State: 'entry' | 'projects' | 'procurement' | 'details' | 'members'
   const [activeViewMode, setActiveViewMode] = useState<'entry' | 'projects' | 'procurement' | 'details' | 'members'>(() => {
-    if (currentUser?.role === 'store_incharge') return 'projects';
+    if (isStoreIncharge) return 'procurement';
     if (activeTab === 'projects') return 'projects';
     if (activeTab === 'procurement') return 'procurement';
     if (activeTab === 'members') return 'members';
@@ -203,6 +211,14 @@ export const ProjectMaterialEntry: React.FC = () => {
 
   // Sync activeViewMode with activeTab from global context
   useEffect(() => {
+    if (isStoreIncharge) {
+      if (activeTab === 'procurement') {
+        setActiveViewMode('procurement');
+      } else {
+        setActiveTab('daily_requirements');
+      }
+      return;
+    }
     if (activeTab === 'entry' || activeTab === 'requirements') {
       setActiveViewMode('entry');
     } else if (activeTab === 'projects') {
@@ -212,7 +228,7 @@ export const ProjectMaterialEntry: React.FC = () => {
     } else if (activeTab === 'members') {
       setActiveViewMode('members');
     }
-  }, [activeTab]);
+  }, [activeTab, isStoreIncharge, setActiveTab]);
 
   const [selectedDetailProject, setSelectedDetailProject] = useState<ProjectItem | null>(null);
 
@@ -1719,7 +1735,7 @@ export const ProjectMaterialEntry: React.FC = () => {
     }
   };
 
-  // Export to Excel (Exact 10 Columns)
+  // Export to Excel (Exact 10 Columns with Smart PO-Range Backup Filename)
   const handleExportExcel = () => {
     if (rows.length === 0) {
       alert('No rows to export.');
@@ -1741,8 +1757,68 @@ export const ProjectMaterialEntry: React.FC = () => {
       'Ordered By': r.orderedBy,
     }));
 
-    exportToExcel(exportData, `RSB_Material_Order_${machineName}_PO${poNo}_${Date.now()}`);
-    setSaveToast(`Exported ${exportData.length} items to Excel!`);
+    // Extract all valid PO numbers from station rows
+    const rowPOs = rows
+      .map((r) => (r.poNo || '').trim())
+      .filter((p) => p && p.toUpperCase() !== 'POLOCAL' && p.toUpperCase() !== 'LOCAL');
+
+    const cleanHeaderPO = (poNo || '').trim();
+    const effectivePOs =
+      rowPOs.length > 0
+        ? rowPOs
+        : cleanHeaderPO && cleanHeaderPO.toUpperCase() !== 'POLOCAL' && cleanHeaderPO.toUpperCase() !== 'LOCAL'
+        ? [cleanHeaderPO]
+        : [];
+
+    let exportFileName = '';
+
+    if (effectivePOs.length > 0) {
+      // Check if POs contain numeric identifiers (e.g. 56, 78)
+      const numericMatches = effectivePOs
+        .map((p) => {
+          const match = p.match(/\d+/);
+          return match ? { num: parseInt(match[0], 10), raw: p } : null;
+        })
+        .filter((item): item is { num: number; raw: string } => item !== null);
+
+      if (numericMatches.length === effectivePOs.length) {
+        // Pure numeric sequence: accurately determine first and last PO numbers
+        const firstNum = numericMatches[0].num;
+        const lastNum = numericMatches[numericMatches.length - 1].num;
+        const minNum = Math.min(...numericMatches.map((m) => m.num));
+        const maxNum = Math.max(...numericMatches.map((m) => m.num));
+
+        const start = firstNum <= lastNum ? firstNum : minNum;
+        const end = firstNum <= lastNum ? lastNum : maxNum;
+
+        if (start === end) {
+          exportFileName = `PO ${start}`;
+        } else {
+          exportFileName = `PO ${start}-${end}`;
+        }
+      } else {
+        // Alphanumeric POs (e.g. PO-56 to PO-78 or PO-RSB-01)
+        const formatCode = (val: string) => val.replace(/^(PO|po)[-_\s]*/i, '').trim() || val.trim();
+        const firstClean = formatCode(effectivePOs[0]);
+        const lastClean = formatCode(effectivePOs[effectivePOs.length - 1]);
+
+        if (firstClean.toLowerCase() === lastClean.toLowerCase()) {
+          exportFileName = effectivePOs[0].toUpperCase().startsWith('PO')
+            ? effectivePOs[0].replace(/[\/\\]/g, '-')
+            : `PO ${firstClean}`;
+        } else {
+          exportFileName = `PO ${firstClean}-${lastClean}`;
+        }
+      }
+    }
+
+    if (!exportFileName) {
+      const cleanProject = (selectedProjectName || '').trim().replace(/[\/\\]/g, '-');
+      exportFileName = cleanProject ? `${cleanProject}_Materials` : 'RSB_Materials_Export';
+    }
+
+    exportToExcel(exportData, exportFileName);
+    setSaveToast(`Exported ${exportData.length} items to ${exportFileName}.xlsx!`);
     setTimeout(() => setSaveToast(null), 3000);
   };
 
@@ -1776,25 +1852,34 @@ export const ProjectMaterialEntry: React.FC = () => {
       overridePoNo?: string;
     }
   ) => {
-    const targetPrj = batchInfo.overrideProject || selectedProjectName || 'Project-1';
-    const targetMch = batchInfo.overrideMachine || machineName || targetPrj;
+    const targetPrj = (batchInfo.overrideProject?.trim() || selectedProjectName?.trim() || 'Project-1');
+    // If nothing entered in Machine Name, keep project name in machine name too (NEVER auto-copy other machine like 120, 10):
+    const targetMch = batchInfo.overrideMachine?.trim() ? batchInfo.overrideMachine.trim() : targetPrj;
 
     // Convert to EntryRow format for immediate table display
-    const newEntryRows: EntryRow[] = importedRows.map((r, idx) => ({
-      id: `imp-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 5)}`,
-      projectName: r.projectName || targetPrj,
-      machineName: r.machineName || targetMch,
-      date: r.date || entryDate || getTodayFormatted(),
-      poNo: r.poNo || poNo || '36',
-      srNo: r.srNo, // ABSOLUTE PRESERVATION OF ORIGINAL SR. NO.
-      materialType: r.materialType || 'SS Flat',
-      sizeSpecs: r.sizeSpecs || 'Custom Spec',
-      quantity: r.quantity || 1,
-      unit: r.unit || 'Nos',
-      vendorName: r.vendorName || vendorName || 'Manav Metal',
-      description: r.description || 'Component',
-      orderedBy: activeOrderedBy,
-    }));
+    const newEntryRows: EntryRow[] = importedRows.map((r, idx) => {
+      const rowPrj = (r.projectName?.trim() || targetPrj);
+      // If machine was not entered or blank, keep project name in machine name too:
+      const rowMch = (r.machineName && r.machineName.trim() !== '')
+        ? r.machineName.trim()
+        : (batchInfo.overrideMachine?.trim() ? batchInfo.overrideMachine.trim() : rowPrj);
+
+      return {
+        id: `imp-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 5)}`,
+        projectName: rowPrj,
+        machineName: rowMch,
+        date: r.date || entryDate || getTodayFormatted(),
+        poNo: r.poNo || poNo || '36',
+        srNo: r.srNo, // ABSOLUTE PRESERVATION OF ORIGINAL SR. NO.
+        materialType: r.materialType || 'SS Flat',
+        sizeSpecs: r.sizeSpecs || 'Custom Spec',
+        quantity: r.quantity || 1,
+        unit: r.unit || 'Nos',
+        vendorName: r.vendorName || vendorName || 'Manav Metal',
+        description: r.description || 'Component',
+        orderedBy: activeOrderedBy,
+      };
+    });
 
     // Authoritative persistence across ERPContext, LocalStorage & Supabase
     await importMaterialRequirements(newEntryRows, {
@@ -1804,6 +1889,12 @@ export const ProjectMaterialEntry: React.FC = () => {
       poNo: batchInfo.overridePoNo || poNo,
       sheetName: batchInfo.sheetName,
     });
+
+    // Sync workstation header fields so active view immediately reflects the imported project and machine
+    setSelectedProjectName(targetPrj);
+    setMachineName(targetMch);
+    if (batchInfo.overrideVendor) setVendorName(batchInfo.overrideVendor);
+    if (batchInfo.overridePoNo) setPoNo(batchInfo.overridePoNo);
 
     setRows(sortRowsByAscendingSrNo(newEntryRows));
     setIsImportPreviewOpen(false);
@@ -1961,8 +2052,8 @@ export const ProjectMaterialEntry: React.FC = () => {
         <ProcurementBasket
           initialProjectFilter={basketProjectFilter}
           initialViewMode={basketProjectFilter ? 'projectFolders' : 'poBasket'}
-          onNavigateToEntry={() => handleSwitchView('entry')}
-          onNavigateToProjects={() => handleSwitchView('projects')}
+          onNavigateToEntry={isStoreIncharge ? undefined : () => handleSwitchView('entry')}
+          onNavigateToProjects={isStoreIncharge ? undefined : () => handleSwitchView('projects')}
         />
       </div>
     );
@@ -2053,6 +2144,30 @@ export const ProjectMaterialEntry: React.FC = () => {
     return (
       <div className="space-y-4">
         <MemberAuthorizationManager />
+      </div>
+    );
+  }
+
+  // Fallback security check: Store incharge is not authorized to edit materials
+  if (isStoreIncharge) {
+    return (
+      <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 shadow-xs max-w-lg mx-auto my-12 space-y-4">
+        <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
+          <ShieldAlert className="w-6 h-6" />
+        </div>
+        <div>
+          <h3 className="text-base font-bold text-slate-800">Store Inward Station</h3>
+          <p className="text-xs text-slate-500 mt-1">
+            Store managers are assigned to Material Inward & Staging. Redirecting to Daily Requirements...
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setActiveTab('daily_requirements')}
+          className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition-colors cursor-pointer"
+        >
+          Go to Daily Requirement (आवक)
+        </button>
       </div>
     );
   }

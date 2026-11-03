@@ -681,33 +681,33 @@ export const pullAllDataFromSupabase = async (): Promise<{
     });
 
     const parsedProjects: ProjectItem[] = (prjData || []).map((p: any) => ({
-        id: p.id,
-        projectNumber: p.project_number,
-        name: p.name,
-        customer: p.customer,
-        orderSource: p.order_source,
-        machineType: p.machine_type,
-        machineName: p.machine_name || p.machine_type,
-        vendor: p.vendor,
-        vendorName: p.vendor_name || p.vendor,
-        poNumber: p.po_number,
-        poNo: p.po_no || p.po_number,
-        startDate: p.start_date || new Date().toISOString().split('T')[0],
-        date: p.date || p.start_date || new Date().toISOString().split('T')[0],
-        targetCompletionDate: p.target_completion_date || new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
-        priority: p.priority || 'medium',
-        status: p.status || 'Production',
-        projectValue: Number(p.project_value || 0),
-        notes: p.notes,
-        progressPct: Number(p.progress_pct || 0),
-      }));
+      id: p.id,
+      projectNumber: p.project_number,
+      name: p.name,
+      customer: p.customer,
+      orderSource: p.order_source,
+      machineType: p.machine_type,
+      machineName: p.machine_name || p.machine_type,
+      vendor: p.vendor,
+      vendorName: p.vendor_name || p.vendor,
+      poNumber: p.po_number,
+      poNo: p.po_no || p.po_number,
+      startDate: p.start_date || new Date().toISOString().split('T')[0],
+      date: p.date || p.start_date || new Date().toISOString().split('T')[0],
+      targetCompletionDate: p.target_completion_date || new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+      priority: p.priority || 'medium',
+      status: p.status || 'Production',
+      projectValue: Number(p.project_value || 0),
+      notes: p.notes,
+      progressPct: Number(p.progress_pct || 0),
+    }));
 
     // 2. Fetch Requirements
     // Tombstones represent explicit user deletions: filter out tombstoned rows so they never resurrect
     const reqTombstones = getDeletedRequirementTombstones();
     const activeReqData = (reqData || []).filter((r: any) => {
       if (reqTombstones.has(r.id)) {
-        supabase.from('project_material_requirements').delete().eq('id', r.id).then(() => {});
+        supabase.from('project_material_requirements').delete().eq('id', r.id).then(() => { });
         return false;
       }
       return true;
@@ -888,50 +888,50 @@ export const pullAllDataFromSupabase = async (): Promise<{
     const parsedMaterials: MaterialItem[] = (matData || [])
       .filter((m: any) => !matTombstones.has(m.id))
       .map((m: any) => ({
-      id: m.id,
-      code: m.code,
-      name: m.name,
-      type: m.type,
-      grade: m.grade,
-      thickness: m.thickness,
-      sizeSpecs: m.size_specs,
-      unit: m.unit,
-      unitWeightKg: m.unit_weight_kg,
-      currentStock: m.current_stock,
-      reservedStock: m.reserved_stock,
-      minStock: m.min_stock,
-      reorderLevel: m.reorder_level,
-      unitCost: m.unit_cost,
-      vendor: m.vendor,
-      notes: m.notes,
-    }));
+        id: m.id,
+        code: m.code,
+        name: m.name,
+        type: m.type,
+        grade: m.grade,
+        thickness: m.thickness,
+        sizeSpecs: m.size_specs,
+        unit: m.unit,
+        unitWeightKg: m.unit_weight_kg,
+        currentStock: m.current_stock,
+        reservedStock: m.reserved_stock,
+        minStock: m.min_stock,
+        reorderLevel: m.reorder_level,
+        unitCost: m.unit_cost,
+        vendor: m.vendor,
+        notes: m.notes,
+      }));
 
     // 4. Vendors
     const vndTombstones = getDeletedVendorTombstones();
     const parsedVendors: VendorItem[] = (vndData || [])
       .filter((v: any) => !vndTombstones.has(v.id))
       .map((v: any) => ({
-      id: v.id,
-      name: v.name,
-      contactPerson: v.contact_person || '',
-      mobile: v.mobile || '',
-      email: v.email || '',
-      gstin: v.gstin || '',
-      address: v.address || '',
-      materialSupplied: v.material_supplied || '',
-      rating: Number(v.rating || 5),
-      paymentTerms: v.payment_terms || '30 Days Net',
-      totalOrders: 0,
-      totalPurchaseValue: 0,
-      onTimeDeliveries: 0,
-      delayedDeliveries: 0,
-      averageDeliveryDays: 3,
-      rejectionRate: 0,
-      qualityRating: 99,
-      costCompetitiveness: 9,
-      reliabilityScore: 98,
-      rank: 1,
-    }));
+        id: v.id,
+        name: v.name,
+        contactPerson: v.contact_person || '',
+        mobile: v.mobile || '',
+        email: v.email || '',
+        gstin: v.gstin || '',
+        address: v.address || '',
+        materialSupplied: v.material_supplied || '',
+        rating: Number(v.rating || 5),
+        paymentTerms: v.payment_terms || '30 Days Net',
+        totalOrders: 0,
+        totalPurchaseValue: 0,
+        onTimeDeliveries: 0,
+        delayedDeliveries: 0,
+        averageDeliveryDays: 3,
+        rejectionRate: 0,
+        qualityRating: 99,
+        costCompetitiveness: 9,
+        reliabilityScore: 98,
+        rank: 1,
+      }));
 
     // 5. Customers
     const parsedCustomers: CustomerItem[] = (custData || []).map((c: any) => ({
@@ -967,14 +967,14 @@ export const pullAllDataFromSupabase = async (): Promise<{
           u.id === 'usr-amit' || u.name === 'Amit'
             ? 'amit@123'
             : u.role === 'super_admin'
-            ? 'Admin@amit'
-            : u.id === 'usr-rahul' || u.name === 'Rahul'
-            ? 'Rahul@123'
-            : u.role === 'kaustubh' || u.role === 'admin'
-            ? 'admin@123'
-            : u.role === 'store_incharge'
-            ? 'chandramani@123'
-            : 'Rahul@123';
+              ? 'Admin@amit'
+              : u.id === 'usr-rahul' || u.name === 'Rahul'
+                ? 'Rahul@123'
+                : u.role === 'kaustubh' || u.role === 'admin'
+                  ? 'admin@123'
+                  : u.role === 'store_incharge'
+                    ? 'chandramani@123'
+                    : 'Rahul@123';
         const finalPassword = customPassword || defaultPassword;
         const resetPin =
           (u as any).reset_pin ||
@@ -989,6 +989,13 @@ export const pullAllDataFromSupabase = async (): Promise<{
           u.resetPinExpiresAt ||
           (Date.now() + 30 * 24 * 60 * 60 * 1000);
 
+        const isStoreRole =
+          u.role === 'store_incharge' ||
+          u.role === 'store_manager' ||
+          (u.department || '').toLowerCase().includes('store') ||
+          (u.name || '').toLowerCase().includes('chandramani') ||
+          u.id === 'usr-chandramani';
+
         return {
           id: u.id,
           name: u.name,
@@ -1002,12 +1009,13 @@ export const pullAllDataFromSupabase = async (): Promise<{
           status: u.status || 'Active',
           lastActive: 'Active Now',
           permissions: {
-            canEditMaterials: true,
-            canApproveOrders: u.role !== 'operator' && u.role !== 'store_incharge',
+            canEditMaterials: isStoreRole ? false : (u.permissions?.canEditMaterials ?? true),
+            canApproveOrders: !isStoreRole && u.role !== 'operator',
             canDeleteRecords: u.role === 'super_admin' || u.role === 'admin' || u.name === 'Rahul',
             canManageUsers: u.role === 'super_admin' || u.role === 'admin' || u.name === 'Rahul',
             canExportReports: true,
-            canOverrideLock: true,
+            canOverrideLock: !isStoreRole,
+            canVerifyInward: true,
             ...(u.permissions || {}),
             password: finalPassword,
             resetPin,
@@ -2030,7 +2038,7 @@ export const setRemoteMaintenanceMode = async (enabled: boolean): Promise<boolea
           timestamp: Date.now(),
         },
       });
-    } catch {}
+    } catch { }
 
     return !error;
   } catch (err) {
@@ -2131,7 +2139,7 @@ export const dbUpsertMasterMachine = async (machine: MachineFolder): Promise<boo
 
 export const dbDeleteMasterMachine = async (machineId: string): Promise<boolean> => {
   const supabase = getSupabaseClient();
-  if (!supabase) return false;
+  if (!supabase) return true;
   try {
     const { error } = await supabase.from('master_machines').delete().eq('id', machineId);
     if (!error) {
@@ -2140,6 +2148,17 @@ export const dbDeleteMasterMachine = async (machineId: string): Promise<boolean>
         entity: 'master_machine',
         id: machineId,
       });
+      return true;
+    }
+    // If the table doesn't exist yet in Supabase or schema cache notice, treat as local deletion success
+    if (
+      error.code === '42P01' ||
+      error.code === 'PGRST204' ||
+      error.code === 'PGRST205' ||
+      error.message.includes('schema cache') ||
+      error.message.includes('relation "master_machines" does not exist') ||
+      error.message.includes('Could not find the table')
+    ) {
       return true;
     }
     return false;
@@ -2167,22 +2186,22 @@ export const dbFetchMasterBOMs = async (): Promise<MasterBOM[] | null> => {
     return data
       .filter((d: any) => !tombstones.has(d.id))
       .map((d: any) => ({
-      id: d.id,
-      bomNumber: d.bom_number || '',
-      name: d.name || '',
-      assemblyName: d.name || '',
-      machineName: d.machine_name || '',
-      machineType: d.machine_type || '',
-      revision: d.revision || 'Rev A',
-      status: d.status || 'Approved',
-      category: d.category || '',
-      notes: d.notes || '',
-      items: Array.isArray(d.items) ? d.items : (typeof d.items === 'string' ? JSON.parse(d.items) : []),
-      createdBy: d.created_by || 'System',
-      createdAt: d.created_at || new Date().toISOString(),
-      updatedBy: d.updated_by || d.created_by || 'System',
-      updatedAt: d.updated_at || new Date().toISOString(),
-    }));
+        id: d.id,
+        bomNumber: d.bom_number || '',
+        name: d.name || '',
+        assemblyName: d.name || '',
+        machineName: d.machine_name || '',
+        machineType: d.machine_type || '',
+        revision: d.revision || 'Rev A',
+        status: d.status || 'Approved',
+        category: d.category || '',
+        notes: d.notes || '',
+        items: Array.isArray(d.items) ? d.items : (typeof d.items === 'string' ? JSON.parse(d.items) : []),
+        createdBy: d.created_by || 'System',
+        createdAt: d.created_at || new Date().toISOString(),
+        updatedBy: d.updated_by || d.created_by || 'System',
+        updatedAt: d.updated_at || new Date().toISOString(),
+      }));
   } catch (err) {
     console.warn('Error fetching master BOMs from Supabase:', err);
     return null;
@@ -2249,8 +2268,15 @@ export const dbDeleteMasterBOM = async (bomId: string): Promise<{ success: boole
       });
       return { success: true };
     }
-    // If the table doesn't exist yet in Supabase, treat as local deletion success
-    if (error.code === '42P01' || error.message.includes('relation "master_boms" does not exist')) {
+    // If the table doesn't exist yet in Supabase or schema cache notice, treat as local deletion success
+    if (
+      error.code === '42P01' ||
+      error.code === 'PGRST204' ||
+      error.code === 'PGRST205' ||
+      error.message.includes('schema cache') ||
+      error.message.includes('relation "master_boms" does not exist') ||
+      error.message.includes('Could not find the table')
+    ) {
       return { success: true };
     }
     console.warn('Error deleting master BOM from Supabase:', error.message);

@@ -13,18 +13,26 @@ import {
   CalendarDays,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
+import { User } from '../../types/erp';
 
 interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
   onOpenTutorial?: () => void;
+  currentUser?: User;
+  isStoreUser?: boolean;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
+export const Sidebar: React.FC<SidebarProps> = ({
+  isOpen,
+  onClose,
+  currentUser: propUser,
+  isStoreUser: propIsStoreUser,
+}) => {
   const {
     activeTab,
     setActiveTab,
-    currentUser,
+    currentUser: contextUser,
     projects,
     projectRequirements,
     purchaseOrders,
@@ -32,6 +40,41 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     masterBOMs,
     dailyRequirements,
   } = useERP();
+
+  const user = propUser || contextUser;
+
+  // Resilient session identifier check from browser storage
+  const sessionUser =
+    typeof window !== 'undefined'
+      ? (
+          sessionStorage.getItem('RSB_ERP_AUTH_USER_ID') ||
+          localStorage.getItem('RSB_ERP_AUTH_USER_ID') ||
+          sessionStorage.getItem('rsb_auth_session') ||
+          localStorage.getItem('rsb_auth_session') ||
+          sessionStorage.getItem('RSB_ACTIVE_USER') ||
+          localStorage.getItem('RSB_ACTIVE_USER') ||
+          ''
+        ).toLowerCase()
+      : '';
+
+  const isSessionStore =
+    sessionUser.includes('chandramani') ||
+    sessionUser === 'store_incharge' ||
+    sessionUser === 'store_manager' ||
+    sessionUser.includes('store');
+
+  const isStoreIncharge =
+    propIsStoreUser === true ||
+    isSessionStore ||
+    user?.role === 'store_incharge' ||
+    user?.role === 'store_manager' ||
+    (user?.role || '').toLowerCase().includes('store') ||
+    user?.id === 'usr-chandramani' ||
+    user?.id === 'chandramani' ||
+    (user?.name || '').toLowerCase().includes('chandramani') ||
+    (user?.department || '').toLowerCase().includes('store') ||
+    (user?.email || '').toLowerCase().includes('chandramani') ||
+    (user?.permissions?.canEditMaterials === false && user?.permissions?.canVerifyInward === true);
 
   // Close drawer on Escape key
   useEffect(() => {
@@ -55,81 +98,116 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   };
 
   const isSuperOrAdmin =
-    currentUser?.role === 'super_admin' ||
-    currentUser?.role === 'admin' ||
-    currentUser?.role === 'kaustubh';
+    !isStoreIncharge &&
+    (user?.role === 'super_admin' ||
+      user?.role === 'admin' ||
+      user?.role === 'kaustubh' ||
+      user?.id === 'usr-amit' ||
+      user?.id === 'usr-kaustubh' ||
+      (user?.name || '').toLowerCase() === 'amit' ||
+      (user?.name || '').toLowerCase() === 'kaustubh' ||
+      Boolean(user?.permissions?.canManageUsers));
 
-  const workspaceItems = [
-    {
-      id: 'entry',
-      label: 'Material Entry',
-      icon: Zap,
-      shortcut: 'Ctrl+1',
-      badge: null,
-    },
-    {
-      id: 'daily_requirements',
-      label: 'Daily Requirement',
-      icon: CalendarDays,
-      shortcut: 'Ctrl+D',
-      badge: dailyRequirements.length > 0 ? String(dailyRequirements.length) : null,
-      badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-    },
-    {
-      id: 'projects',
-      label: 'Projects Directory',
-      icon: FolderKanban,
-      shortcut: 'Ctrl+2',
-      badge: projects.length > 0 ? String(projects.length) : null,
-    },
-    {
-      id: 'bom',
-      label: 'BOM Management',
-      icon: FolderTree,
-      shortcut: 'Ctrl+B',
-      badge: masterBOMs.length > 0 ? String(masterBOMs.length) : null,
-      badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
-    },
-    {
-      id: 'procurement',
-      label: 'PO Basket',
-      icon: FileText,
-      shortcut: 'Ctrl+3',
-      badge: purchaseOrders.length > 0 ? String(purchaseOrders.length) : null,
-      badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
-    },
-    {
-      id: 'microsoft',
-      label: 'MICROSOFT',
-      icon: FileSpreadsheet,
-      shortcut: 'Ctrl+6',
-      badge: 'Excel',
-      badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-    },
-  ];
+  const workspaceItems = isStoreIncharge
+    ? [
+        {
+          id: 'daily_requirements',
+          label: 'Daily Requirement (आवक)',
+          icon: CalendarDays,
+          shortcut: 'Ctrl+1',
+          badge: dailyRequirements.length > 0 ? String(dailyRequirements.length) : null,
+          badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+        },
+        {
+          id: 'procurement',
+          label: 'PO Inward Basket',
+          icon: FileText,
+          shortcut: 'Ctrl+2',
+          badge: purchaseOrders.length > 0 ? String(purchaseOrders.length) : null,
+          badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+        },
+        {
+          id: 'microsoft',
+          label: 'MICROSOFT EXCEL',
+          icon: FileSpreadsheet,
+          shortcut: 'Ctrl+3',
+          badge: 'Excel',
+          badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+        },
+      ]
+    : [
+        {
+          id: 'entry',
+          label: 'Material Entry',
+          icon: Zap,
+          shortcut: 'Ctrl+1',
+          badge: null,
+        },
+        {
+          id: 'daily_requirements',
+          label: 'Daily Requirement',
+          icon: CalendarDays,
+          shortcut: 'Ctrl+D',
+          badge: dailyRequirements.length > 0 ? String(dailyRequirements.length) : null,
+          badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+        },
+        {
+          id: 'projects',
+          label: 'Projects Directory',
+          icon: FolderKanban,
+          shortcut: 'Ctrl+2',
+          badge: projects.length > 0 ? String(projects.length) : null,
+        },
+        {
+          id: 'bom',
+          label: 'BOM Management',
+          icon: FolderTree,
+          shortcut: 'Ctrl+B',
+          badge: masterBOMs.length > 0 ? String(masterBOMs.length) : null,
+          badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
+        },
+        {
+          id: 'procurement',
+          label: 'PO Basket',
+          icon: FileText,
+          shortcut: 'Ctrl+3',
+          badge: purchaseOrders.length > 0 ? String(purchaseOrders.length) : null,
+          badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+        },
+        {
+          id: 'microsoft',
+          label: 'MICROSOFT',
+          icon: FileSpreadsheet,
+          shortcut: 'Ctrl+6',
+          badge: 'Excel',
+          badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+        },
+      ];
 
-  const managementItems = [
-    {
-      id: 'trash',
-      label: 'Trash & Recovery',
-      icon: Trash2,
-      shortcut: 'Ctrl+4',
-      badge: trashItems.length > 0 ? String(trashItems.length) : null,
-      badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
-    },
-    ...(isSuperOrAdmin
-      ? [
-          {
-            id: 'members',
-            label: 'Member Security',
-            icon: ShieldCheck,
-            shortcut: 'Ctrl+5',
-            badge: 'Admin',
-            badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
-          },
-        ]
-      : []),
-  ];
+  const managementItems = isStoreIncharge
+    ? []
+    : [
+        {
+          id: 'trash',
+          label: 'Trash & Recovery',
+          icon: Trash2,
+          shortcut: 'Ctrl+4',
+          badge: trashItems.length > 0 ? String(trashItems.length) : null,
+          badgeColor: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
+        },
+        ...(isSuperOrAdmin
+          ? [
+              {
+                id: 'members',
+                label: 'Member Security',
+                icon: ShieldCheck,
+                shortcut: 'Ctrl+5',
+                badge: 'Admin',
+                badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+              },
+            ]
+          : []),
+      ];
 
   if (!isOpen) return null;
 
@@ -233,67 +311,74 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           </div>
 
           {/* System & Management Section */}
-          <div>
-            <div className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-              System
-            </div>
-            <div className="space-y-1">
-              {managementItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = activeTab === item.id;
+          {managementItems.length > 0 && (
+            <div>
+              <div className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                System
+              </div>
+              <div className="space-y-1">
+                {managementItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = activeTab === item.id;
 
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => handleNavClick(item.id)}
-                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer group ${
-                      isActive
-                        ? 'bg-blue-600 text-white shadow-xs'
-                        : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}`} />
-                      <span className="truncate">{item.label}</span>
-                    </div>
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => handleNavClick(item.id)}
+                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer group ${
+                        isActive
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}`} />
+                        <span className="truncate">{item.label}</span>
+                      </div>
 
-                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                      {item.badge && (
-                        <span
-                          className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono font-medium border ${
+                      <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                        {item.badge && (
+                          <span
+                            className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono font-medium border ${
+                              isActive
+                                ? 'bg-white/20 text-white border-transparent'
+                                : item.badgeColor || 'bg-slate-800 text-slate-400 border-slate-700/60'
+                            }`}
+                          >
+                            {item.badge}
+                          </span>
+                        )}
+                        <kbd
+                          className={`px-1.5 py-0.2 rounded font-mono text-[10px] ${
                             isActive
-                              ? 'bg-white/20 text-white border-transparent'
-                              : item.badgeColor || 'bg-slate-800 text-slate-400 border-slate-700/60'
+                              ? 'bg-blue-700 text-blue-100'
+                              : 'bg-slate-800/80 text-slate-400 border border-slate-700/60'
                           }`}
                         >
-                          {item.badge}
-                        </span>
-                      )}
-                      <kbd
-                        className={`px-1.5 py-0.2 rounded font-mono text-[10px] ${
-                          isActive
-                            ? 'bg-blue-700 text-blue-100'
-                            : 'bg-slate-800/80 text-slate-400 border border-slate-700/60'
-                        }`}
-                      >
-                        {item.shortcut}
-                      </kbd>
-                    </div>
-                  </button>
-                );
-              })}
+                          {item.shortcut}
+                        </kbd>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Clean Footer */}
         <div className="p-3 border-t border-slate-800/80 bg-slate-950/40 flex items-center justify-between text-[11px] text-slate-400">
           <div className="flex items-center gap-2 truncate">
             <div className="w-5 h-5 rounded-full bg-slate-800 flex items-center justify-center font-bold text-[10px] text-slate-300 border border-slate-700 shrink-0">
-              {currentUser?.name ? currentUser.name[0].toUpperCase() : 'U'}
+              {user?.name ? user.name[0].toUpperCase() : 'U'}
             </div>
-            <span className="truncate font-medium text-slate-300">{currentUser?.name || 'User'}</span>
+            <span className="truncate font-medium text-slate-300">{user?.name || 'User'}</span>
+            {isStoreIncharge && (
+              <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold shrink-0">
+                Stores Inward
+              </span>
+            )}
           </div>
           <span className="text-[10px] font-mono text-slate-400 shrink-0">Esc to close</span>
         </div>

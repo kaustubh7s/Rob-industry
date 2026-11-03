@@ -20,7 +20,17 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose }) =
     outwardEntries,
     setActiveTab,
     setActiveVendorId,
+    currentUser,
   } = useERP();
+
+  const isStoreIncharge =
+    currentUser?.role === 'store_incharge' ||
+    currentUser?.role === 'store_manager' ||
+    currentUser?.id === 'usr-chandramani' ||
+    currentUser?.id === 'chandramani' ||
+    (currentUser?.name || '').toLowerCase().includes('chandramani') ||
+    (currentUser?.department || '').toLowerCase().includes('stores') ||
+    (currentUser?.permissions?.canEditMaterials === false && currentUser?.permissions?.canVerifyInward === true);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -102,7 +112,11 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose }) =
     matchedOutward.length;
 
   const handleNavigate = (tab: string) => {
-    setActiveTab(tab);
+    if (isStoreIncharge && (tab === 'projects' || tab === 'entry' || tab === 'materials' || tab === 'bom')) {
+      setActiveTab('daily_requirements');
+    } else {
+      setActiveTab(tab);
+    }
     onClose();
   };
 
@@ -201,8 +215,8 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose }) =
             </div>
           )}
 
-          {/* Projects Results */}
-          {matchedProjects.length > 0 && (
+          {/* Projects Results (Admin / Operator Only) */}
+          {!isStoreIncharge && matchedProjects.length > 0 && (
             <div>
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mb-2">
                 <FolderKanban className="w-3.5 h-3.5 text-blue-400" /> Projects ({matchedProjects.length})
@@ -255,8 +269,8 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose }) =
             </div>
           )}
 
-          {/* Materials Results */}
-          {matchedMaterials.length > 0 && (
+          {/* Materials Results (Admin / Operator Only) */}
+          {!isStoreIncharge && matchedMaterials.length > 0 && (
             <div>
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mb-2">
                 <Factory className="w-3.5 h-3.5 text-emerald-400" /> Material Master ({matchedMaterials.length})
