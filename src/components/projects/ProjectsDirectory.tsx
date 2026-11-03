@@ -644,7 +644,8 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
               <div
                 key={prj.id}
                 data-tour={idx === 0 ? 'tour-directory-first-project-card' : undefined}
-                className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs hover:shadow-md hover:border-blue-400 transition-all space-y-4 group flex flex-col justify-between"
+                onClick={() => onSelectProject(prj)}
+                className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs hover:shadow-md hover:border-blue-400 transition-all space-y-4 group flex flex-col justify-between cursor-pointer"
               >
                 <div className="space-y-3">
                   {/* Header: Machine Names & Project Title */}
@@ -751,12 +752,9 @@ export const ProjectsDirectory: React.FC<ProjectsDirectoryProps> = ({
                   <button
                     type="button"
                     data-tour={idx === 0 ? 'tour-directory-open-project' : undefined}
-                    onClick={() => {
-                      if (onOpenEntrySheetWithProject) {
-                        onOpenEntrySheetWithProject(prj.name);
-                      } else {
-                        onSelectProject(prj);
-                      }
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectProject(prj);
                       window.dispatchEvent(new CustomEvent('rsb:tour:directory-project-selected', { detail: { project: prj } }));
                     }}
                     className="flex-1 py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold shadow-xs flex items-center justify-center gap-1.5 transition-all active:scale-98 cursor-pointer"
