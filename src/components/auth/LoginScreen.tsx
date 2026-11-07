@@ -265,12 +265,6 @@ export const LoginScreen: React.FC = () => {
                     )}
                   </div>
                 </button>
-
-                <div className="pt-2 text-center">
-                  <p className="text-[11px] text-slate-400 font-medium">
-                    Direct authentication based on enrolled role authorization.
-                  </p>
-                </div>
               </form>
             </div>
           </div>
