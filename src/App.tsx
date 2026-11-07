@@ -42,6 +42,7 @@ import { LoginScreen } from './components/auth/LoginScreen';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { MicrosoftWorkbookCenter } from './components/microsoft/MicrosoftWorkbookCenter';
 import { DailyRequirementModule } from './components/daily/DailyRequirementModule';
+import { AccountsPortal } from './components/accounts/AccountsPortal';
 
 const ERPAppContent: React.FC = () => {
   const { activeTab, setActiveTab, currentUser, isAuthenticated, goBack, goForward, canGoBack, canGoForward } = useERP();
@@ -95,6 +96,11 @@ const ERPAppContent: React.FC = () => {
     currentUser?.department?.toLowerCase().includes('stores') ||
     (currentUser?.permissions?.canEditMaterials === false && currentUser?.permissions?.canVerifyInward === true);
 
+  const isAccountant =
+    currentUser?.role === 'accountant' ||
+    currentUser?.role === 'accounts' ||
+    Boolean(currentUser?.department?.toLowerCase().includes('account'));
+
   // Security Role Access Guard: Keep store incharge strictly within authorized inward stations
   useEffect(() => {
     if (isStoreIncharge) {
@@ -104,6 +110,13 @@ const ERPAppContent: React.FC = () => {
       }
     }
   }, [isStoreIncharge, activeTab, setActiveTab]);
+
+  // Security Role Access Guard: Keep accountant strictly within Accounts Portal
+  useEffect(() => {
+    if (isAccountant && activeTab !== 'accounts') {
+      setActiveTab('accounts');
+    }
+  }, [isAccountant, activeTab, setActiveTab]);
 
   const handleOpenQuickAction = (action?: 'order' | 'inward' | 'outward' | 'job' | 'qc') => {
     if (action) setQuickActionInitial(action);
@@ -321,6 +334,21 @@ const ERPAppContent: React.FC = () => {
   // Screen Lock / Unauthenticated Gate
   if (!isAuthenticated) {
     return <LoginScreen />;
+  }
+
+  // Dedicated Accountant Gate: Full separate application experience (No manufacturing or plant ERP)
+  if (isAccountant) {
+    return <AccountsPortal isAccountantOnly={true} />;
+  }
+
+  // Accounts Portal View for Super Admin / Authorized Admin
+  if (activeTab === 'accounts') {
+    return (
+      <AccountsPortal
+        isAccountantOnly={false}
+        onBackToERP={() => setActiveTab('entry')}
+      />
+    );
   }
 
   // On Phone View: Render dedicated mobile apps

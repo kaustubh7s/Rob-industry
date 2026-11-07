@@ -126,6 +126,26 @@ export const INITIAL_USERS: User[] = [
       canVerifyInward: true,
     },
   },
+  {
+    id: 'usr-accountant',
+    name: 'Accountant',
+    email: 'accounts@rsbequipments.com',
+    role: 'accountant',
+    password: 'accounts@123',
+    department: 'Finance & Accounts',
+    authLevel: 'Tier 3: Department Manager',
+    status: 'Active',
+    lastActive: 'Active Now',
+    permissions: {
+      canEditMaterials: false,
+      canApproveOrders: false,
+      canDeleteRecords: false,
+      canManageUsers: false,
+      canExportReports: true,
+      canOverrideLock: false,
+      canVerifyInward: false,
+    },
+  },
 ];
 
 export const INITIAL_MATERIALS: MaterialItem[] = [];

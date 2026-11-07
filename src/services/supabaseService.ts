@@ -394,6 +394,72 @@ CREATE TABLE IF NOT EXISTS public.deleted_workbook_items (
   deleted_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Accounts Portal Tables
+CREATE TABLE IF NOT EXISTS public.accounts_companies (
+  id TEXT PRIMARY KEY,
+  company_name TEXT NOT NULL,
+  gstin TEXT,
+  contact_person TEXT,
+  phone TEXT,
+  email TEXT,
+  address TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.accounts_deals (
+  id TEXT PRIMARY KEY,
+  deal_number TEXT NOT NULL UNIQUE,
+  company_id TEXT NOT NULL REFERENCES public.accounts_companies(id),
+  company_name TEXT NOT NULL,
+  company_gstin TEXT,
+  company_phone TEXT,
+  company_address TEXT,
+  contact_person TEXT,
+  deal_date DATE NOT NULL,
+  decided_amount NUMERIC NOT NULL,
+  advance_amount NUMERIC DEFAULT 0,
+  total_received NUMERIC DEFAULT 0,
+  remaining_balance NUMERIC DEFAULT 0,
+  payment_terms TEXT NOT NULL,
+  expected_payment_date DATE,
+  gst_inclusive BOOLEAN DEFAULT TRUE,
+  remarks TEXT,
+  status TEXT DEFAULT 'awaiting_advance',
+  is_archived BOOLEAN DEFAULT FALSE,
+  created_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.accounts_payments (
+  id TEXT PRIMARY KEY,
+  deal_id TEXT NOT NULL REFERENCES public.accounts_deals(id),
+  payment_date DATE NOT NULL,
+  amount NUMERIC NOT NULL,
+  payment_mode TEXT NOT NULL,
+  transaction_reference TEXT,
+  remarks TEXT,
+  is_advance BOOLEAN DEFAULT FALSE,
+  payment_proof_url TEXT,
+  payment_proof_name TEXT,
+  created_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.accounts_documents (
+  id TEXT PRIMARY KEY,
+  deal_id TEXT NOT NULL REFERENCES public.accounts_deals(id),
+  file_name TEXT NOT NULL,
+  file_type TEXT NOT NULL,
+  file_size NUMERIC DEFAULT 0,
+  file_data TEXT,
+  uploaded_by TEXT,
+  uploaded_at TIMESTAMPTZ DEFAULT NOW(),
+  category TEXT DEFAULT 'deal_sheet'
+);
+
 -- Enable Row Level Security (RLS) & allow authenticated / anon access
 ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.project_material_requirements ENABLE ROW LEVEL SECURITY;
@@ -409,6 +475,10 @@ ALTER TABLE public.workbook_directories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.workbooks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.workbook_activity_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.deleted_workbook_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.accounts_companies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.accounts_deals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.accounts_payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.accounts_documents ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow public full access for projects" ON public.projects FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public full access for requirements" ON public.project_material_requirements FOR ALL USING (true) WITH CHECK (true);
@@ -424,6 +494,10 @@ CREATE POLICY "Allow public full access for workbook_directories" ON public.work
 CREATE POLICY "Allow public full access for workbooks" ON public.workbooks FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public full access for workbook_activity_logs" ON public.workbook_activity_logs FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public full access for deleted_workbook_items" ON public.deleted_workbook_items FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public full access for accounts_companies" ON public.accounts_companies FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public full access for accounts_deals" ON public.accounts_deals FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public full access for accounts_payments" ON public.accounts_payments FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public full access for accounts_documents" ON public.accounts_documents FOR ALL USING (true) WITH CHECK (true);
 
 -- Enable Realtime Replication Publication
 ALTER PUBLICATION supabase_realtime ADD TABLE public.projects;
@@ -431,6 +505,9 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.project_material_requiremen
 ALTER PUBLICATION supabase_realtime ADD TABLE public.materials;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.vendors;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.customers;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.accounts_companies;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.accounts_deals;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.accounts_payments;
 `;
 
 // Push all local factory state to Supabase

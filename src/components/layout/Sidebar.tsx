@@ -11,6 +11,7 @@ import {
   FileSpreadsheet,
   FolderTree,
   CalendarDays,
+  IndianRupee,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 import { User } from '../../types/erp';
@@ -197,6 +198,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         },
         ...(isSuperOrAdmin
           ? [
+              {
+                id: 'accounts',
+                label: 'Accounts Portal',
+                icon: IndianRupee,
+                shortcut: 'Ctrl+A',
+                badge: 'Finance',
+                badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+              },
               {
                 id: 'members',
                 label: 'Member Security',

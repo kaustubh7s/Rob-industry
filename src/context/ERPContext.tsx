@@ -2898,6 +2898,18 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         localStorage.setItem('RSB_ACTIVE_TAB', 'daily_requirements');
       } catch {}
     }
+
+    const isAccountant =
+      targetUser.role === 'accountant' ||
+      targetUser.role === 'accounts' ||
+      (targetUser.department || '').toLowerCase().includes('account');
+
+    if (isAccountant) {
+      setActiveTabState('accounts');
+      try {
+        localStorage.setItem('RSB_ACTIVE_TAB', 'accounts');
+      } catch {}
+    }
     setUsers((prev) => {
       const hasUser = prev.some((u) => u.id === targetUser.id);
       const baseList = hasUser ? prev : [...prev, targetUser];

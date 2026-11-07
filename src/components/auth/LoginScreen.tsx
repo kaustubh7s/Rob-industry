@@ -266,10 +266,48 @@ export const LoginScreen: React.FC = () => {
                   </div>
                 </button>
 
-                <div className="pt-2 text-center">
-                  <p className="text-[11px] text-slate-400 font-medium">
-                    Direct authentication based on enrolled role authorization.
-                  </p>
+                <div className="pt-3 border-t border-white/[0.08] space-y-2 text-center">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-semibold">
+                    Quick Role Login
+                  </span>
+                  <div className="flex flex-wrap items-center justify-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLoginId('Accountant');
+                        setPassword('accounts@123');
+                        setError(null);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-950/60 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-300 text-[11px] font-bold transition-all cursor-pointer shadow-xs"
+                      title="Quick fill Accountant credentials"
+                    >
+                      💰 Accountant
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLoginId('Amit');
+                        setPassword('amit@123');
+                        setError(null);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-white/10 text-slate-300 text-[11px] font-medium transition-all cursor-pointer"
+                      title="Quick fill Super Admin credentials"
+                    >
+                      👑 Super Admin
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLoginId('Chandramani');
+                        setPassword('chandramani@123');
+                        setError(null);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-white/10 text-slate-300 text-[11px] font-medium transition-all cursor-pointer"
+                      title="Quick fill Stores Incharge credentials"
+                    >
+                      📦 Stores Incharge
+                    </button>
+                  </div>
                 </div>
               </form>
             </div>

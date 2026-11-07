@@ -7,6 +7,7 @@ export type UserRole =
   | 'store_manager'
   | 'store_incharge'
   | 'accounts'
+  | 'accountant'
   | 'operator'
   | 'vendor';
 

@@ -34,6 +34,7 @@ import {
   User as UserIcon,
   Settings as SettingsIcon,
   LogOut,
+  IndianRupee,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 import { UserRole, User } from '../../types/erp';
@@ -257,6 +258,23 @@ export const Header: React.FC<HeaderProps> = ({
               rsb1.xlsx
             </span>
           </button>
+
+          {/* Quick Accounts Portal Link for Super Admin */}
+          {isSuperOrAdmin && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('accounts')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs border ${
+                activeTab === 'accounts'
+                  ? 'bg-emerald-600 text-white border-emerald-400 shadow-emerald-900/30'
+                  : 'bg-emerald-950/80 hover:bg-emerald-900 border-emerald-500/40 text-emerald-300'
+              }`}
+              title="Open RSB Accounts Portal (Deals & Company Payments)"
+            >
+              <IndianRupee className="w-3.5 h-3.5" />
+              <span>ACCOUNTS</span>
+            </button>
+          )}
 
           {/* Interactive Gliding Tour Button (Admin / Production) */}
           {!isStoreIncharge && (
