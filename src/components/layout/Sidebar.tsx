@@ -127,14 +127,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           badge: purchaseOrders.length > 0 ? String(purchaseOrders.length) : null,
           badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
         },
-        {
-          id: 'microsoft',
-          label: 'MICROSOFT EXCEL',
-          icon: FileSpreadsheet,
-          shortcut: 'Ctrl+3',
-          badge: 'Excel',
-          badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-        },
       ]
     : [
         {
@@ -174,14 +166,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           shortcut: 'Ctrl+3',
           badge: purchaseOrders.length > 0 ? String(purchaseOrders.length) : null,
           badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
-        },
-        {
-          id: 'microsoft',
-          label: 'MICROSOFT',
-          icon: FileSpreadsheet,
-          shortcut: 'Ctrl+6',
-          badge: 'Excel',
-          badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
         },
       ];
 
