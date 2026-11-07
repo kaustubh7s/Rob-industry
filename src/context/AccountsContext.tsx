@@ -257,9 +257,16 @@ export const AccountsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [payments, setPayments] = useState<AccountPayment[]>([]);
   const [documents, setDocuments] = useState<AccountDealDocument[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [activeView, setActiveView] = useState<AccountsView>('overview');
+  const [activeView, setActiveViewState] = useState<AccountsView>('overview');
   const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
+
+  const setActiveView = useCallback((view: AccountsView, dealId?: string | null) => {
+    setActiveViewState(view);
+    if (dealId !== undefined) {
+      setSelectedDealId(dealId);
+    }
+  }, []);
 
   // 2. New Finance State
   const [salesInvoices, setSalesInvoices] = useState<SalesInvoice[]>([]);

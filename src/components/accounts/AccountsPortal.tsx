@@ -123,11 +123,15 @@ const AccountsPortalContent: React.FC<AccountsPortalProps> = ({
             <AllDealsView onOpenNewDeal={() => setIsNewDealOpen(true)} initialFilter="archived" />
           )}
 
-          {activeView === 'deal-details' && selectedDealId && (
-            <DealDetailsView
-              dealId={selectedDealId}
-              onBack={() => setActiveView('deals')}
-            />
+          {activeView === 'deal-details' && (
+            selectedDealId ? (
+              <DealDetailsView
+                dealId={selectedDealId}
+                onBack={() => setActiveView('deals')}
+              />
+            ) : (
+              <AllDealsView onOpenNewDeal={() => setIsNewDealOpen(true)} initialFilter="all" />
+            )
           )}
 
           {activeView === 'customers' && <CustomerDirectoryView />}
