@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Send,
   Plus,
@@ -15,6 +15,10 @@ import {
   FileCheck,
   Eye,
   Sparkles,
+  Lock,
+  Unlock,
+  ShieldCheck,
+  ShieldAlert,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 import { OutwardEntry, OutwardStatus } from '../../types/erp';
@@ -24,6 +28,9 @@ import { Modal } from '../common/Modal';
 import { EasyGuideBanner } from '../common/EasyGuideBanner';
 import { PrintableSlipModal } from '../common/PrintableSlipModal';
 import { DispatchReadyItem } from '../../types/erp';
+import { loadDeals } from '../../services/accountsStorage';
+import { AccountDeal } from '../../types/accounts';
+import { formatINR } from '../../utils/accountsCalculations';
 
 interface OutwardManagementProps {
   onOpenQuickAction?: (action?: 'order' | 'inward' | 'outward' | 'job' | 'qc') => void;
@@ -38,6 +45,7 @@ export const OutwardManagement: React.FC<OutwardManagementProps> = ({ onOpenQuic
     customers,
     projects,
     dispatchReadyItems,
+    currentUser,
   } = useERP();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -47,6 +55,50 @@ export const OutwardManagement: React.FC<OutwardManagementProps> = ({ onOpenQuic
   const [isNewOutwardModalOpen, setIsNewOutwardModalOpen] = useState(false);
   const [printChallanData, setPrintChallanData] = useState<OutwardEntry | null>(null);
   const [selectedDispatchReadyId, setSelectedDispatchReadyId] = useState<string>('');
+  const [accountsDeals, setAccountsDeals] = useState<AccountDeal[]>([]);
+
+  useEffect(() => {
+    loadDeals().then((loaded) => setAccountsDeals(loaded || []));
+  }, [isNewOutwardModalOpen, printChallanData]);
+
+  // Helper to match customer name to accounts deal
+  const getCustomerDispatchStatus = (customerName: string): AccountDeal | null => {
+    if (!customerName) return null;
+    const q = customerName.toLowerCase().trim();
+    const deal = accountsDeals.find((d) => {
+      const dName = (d.companyName || '').toLowerCase().trim();
+      return (dName.includes(q) || q.includes(dName)) && !d.isArchived;
+    });
+    return deal || null;
+  };
+
+  const handlePrintGatePass = (out: OutwardEntry) => {
+    const deal = getCustomerDispatchStatus(out.customer);
+    const isLocked =
+      deal &&
+      deal.dispatchClearance !== 'cleared' &&
+      deal.dispatchClearance !== 'director_approved' &&
+      deal.remainingBalance > 0;
+
+    if (isLocked) {
+      if (currentUser?.role === 'super_admin') {
+        const confirmOverride = window.confirm(
+          `⚠️ ACCOUNTS DISPATCH LOCK (गेट पास लॉक)\n\nCustomer "${out.customer}" has an outstanding payment balance of ${formatINR(
+            deal.remainingBalance
+          )} in Accounts.\n\nGate Pass is currently LOCKED.\n\nAs Super Admin / Director, do you wish to approve emergency dispatch clearance for this Gate Pass?`
+        );
+        if (!confirmOverride) return;
+      } else {
+        alert(
+          `⛔ DISPATCH GATE PASS BLOCKED BY ACCOUNTS (गेट पास लॉक):\n\nCustomer: ${out.customer}\nDeal Number: ${deal.dealNumber}\nOutstanding Balance: ${formatINR(
+            deal.remainingBalance
+          )}\n\nMachinery/goods cannot be dispatched until Accounts records "Payment Cleared for Dispatch" in the Accounts Portal, or the Director approves credit.`
+        );
+        return;
+      }
+    }
+    setPrintChallanData(out);
+  };
 
   // Form state
   const [form, setForm] = useState({
@@ -349,84 +401,123 @@ export const OutwardManagement: React.FC<OutwardManagementProps> = ({ onOpenQuic
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800 font-medium text-slate-300">
-              {filteredOutward.map((out) => (
-                <tr key={out.id} className="hover:bg-slate-800/50 transition-colors">
-                  <td className="py-3 px-3.5">
-                    <span className="font-mono font-bold text-purple-400 block">{out.outwardNumber}</span>
-                    <span className="text-[10px] text-slate-500">{out.dispatchDate}</span>
-                  </td>
+              {filteredOutward.map((out) => {
+                const deal = getCustomerDispatchStatus(out.customer);
+                const isLocked =
+                  deal &&
+                  deal.dispatchClearance !== 'cleared' &&
+                  deal.dispatchClearance !== 'director_approved' &&
+                  deal.remainingBalance > 0;
+                const isCleared = deal && deal.dispatchClearance === 'cleared';
+                const isDirector = deal && deal.dispatchClearance === 'director_approved';
 
-                  <td className="py-3 px-3.5">
-                    <span className="font-bold text-white block">{out.customer}</span>
-                    <span className="text-[10px] text-cyan-400 font-semibold">{out.project}</span>
-                  </td>
+                return (
+                  <tr key={out.id} className="hover:bg-slate-800/50 transition-colors">
+                    <td className="py-3 px-3.5">
+                      <span className="font-mono font-bold text-purple-400 block">{out.outwardNumber}</span>
+                      <span className="text-[10px] text-slate-500">{out.dispatchDate}</span>
+                    </td>
 
-                  <td className="py-3 px-3.5 font-semibold text-slate-200">
-                    {out.material}
-                  </td>
+                    <td className="py-3 px-3.5">
+                      <span className="font-bold text-white block">{out.customer}</span>
+                      <span className="text-[10px] text-cyan-400 font-semibold block">{out.project}</span>
 
-                  <td className="py-3 px-3 text-center font-mono font-bold text-slate-100">
-                    {out.quantity} <span className="text-[10px] font-normal text-slate-400">{out.unit}</span>
-                  </td>
+                      {/* Accounts Clearance Status Pill */}
+                      {isLocked && (
+                        <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded bg-rose-950/80 text-rose-300 border border-rose-500/40 text-[9px] font-bold">
+                          <Lock className="w-2.5 h-2.5" />
+                          <span>Gate Pass Locked ({formatINR(deal.remainingBalance)})</span>
+                        </span>
+                      )}
+                      {isCleared && (
+                        <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 text-[9px] font-bold">
+                          <ShieldCheck className="w-2.5 h-2.5" />
+                          <span>Accounts Cleared</span>
+                        </span>
+                      )}
+                      {isDirector && (
+                        <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded bg-purple-950/80 text-purple-300 border border-purple-500/40 text-[9px] font-bold">
+                          <Unlock className="w-2.5 h-2.5" />
+                          <span>Director Approved</span>
+                        </span>
+                      )}
+                    </td>
 
-                  <td className="py-3 px-3 font-mono font-bold text-amber-300 uppercase">
-                    {out.vehicleNumber}
-                    <span className="text-[10px] text-slate-400 block font-sans font-normal">
-                      {out.driverName}
-                    </span>
-                  </td>
+                    <td className="py-3 px-3.5 font-semibold text-slate-200">
+                      {out.material}
+                    </td>
 
-                  <td className="py-3 px-3 text-slate-400 text-[11px]">
-                    <div>Inv: <span className="text-slate-200 font-mono">{out.invoiceNumber}</span></div>
-                    {out.eWayBillNo && (
-                      <div className="text-[10px]">E-Way: <span className="text-slate-300 font-mono">{out.eWayBillNo}</span></div>
-                    )}
-                  </td>
+                    <td className="py-3 px-3 text-center font-mono font-bold text-slate-100">
+                      {out.quantity} <span className="text-[10px] font-normal text-slate-400">{out.unit}</span>
+                    </td>
 
-                  <td className="py-3 px-3.5 text-center">
-                    <select
-                      value={out.deliveryStatus}
-                      onChange={(e) => updateOutwardStatus(out.id, e.target.value as any)}
-                      className={`text-xs font-bold rounded-lg px-2 py-1 border cursor-pointer ${
-                        out.deliveryStatus === 'Dispatched'
-                          ? 'bg-purple-950/60 text-purple-300 border-purple-500/40'
-                          : out.deliveryStatus === 'Delivered'
-                          ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40'
-                          : 'bg-slate-800 text-slate-300 border-slate-700'
-                      }`}
-                    >
-                      <option value="Dispatched" className="bg-slate-900 text-purple-400">Dispatched (In-Transit)</option>
-                      <option value="Ready" className="bg-slate-900 text-amber-400">Ready in Factory</option>
-                      <option value="Delivered" className="bg-slate-900 text-emerald-400">Delivered</option>
-                      <option value="Returned" className="bg-slate-900 text-rose-400">Returned</option>
-                    </select>
-                  </td>
+                    <td className="py-3 px-3 font-mono font-bold text-amber-300 uppercase">
+                      {out.vehicleNumber}
+                      <span className="text-[10px] text-slate-400 block font-sans font-normal">
+                        {out.driverName}
+                      </span>
+                    </td>
 
-                  <td className="py-3 px-3.5 text-right">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <button
-                        onClick={() => setPrintChallanData(out)}
-                        className="p-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/30 transition-colors"
-                        title="Print Delivery Challan & Gate Pass"
+                    <td className="py-3 px-3 text-slate-400 text-[11px]">
+                      <div>Inv: <span className="text-slate-200 font-mono">{out.invoiceNumber}</span></div>
+                      {out.eWayBillNo && (
+                        <div className="text-[10px]">E-Way: <span className="text-slate-300 font-mono">{out.eWayBillNo}</span></div>
+                      )}
+                    </td>
+
+                    <td className="py-3 px-3.5 text-center">
+                      <select
+                        value={out.deliveryStatus}
+                        onChange={(e) => updateOutwardStatus(out.id, e.target.value as any)}
+                        className={`text-xs font-bold rounded-lg px-2 py-1 border cursor-pointer ${
+                          out.deliveryStatus === 'Dispatched'
+                            ? 'bg-purple-950/60 text-purple-300 border-purple-500/40'
+                            : out.deliveryStatus === 'Delivered'
+                            ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40'
+                            : 'bg-slate-800 text-slate-300 border-slate-700'
+                        }`}
                       >
-                        <Printer className="w-3.5 h-3.5" />
-                      </button>
+                        <option value="Dispatched" className="bg-slate-900 text-purple-400">Dispatched (In-Transit)</option>
+                        <option value="Ready" className="bg-slate-900 text-amber-400">Ready in Factory</option>
+                        <option value="Delivered" className="bg-slate-900 text-emerald-400">Delivered</option>
+                        <option value="Returned" className="bg-slate-900 text-rose-400">Returned</option>
+                      </select>
+                    </td>
 
-                      <button
-                        onClick={() => {
-                          if (confirm(`Delete dispatch record ${out.outwardNumber}?`)) {
-                            deleteOutwardEntry(out.id);
+                    <td className="py-3 px-3.5 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => handlePrintGatePass(out)}
+                          className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
+                            isLocked
+                              ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30'
+                              : 'bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/30'
+                          }`}
+                          title={
+                            isLocked
+                              ? `🔒 Gate Pass Locked: Pending ${formatINR(deal.remainingBalance)} in Accounts`
+                              : 'Print Delivery Challan & Gate Pass'
                           }
-                        }}
-                        className="text-slate-500 hover:text-rose-400 p-1.5 rounded-lg hover:bg-slate-800 transition-colors"
-                        title="Delete Record"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        >
+                          {isLocked ? <Lock className="w-3.5 h-3.5 text-rose-400" /> : <Printer className="w-3.5 h-3.5" />}
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            if (confirm(`Delete dispatch record ${out.outwardNumber}?`)) {
+                              deleteOutwardEntry(out.id);
+                            }
+                          }}
+                          className="text-slate-500 hover:text-rose-400 p-1.5 rounded-lg hover:bg-slate-800 transition-colors"
+                          title="Delete Record"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -573,6 +664,48 @@ export const OutwardManagement: React.FC<OutwardManagementProps> = ({ onOpenQuic
               />
             </div>
           </div>
+
+          {/* Accounts Clearance & Gatekeeper Status Banner */}
+          {(() => {
+            const modalDeal = getCustomerDispatchStatus(form.customer);
+            if (!modalDeal) return null;
+            const isLocked =
+              modalDeal.dispatchClearance !== 'cleared' &&
+              modalDeal.dispatchClearance !== 'director_approved' &&
+              modalDeal.remainingBalance > 0;
+
+            if (isLocked) {
+              return (
+                <div className="p-3 bg-rose-950/80 border border-rose-500/50 rounded-xl flex items-start gap-2.5 text-xs text-rose-200">
+                  <Lock className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5">
+                    <p className="font-bold text-rose-100 uppercase tracking-wide flex items-center gap-2">
+                      <span>Accounts Dispatch Gate Pass: LOCKED</span>
+                      <span className="font-mono text-[10px] bg-rose-900 px-1.5 py-0.5 rounded text-white">
+                        {modalDeal.dealNumber}
+                      </span>
+                    </p>
+                    <p className="text-[11px]">
+                      Outstanding balance:{' '}
+                      <strong className="font-mono text-white">
+                        {formatINR(modalDeal.remainingBalance)}
+                      </strong>
+                      . Delivery Challan & Gate Pass printing is locked until Accounts marks clearance or Director overrides.
+                    </p>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div className="p-2.5 bg-emerald-950/60 border border-emerald-500/40 rounded-xl flex items-center gap-2 text-xs text-emerald-200">
+                <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>
+                  <strong>Accounts Clearance Verified:</strong> {modalDeal.companyName} is cleared for outward machinery dispatch.
+                </span>
+              </div>
+            );
+          })()}
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="sm:col-span-2">

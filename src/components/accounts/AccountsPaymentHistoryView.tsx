@@ -9,6 +9,7 @@ import {
   Layers,
   ArrowRight,
   Filter,
+  Printer,
 } from 'lucide-react';
 import { useAccounts } from '../../context/AccountsContext';
 import { formatINR, formatDateIndian } from '../../utils/accountsCalculations';
@@ -16,7 +17,7 @@ import { DocumentPreviewModal } from './DocumentPreviewModal';
 import { AccountDealDocument } from '../../types/accounts';
 
 export const AccountsPaymentHistoryView: React.FC = () => {
-  const { payments, deals, setActiveView, exportPaymentHistoryExcel } = useAccounts();
+  const { payments, deals, setActiveView, exportPaymentHistoryExcel, exportPaymentReceipt } = useAccounts();
 
   const [search, setSearch] = useState<string>('');
   const [selectedMode, setSelectedMode] = useState<string>('ALL');
@@ -131,7 +132,8 @@ export const AccountsPaymentHistoryView: React.FC = () => {
                   <th className="py-3 px-3.5">Payment Mode</th>
                   <th className="py-3 px-3.5 font-mono">Ref / UTR</th>
                   <th className="py-3 px-3.5 text-right">Amount Received</th>
-                  <th className="py-3 px-3.5 text-center">Receipt</th>
+                  <th className="py-3 px-3.5 text-center">Slip</th>
+                  <th className="py-3 px-3.5 text-right">Receipt Voucher</th>
                   <th className="py-3 px-3.5 text-right">Action</th>
                 </tr>
               </thead>
@@ -194,6 +196,17 @@ export const AccountsPaymentHistoryView: React.FC = () => {
                         ) : (
                           <span className="text-slate-400 text-[11px]">-</span>
                         )}
+                      </td>
+                      <td className="py-3 px-3.5 text-right whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => exportPaymentReceipt(p.id)}
+                          className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-800 hover:text-slate-950 rounded-lg font-bold text-[11px] inline-flex items-center gap-1.5 border border-slate-300 shadow-2xs transition-colors cursor-pointer"
+                          title="Download Official Payment Receipt Voucher PDF"
+                        >
+                          <Printer className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Print Receipt</span>
+                        </button>
                       </td>
                       <td className="py-3 px-3.5 text-right whitespace-nowrap">
                         {deal && (

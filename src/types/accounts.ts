@@ -12,6 +12,8 @@ export interface AccountCompany {
 
 export type DealStatus = 'awaiting_advance' | 'partially_received' | 'fully_paid' | 'overdue';
 
+export type DispatchClearanceStatus = 'locked' | 'cleared' | 'director_approved';
+
 export interface AccountDeal {
   id: string;
   dealNumber: string; // e.g. RSB-ACC-2026-001
@@ -32,6 +34,12 @@ export interface AccountDeal {
   remarks?: string;
   status: DealStatus;
   isArchived: boolean;
+  dispatchClearance?: DispatchClearanceStatus; // Dispatch Gate Pass status
+  dispatchClearedBy?: string;
+  dispatchClearedAt?: string;
+  dispatchClearanceRemarks?: string;
+  linkedProjectId?: string;
+  linkedProjectName?: string;
   createdBy: string;
   createdAt: string;
   updatedAt: string;

@@ -15,8 +15,14 @@ import {
   Upload,
   Eye,
   Building2,
+  Lock,
+  Unlock,
+  ShieldCheck,
+  Printer,
+  ShieldAlert,
 } from 'lucide-react';
 import { useAccounts } from '../../context/AccountsContext';
+import { useERP } from '../../context/ERPContext';
 import { AccountDealDocument, DealStatus } from '../../types/accounts';
 import { formatINR, formatDateIndian } from '../../utils/accountsCalculations';
 import { AddPaymentModal } from './AddPaymentModal';
@@ -28,6 +34,7 @@ interface DealDetailsViewProps {
 }
 
 export const DealDetailsView: React.FC<DealDetailsViewProps> = ({ dealId, onBack }) => {
+  const { currentUser } = useERP();
   const {
     getDealById,
     getCompanyById,
@@ -40,6 +47,8 @@ export const DealDetailsView: React.FC<DealDetailsViewProps> = ({ dealId, onBack
     removeDealDocument,
     exportCurrentDealPDF,
     exportPaymentHistoryExcel,
+    setDispatchClearance,
+    exportPaymentReceipt,
   } = useAccounts();
 
   const deal = getDealById(dealId);
@@ -251,6 +260,143 @@ export const DealDetailsView: React.FC<DealDetailsViewProps> = ({ dealId, onBack
         </div>
       </div>
 
+      {/* 🛡️ DISPATCH GATE PASS CLEARANCE (FINANCIAL GATEKEEPER) */}
+      <div
+        className={`p-4 rounded-xl border shadow-xs transition-all ${
+          deal.dispatchClearance === 'cleared'
+            ? 'bg-emerald-50/70 border-emerald-300'
+            : deal.dispatchClearance === 'director_approved'
+            ? 'bg-purple-50/70 border-purple-300'
+            : 'bg-rose-50/70 border-rose-300'
+        }`}
+      >
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div
+              className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-2xs ${
+                deal.dispatchClearance === 'cleared'
+                  ? 'bg-emerald-600 text-white'
+                  : deal.dispatchClearance === 'director_approved'
+                  ? 'bg-purple-700 text-white'
+                  : 'bg-rose-600 text-white'
+              }`}
+            >
+              {deal.dispatchClearance === 'cleared' ? (
+                <ShieldCheck className="w-5 h-5" />
+              ) : deal.dispatchClearance === 'director_approved' ? (
+                <Unlock className="w-5 h-5" />
+              ) : (
+                <Lock className="w-5 h-5" />
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                  Dispatch Gate Pass Clearance
+                </span>
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider shadow-2xs ${
+                    deal.dispatchClearance === 'cleared'
+                      ? 'bg-emerald-700 text-white'
+                      : deal.dispatchClearance === 'director_approved'
+                      ? 'bg-purple-800 text-white'
+                      : 'bg-rose-700 text-white'
+                  }`}
+                >
+                  {deal.dispatchClearance === 'cleared'
+                    ? '✓ Cleared for Dispatch'
+                    : deal.dispatchClearance === 'director_approved'
+                    ? '👑 Director Approved'
+                    : '🔒 Gate Pass Locked'}
+                </span>
+              </div>
+
+              <p className="text-xs text-slate-700">
+                {deal.dispatchClearance === 'cleared' ? (
+                  <>
+                    <strong className="text-emerald-900">Approved for Dispatch:</strong> Machinery and materials can be issued on factory Outward Gate Pass. Cleared by <strong>{deal.dispatchClearedBy || 'Accounts'}</strong> on {formatDateIndian(deal.dispatchClearedAt)}.
+                  </>
+                ) : deal.dispatchClearance === 'director_approved' ? (
+                  <>
+                    <strong className="text-purple-900">Director Special Approval:</strong> Management credit authorization granted by <strong>{deal.dispatchClearedBy || 'Director'}</strong> on {formatDateIndian(deal.dispatchClearedAt)}.
+                  </>
+                ) : (
+                  <>
+                    <strong className="text-rose-900">Dispatch Gate Pass is Locked:</strong> Pending collection of {formatINR(deal.remainingBalance)}. Factory gate/stores team cannot generate Outward Gate Pass until Accounts clears payment.
+                  </>
+                )}
+              </p>
+              {deal.dispatchClearanceRemarks && (
+                <p className="text-[11px] text-slate-500 italic">
+                  Note: {deal.dispatchClearanceRemarks}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Gatekeeper Action Buttons */}
+          <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+            {deal.dispatchClearance === 'cleared' || deal.dispatchClearance === 'director_approved' ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      'Re-lock dispatch gate pass for this company? Factory team will not be able to generate outward gate passes.'
+                    )
+                  ) {
+                    setDispatchClearance(deal.id, 'locked', 'Dispatch re-locked by Accounts');
+                  }
+                }}
+                className="px-3 py-1.5 bg-white border border-rose-300 hover:bg-rose-50 text-rose-700 text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>Re-lock Gate Pass</span>
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const remarks = window.prompt(
+                      'Enter clearance note (optional):',
+                      'Payment verified in bank account. Cleared for dispatch.'
+                    );
+                    if (remarks !== null) {
+                      setDispatchClearance(deal.id, 'cleared', remarks);
+                    }
+                  }}
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Clear for Dispatch</span>
+                </button>
+
+                {currentUser?.role === 'super_admin' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const remarks = window.prompt(
+                        'Director credit approval remarks:',
+                        'Management authorized credit dispatch.'
+                      );
+                      if (remarks !== null) {
+                        setDispatchClearance(deal.id, 'director_approved', remarks);
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                  >
+                    <Unlock className="w-3.5 h-3.5" />
+                    <span>Director Credit Approval</span>
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Grid: Company Details & Agreed Payment Terms */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Company Contact Details */}
@@ -437,7 +583,8 @@ export const DealDetailsView: React.FC<DealDetailsViewProps> = ({ dealId, onBack
                   <th className="py-2.5 px-3">Mode</th>
                   <th className="py-2.5 px-3 font-mono">Reference / UTR</th>
                   <th className="py-2.5 px-3 text-right">Amount</th>
-                  <th className="py-2.5 px-3 text-center">Receipt</th>
+                  <th className="py-2.5 px-3 text-center">Proof Slip</th>
+                  <th className="py-2.5 px-3 text-right">Receipt Voucher</th>
                   <th className="py-2.5 px-3 text-right">Action</th>
                 </tr>
               </thead>
@@ -484,11 +631,22 @@ export const DealDetailsView: React.FC<DealDetailsViewProps> = ({ dealId, onBack
                           }
                           className="text-xs text-blue-600 hover:underline cursor-pointer"
                         >
-                          View Receipt
+                          View Slip
                         </button>
                       ) : (
                         <span className="text-slate-300">-</span>
                       )}
+                    </td>
+                    <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => exportPaymentReceipt(p.id)}
+                        className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-800 hover:text-slate-950 rounded-lg font-bold text-[11px] inline-flex items-center gap-1.5 border border-slate-300 shadow-2xs transition-colors cursor-pointer"
+                        title="Print Official Payment Receipt Voucher PDF"
+                      >
+                        <Printer className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Print Receipt</span>
+                      </button>
                     </td>
                     <td className="py-2.5 px-3 text-right whitespace-nowrap">
                       <button

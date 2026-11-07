@@ -187,6 +187,21 @@ export const PrintableSlipModal: React.FC<PrintableSlipModalProps> = ({
             </p>
           </div>
 
+          {/* Outward Finance Gatekeeper Stamp */}
+          {type === 'outward' && (
+            <div className="my-2 p-2 rounded-lg border border-emerald-600 bg-emerald-50 text-emerald-900 flex items-center justify-between text-[10px]">
+              <div>
+                <strong>FINANCE & ACCOUNTS CLEARANCE (वित्तीय गेट पास अनुमोदन):</strong>
+                <span className="ml-1.5 font-semibold text-emerald-800">
+                  VERIFIED & AUTHORIZED FOR FACTORY OUTWARD DISPATCH
+                </span>
+              </div>
+              <span className="font-mono font-black text-emerald-800 border border-emerald-500 px-2 py-0.5 rounded bg-white shadow-2xs">
+                GATE PASS CLEARED
+              </span>
+            </div>
+          )}
+
           {/* Signature Boxes */}
           <div className="grid grid-cols-3 gap-4 pt-8 text-center text-[10px] border-t border-slate-300">
             <div>

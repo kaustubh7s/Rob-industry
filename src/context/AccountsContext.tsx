@@ -7,6 +7,7 @@ import {
   AccountsDashboardSummary,
   PaymentMode,
   DealStatus,
+  DispatchClearanceStatus,
 } from '../types/accounts';
 import {
   loadCompanies,
@@ -23,6 +24,7 @@ import {
   computeDealStatus,
   generateNextDealId,
   exportDealSummaryPDF,
+  exportPaymentReceiptPDF,
   exportAllDealsToExcel,
   exportPaymentHistoryToExcel,
 } from '../utils/accountsCalculations';
@@ -91,6 +93,8 @@ interface AccountsContextType {
   getPaymentsForDeal: (dealId: string) => AccountPayment[];
   getDocumentsForDeal: (dealId: string) => AccountDealDocument[];
   checkDuplicateGstin: (gstin: string, excludeCompanyId?: string) => AccountCompany | null;
+  setDispatchClearance: (dealId: string, status: DispatchClearanceStatus, remarks?: string) => Promise<void>;
+  exportPaymentReceipt: (paymentId: string) => void;
   exportCurrentDealPDF: (dealId: string) => void;
   exportAllDealsExcel: () => void;
   exportPaymentHistoryExcel: (dealId?: string) => void;
@@ -629,7 +633,48 @@ export const AccountsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [documents]
   );
 
+  // DISPATCH CLEARANCE GATEKEEPER
+  const setDispatchClearance = useCallback(
+    async (dealId: string, status: DispatchClearanceStatus, remarks?: string) => {
+      const now = new Date().toISOString();
+      const updatedDeals = deals.map((d) => {
+        if (d.id === dealId) {
+          return {
+            ...d,
+            dispatchClearance: status,
+            dispatchClearedBy: userName,
+            dispatchClearedAt: now,
+            dispatchClearanceRemarks:
+              remarks ||
+              (status === 'cleared'
+                ? 'Payment Cleared for Dispatch'
+                : status === 'director_approved'
+                ? 'Credit Approved by Director'
+                : 'Dispatch Gate Pass Locked'),
+            updatedAt: now,
+          };
+        }
+        return d;
+      });
+      setDeals(updatedDeals);
+      await saveDeals(updatedDeals);
+    },
+    [deals, userName]
+  );
+
   // EXPORT ACTIONS
+  const exportPaymentReceipt = useCallback(
+    (paymentId: string) => {
+      const payment = payments.find((p) => p.id === paymentId);
+      if (!payment) return;
+      const deal = deals.find((d) => d.id === payment.dealId);
+      if (!deal) return;
+      const company = companies.find((c) => c.id === deal.companyId);
+      exportPaymentReceiptPDF(payment, deal, company);
+    },
+    [payments, deals, companies]
+  );
+
   const exportCurrentDealPDF = useCallback(
     (dealId: string) => {
       const deal = deals.find((d) => d.id === dealId);
@@ -685,6 +730,8 @@ export const AccountsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         getPaymentsForDeal,
         getDocumentsForDeal,
         checkDuplicateGstin,
+        setDispatchClearance,
+        exportPaymentReceipt,
         exportCurrentDealPDF,
         exportAllDealsExcel,
         exportPaymentHistoryExcel,
