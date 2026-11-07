@@ -131,12 +131,21 @@ export const DealDetailsView: React.FC<DealDetailsViewProps> = ({ dealId, onBack
     return `in ${diffDays} days`;
   };
 
+  const handleSetQuickDate = (daysAhead: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + daysAhead);
+    setNewCommitmentDate(d.toISOString().split('T')[0]);
+  };
+
   const commitments = (deal.commitments || []).slice().sort(
     (a, b) => new Date(a.commitmentDate).getTime() - new Date(b.commitmentDate).getTime()
   );
   const nextCommitment = commitments.find(
     (c) => c.status === 'upcoming' || c.status === 'due'
   );
+  const completedCommitments = commitments.filter((c) => c.status === 'received');
+  const lastCompleted =
+    completedCommitments.length > 0 ? completedCommitments[completedCommitments.length - 1] : undefined;
 
   const renderStatus = (status: DealStatus) => {
     if (status === 'fully_paid') {
@@ -318,224 +327,23 @@ export const DealDetailsView: React.FC<DealDetailsViewProps> = ({ dealId, onBack
         </div>
       </div>
 
-      {/* 🛡️ DISPATCH GATE PASS CLEARANCE (FINANCIAL GATEKEEPER) */}
-      <div
-        className={`p-4 rounded-xl border shadow-xs transition-all ${
-          deal.dispatchClearance === 'cleared'
-            ? 'bg-emerald-50/70 border-emerald-300'
-            : deal.dispatchClearance === 'director_approved'
-            ? 'bg-purple-50/70 border-purple-300'
-            : 'bg-rose-50/70 border-rose-300'
-        }`}
-      >
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <div
-              className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-2xs ${
-                deal.dispatchClearance === 'cleared'
-                  ? 'bg-emerald-600 text-white'
-                  : deal.dispatchClearance === 'director_approved'
-                  ? 'bg-purple-700 text-white'
-                  : 'bg-rose-600 text-white'
-              }`}
-            >
-              {deal.dispatchClearance === 'cleared' ? (
-                <ShieldCheck className="w-5 h-5" />
-              ) : deal.dispatchClearance === 'director_approved' ? (
-                <Unlock className="w-5 h-5" />
-              ) : (
-                <Lock className="w-5 h-5" />
-              )}
-            </div>
-
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                  Dispatch Gate Pass Clearance
-                </span>
-                <span
-                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider shadow-2xs ${
-                    deal.dispatchClearance === 'cleared'
-                      ? 'bg-emerald-700 text-white'
-                      : deal.dispatchClearance === 'director_approved'
-                      ? 'bg-purple-800 text-white'
-                      : 'bg-rose-700 text-white'
-                  }`}
-                >
-                  {deal.dispatchClearance === 'cleared'
-                    ? '✓ Cleared for Dispatch'
-                    : deal.dispatchClearance === 'director_approved'
-                    ? '👑 Director Approved'
-                    : '🔒 Gate Pass Locked'}
-                </span>
-              </div>
-
-              <p className="text-xs text-slate-700">
-                {deal.dispatchClearance === 'cleared' ? (
-                  <>
-                    <strong className="text-emerald-900">Approved for Dispatch:</strong> Machinery and materials can be issued on factory Outward Gate Pass. Cleared by <strong>{deal.dispatchClearedBy || 'Accounts'}</strong> on {formatDateIndian(deal.dispatchClearedAt)}.
-                  </>
-                ) : deal.dispatchClearance === 'director_approved' ? (
-                  <>
-                    <strong className="text-purple-900">Director Special Approval:</strong> Management credit authorization granted by <strong>{deal.dispatchClearedBy || 'Director'}</strong> on {formatDateIndian(deal.dispatchClearedAt)}.
-                  </>
-                ) : (
-                  <>
-                    <strong className="text-rose-900">Dispatch Gate Pass is Locked:</strong> Pending collection of {formatINR(deal.remainingBalance)}. Factory gate/stores team cannot generate Outward Gate Pass until Accounts clears payment.
-                  </>
-                )}
-              </p>
-              {deal.dispatchClearanceRemarks && (
-                <p className="text-[11px] text-slate-500 italic">
-                  Note: {deal.dispatchClearanceRemarks}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Gatekeeper Action Buttons */}
-          <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
-            {deal.dispatchClearance === 'cleared' || deal.dispatchClearance === 'director_approved' ? (
-              <button
-                type="button"
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      'Re-lock dispatch gate pass for this company? Factory team will not be able to generate outward gate passes.'
-                    )
-                  ) {
-                    setDispatchClearance(deal.id, 'locked', 'Dispatch re-locked by Accounts');
-                  }
-                }}
-                className="px-3 py-1.5 bg-white border border-rose-300 hover:bg-rose-50 text-rose-700 text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
-              >
-                <Lock className="w-3.5 h-3.5" />
-                <span>Re-lock Gate Pass</span>
-              </button>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const remarks = window.prompt(
-                      'Enter clearance note (optional):',
-                      'Payment verified in bank account. Cleared for dispatch.'
-                    );
-                    if (remarks !== null) {
-                      setDispatchClearance(deal.id, 'cleared', remarks);
-                    }
-                  }}
-                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Clear for Dispatch</span>
-                </button>
-
-                {currentUser?.role === 'super_admin' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const remarks = window.prompt(
-                        'Director credit approval remarks:',
-                        'Management authorized credit dispatch.'
-                      );
-                      if (remarks !== null) {
-                        setDispatchClearance(deal.id, 'director_approved', remarks);
-                      }
-                    }}
-                    className="px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-                  >
-                    <Unlock className="w-3.5 h-3.5" />
-                    <span>Director Credit Approval</span>
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Grid: Company Details & Agreed Payment Terms */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Company Contact Details */}
-        <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-3">
-          <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider border-b border-slate-100 pb-2">
-            Company Contact Details
-          </h2>
-          <div className="space-y-2 text-xs">
-            <div className="flex justify-between">
-              <span className="text-slate-500">Company Name:</span>
-              <span className="font-semibold text-slate-900">{deal.companyName}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">GSTIN:</span>
-              <span className="font-mono font-semibold text-slate-800">
-                {deal.companyGstin || company?.gstin || 'Not Provided'}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Contact Person:</span>
-              <span className="text-slate-800">{deal.contactPerson || company?.contactPerson || '-'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Phone:</span>
-              <span className="text-slate-800 font-mono">{deal.companyPhone || company?.phone || '-'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Address:</span>
-              <span className="text-slate-800 text-right max-w-[240px]">
-                {deal.companyAddress || company?.address || '-'}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Agreed Payment Terms */}
-        <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-3">
-          <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider border-b border-slate-100 pb-2">
-            Agreed Payment Terms
-          </h2>
-          <div className="space-y-2 text-xs">
-            <div className="flex justify-between">
-              <span className="text-slate-500">Payment Terms:</span>
-              <span className="font-semibold text-slate-900">{deal.paymentTerms}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Deal Date:</span>
-              <span className="text-slate-800">{formatDateIndian(deal.dealDate)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Expected Payment Date:</span>
-              <span className="font-semibold text-slate-800">
-                {formatDateIndian(deal.expectedPaymentDate)}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Tax Type:</span>
-              <span className="text-slate-800">{deal.gstInclusive ? 'GST Inclusive' : 'GST Exclusive'}</span>
-            </div>
-            {deal.remarks && (
-              <div className="pt-2 border-t border-slate-100 text-slate-600">
-                <span className="text-slate-400 block text-[11px] mb-0.5">Remarks:</span>
-                <p className="bg-slate-50 p-2 rounded border border-slate-200 text-xs">
-                  {deal.remarks}
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* 📅 PAYMENT COMMITMENTS / NEXT COMMITMENT DATE */}
-      <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-3.5">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-          <div className="flex items-center gap-2">
-            <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-              Payment Commitments ({commitments.length})
-            </h2>
-            <span className="text-[11px] text-slate-400 font-normal">
-              (ग्राहक कमिटमेंट व अगली तारीख)
-            </span>
+      <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-4">
+        {/* Section Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                <CalendarClock className="w-4 h-4 text-indigo-600" />
+                <span>Payment Commitments ({commitments.length})</span>
+              </h2>
+              <span className="text-[11px] text-slate-500 font-medium">
+                (ग्राहक कमिटमेंट व अगली तारीख)
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Client promised installment schedule and upcoming collection follow-up dates
+            </p>
           </div>
 
           <button
@@ -544,9 +352,9 @@ export const DealDetailsView: React.FC<DealDetailsViewProps> = ({ dealId, onBack
               setNewCommitmentAmount(String(deal.remainingBalance > 0 ? deal.remainingBalance : ''));
               setIsAddCommitmentOpen(true);
             }}
-            className="px-3 py-1.5 bg-slate-900 hover:bg-black text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+            className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer self-start sm:self-auto"
           >
-            <Plus className="w-3.5 h-3.5 text-emerald-400" />
+            <Plus className="w-3.5 h-3.5 text-indigo-200" />
             <span>+ Add Commitment Date</span>
           </button>
         </div>
@@ -554,122 +362,184 @@ export const DealDetailsView: React.FC<DealDetailsViewProps> = ({ dealId, onBack
         {/* 1. Next Commitment Highlight Banner Row */}
         {nextCommitment ? (
           <div
-            className={`p-3.5 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-3 transition-all ${
+            className={`p-4 rounded-xl border-2 transition-all ${
               nextCommitment.status === 'due' || isOverdueDate(nextCommitment.commitmentDate)
-                ? 'bg-amber-50/70 border-amber-300'
-                : 'bg-blue-50/60 border-blue-200'
+                ? 'bg-amber-50/80 border-amber-400 text-amber-950 shadow-2xs'
+                : 'bg-linear-to-r from-indigo-50/80 via-blue-50/50 to-white border-indigo-300 shadow-2xs'
             }`}
           >
-            <div className="flex items-start gap-3">
-              <div
-                className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-                  nextCommitment.status === 'due' || isOverdueDate(nextCommitment.commitmentDate)
-                    ? 'bg-amber-100 text-amber-700'
-                    : 'bg-blue-100 text-blue-700'
-                }`}
-              >
-                <CalendarClock className="w-5 h-5" />
-              </div>
-
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                    Next Payment Commitment:
-                  </span>
-                  <span className="text-sm font-bold text-slate-900">
-                    {formatDateIndian(nextCommitment.commitmentDate)}
-                  </span>
-                  <span
-                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                      nextCommitment.status === 'due' || isOverdueDate(nextCommitment.commitmentDate)
-                        ? 'bg-amber-200 text-amber-900'
-                        : 'bg-blue-200 text-blue-900'
-                    }`}
-                  >
-                    {nextCommitment.status === 'due'
-                      ? '⚠️ Marked Due'
-                      : getCommitmentDaysText(nextCommitment.commitmentDate)}
-                  </span>
-                </div>
-
-                <div className="mt-1 flex items-baseline gap-2">
-                  <span className="text-xs text-slate-500">Committed Amount:</span>
-                  <strong className="text-sm font-bold font-mono text-slate-900">
-                    {formatINR(nextCommitment.amount)}
-                  </strong>
-                  {nextCommitment.note && (
-                    <span className="text-xs text-slate-600 font-medium">
-                      • {nextCommitment.note}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Quick Actions for Next Commitment */}
-            <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
-              {nextCommitment.status === 'upcoming' && (
-                <button
-                  type="button"
-                  onClick={() => updateCommitmentStatus(deal.id, nextCommitment.id, 'due')}
-                  className="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
-                  title="Mark this commitment as due"
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div
+                  className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 shadow-2xs ${
+                    nextCommitment.status === 'due' || isOverdueDate(nextCommitment.commitmentDate)
+                      ? 'bg-amber-500 text-white'
+                      : 'bg-indigo-600 text-white'
+                  }`}
                 >
-                  <AlertCircle className="w-3.5 h-3.5" />
-                  <span>Mark Due</span>
-                </button>
-              )}
+                  <CalendarClock className="w-6 h-6" />
+                </div>
 
-              {nextCommitment.status === 'due' && (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-600">
+                      Next Payment Commitment:
+                    </span>
+                    <span className="text-base font-extrabold text-slate-900">
+                      {formatDateIndian(nextCommitment.commitmentDate)}
+                    </span>
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-extrabold shadow-2xs ${
+                        nextCommitment.status === 'due' || isOverdueDate(nextCommitment.commitmentDate)
+                          ? 'bg-amber-200 text-amber-950 border border-amber-300'
+                          : 'bg-indigo-100 text-indigo-900 border border-indigo-200'
+                      }`}
+                    >
+                      {nextCommitment.status === 'due'
+                        ? '⚠️ Due for Collection'
+                        : getCommitmentDaysText(nextCommitment.commitmentDate)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-3 flex-wrap pt-0.5">
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-xs text-slate-600 font-medium">Committed Amount:</span>
+                      <span className="text-base font-black font-mono text-slate-950 bg-white/90 px-2.5 py-0.5 rounded-md border border-slate-200 shadow-2xs">
+                        {formatINR(nextCommitment.amount)}
+                      </span>
+                    </div>
+
+                    {nextCommitment.note && (
+                      <span className="text-xs text-slate-600 font-medium bg-white/70 px-2.5 py-0.5 rounded border border-slate-200">
+                        📌 {nextCommitment.note}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Actions for Next Commitment */}
+              <div className="flex items-center gap-2 shrink-0 self-end md:self-center flex-wrap">
+                {nextCommitment.status === 'upcoming' && (
+                  <button
+                    type="button"
+                    onClick={() => updateCommitmentStatus(deal.id, nextCommitment.id, 'due')}
+                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                    title="Mark this commitment as due for payment collection"
+                  >
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    <span>Mark Due</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => updateCommitmentStatus(deal.id, nextCommitment.id, 'received')}
-                  className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
-                  title="Mark this commitment as received"
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                  title="Mark this commitment amount as received"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   <span>Mark Received</span>
                 </button>
-              )}
 
-              <button
-                type="button"
-                onClick={() => {
-                  setNewCommitmentAmount('');
-                  setIsAddCommitmentOpen(true);
-                }}
-                className="px-2.5 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5 text-blue-600" />
-                <span>+ Create Next Date</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewCommitmentAmount(String(deal.remainingBalance > 0 ? deal.remainingBalance : ''));
+                    setIsAddCommitmentOpen(true);
+                  }}
+                  className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>+ Next Date</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : lastCompleted ? (
+          /* State when no active commitment, but previous ones were received */
+          <div className="p-4 rounded-xl border border-emerald-300 bg-linear-to-r from-emerald-50 via-teal-50/60 to-white shadow-xs">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-bold text-emerald-950">
+                      Last Commitment Completed:
+                    </span>
+                    <span className="font-mono font-bold text-sm text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded border border-emerald-200">
+                      {formatINR(lastCompleted.amount)}
+                    </span>
+                    <span className="text-xs text-emerald-700">
+                      on {formatDateIndian(lastCompleted.commitmentDate)} (✓ Received)
+                    </span>
+                  </div>
+
+                  {deal.remainingBalance > 0 ? (
+                    <p className="text-xs text-slate-600 mt-1">
+                      Pending balance to collect: <strong className="font-mono text-slate-900 font-bold">{formatINR(deal.remainingBalance)}</strong>. Set the next promised payment date agreed with customer.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-emerald-700 mt-0.5 font-medium">
+                      ✓ Deal is fully paid! All committed amounts successfully collected.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {deal.remainingBalance > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewCommitmentAmount(String(deal.remainingBalance));
+                    setIsAddCommitmentOpen(true);
+                  }}
+                  className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-lg shadow-xs flex items-center gap-1.5 shrink-0 self-start md:self-center cursor-pointer transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ Set Next Commitment Date</span>
+                </button>
+              )}
             </div>
           </div>
         ) : (
-          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs text-slate-500">
-            <span>No upcoming payment commitment set for this deal.</span>
+          /* Empty state when no commitments scheduled yet */
+          <div className="p-4 bg-linear-to-r from-slate-50 to-indigo-50/30 border border-slate-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+                <CalendarClock className="w-5 h-5" />
+              </div>
+              <div className="text-xs">
+                <span className="font-bold text-slate-800">No payment commitment set for this deal yet.</span>
+                <p className="text-slate-500">Record client's promised payment date and amount to track collections.</p>
+              </div>
+            </div>
+
             <button
               type="button"
               onClick={() => {
                 setNewCommitmentAmount(String(deal.remainingBalance > 0 ? deal.remainingBalance : ''));
                 setIsAddCommitmentOpen(true);
               }}
-              className="px-2.5 py-1 bg-slate-900 text-white font-medium rounded-lg hover:bg-black transition-colors cursor-pointer"
+              className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-2xs transition-colors cursor-pointer shrink-0"
             >
-              Set Next Commitment Date
+              + Set Commitment Date
             </button>
           </div>
         )}
 
-        {/* 2. Add Commitment Inline Form */}
+        {/* 2. Add / Schedule Commitment Inline Form */}
         {isAddCommitmentOpen && (
           <form
             onSubmit={handleAddCommitmentSubmit}
-            className="p-3.5 bg-slate-50 border border-slate-300 rounded-xl space-y-3 animate-in fade-in duration-150"
+            className="p-4 bg-slate-50 border-2 border-indigo-200 rounded-xl space-y-3.5 animate-in fade-in duration-150"
           >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-800">
-                Create Payment Commitment Date (कमिटमेंट तारीख दर्ज करें)
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+              <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                <CalendarClock className="w-4 h-4 text-indigo-600" />
+                <span>Schedule Payment Commitment (कमिटमेंट तारीख व राशि दर्ज करें)</span>
               </span>
               <button
                 type="button"
@@ -680,9 +550,72 @@ export const DealDetailsView: React.FC<DealDetailsViewProps> = ({ dealId, onBack
               </button>
             </div>
 
+            {/* Quick Helper Presets */}
+            <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px]">
+              <span className="text-slate-500 font-medium">Quick Dates:</span>
+              <button
+                type="button"
+                onClick={() => handleSetQuickDate(0)}
+                className="px-2 py-0.5 bg-white border border-slate-300 hover:bg-slate-100 rounded text-slate-700 font-semibold cursor-pointer"
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSetQuickDate(1)}
+                className="px-2 py-0.5 bg-white border border-slate-300 hover:bg-slate-100 rounded text-slate-700 font-semibold cursor-pointer"
+              >
+                Tomorrow
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSetQuickDate(7)}
+                className="px-2 py-0.5 bg-white border border-slate-300 hover:bg-slate-100 rounded text-slate-700 font-semibold cursor-pointer"
+              >
+                +7 Days
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSetQuickDate(15)}
+                className="px-2 py-0.5 bg-white border border-slate-300 hover:bg-slate-100 rounded text-slate-700 font-semibold cursor-pointer"
+              >
+                +15 Days
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSetQuickDate(30)}
+                className="px-2 py-0.5 bg-white border border-slate-300 hover:bg-slate-100 rounded text-slate-700 font-semibold cursor-pointer"
+              >
+                +30 Days
+              </button>
+
+              {deal.remainingBalance > 0 && (
+                <>
+                  <span className="text-slate-300 mx-1">|</span>
+                  <span className="text-slate-500 font-medium">Quick Amount:</span>
+                  <button
+                    type="button"
+                    onClick={() => setNewCommitmentAmount(String(deal.remainingBalance))}
+                    className="px-2 py-0.5 bg-emerald-50 border border-emerald-300 hover:bg-emerald-100 rounded text-emerald-800 font-bold font-mono cursor-pointer"
+                  >
+                    Full Pending ({formatINR(deal.remainingBalance)})
+                  </button>
+                  {deal.remainingBalance >= 50000 && (
+                    <button
+                      type="button"
+                      onClick={() => setNewCommitmentAmount(String(Math.round(deal.remainingBalance / 2)))}
+                      className="px-2 py-0.5 bg-emerald-50 border border-emerald-300 hover:bg-emerald-100 rounded text-emerald-800 font-bold font-mono cursor-pointer"
+                    >
+                      50% ({formatINR(Math.round(deal.remainingBalance / 2))})
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
                   Commitment Date *
                 </label>
                 <input
@@ -690,12 +623,12 @@ export const DealDetailsView: React.FC<DealDetailsViewProps> = ({ dealId, onBack
                   required
                   value={newCommitmentDate}
                   onChange={(e) => setNewCommitmentDate(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 outline-none focus:border-slate-900"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
                   Committed Amount (₹) *
                 </label>
                 <div className="relative">
@@ -709,13 +642,13 @@ export const DealDetailsView: React.FC<DealDetailsViewProps> = ({ dealId, onBack
                     placeholder="e.g. 200000"
                     value={newCommitmentAmount}
                     onChange={(e) => setNewCommitmentAmount(e.target.value)}
-                    className="w-full pl-7 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 outline-none focus:border-slate-900 font-mono"
+                    className="w-full pl-7 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 font-mono"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
                   Purpose / Notes (optional)
                 </label>
                 <input
@@ -723,7 +656,7 @@ export const DealDetailsView: React.FC<DealDetailsViewProps> = ({ dealId, onBack
                   placeholder="e.g. Promised on call before dispatch"
                   value={newCommitmentNote}
                   onChange={(e) => setNewCommitmentNote(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 outline-none focus:border-slate-900"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
                 />
               </div>
             </div>
@@ -732,13 +665,13 @@ export const DealDetailsView: React.FC<DealDetailsViewProps> = ({ dealId, onBack
               <button
                 type="button"
                 onClick={() => setIsAddCommitmentOpen(false)}
-                className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 text-xs font-semibold cursor-pointer"
+                className="px-3.5 py-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 text-xs font-semibold cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs cursor-pointer"
+                className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs cursor-pointer"
               >
                 Save Commitment
               </button>
@@ -746,17 +679,17 @@ export const DealDetailsView: React.FC<DealDetailsViewProps> = ({ dealId, onBack
           </form>
         )}
 
-        {/* 3. Commitments Table / Register */}
+        {/* 3. Commitments Register Table */}
         {commitments.length > 0 && (
           <div className="overflow-x-auto border border-slate-200 rounded-lg">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 text-[11px]">
-                  <th className="py-2 px-3">Commitment Date</th>
-                  <th className="py-2 px-3 text-right">Committed Amount</th>
-                  <th className="py-2 px-3">Purpose / Notes</th>
-                  <th className="py-2 px-3 text-center">Status</th>
-                  <th className="py-2 px-3 text-right">Actions</th>
+                <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200 text-[11px] uppercase tracking-wider">
+                  <th className="py-2.5 px-3">Commitment Date</th>
+                  <th className="py-2.5 px-3 text-right">Committed Amount</th>
+                  <th className="py-2.5 px-3">Purpose / Notes</th>
+                  <th className="py-2.5 px-3 text-center">Status</th>
+                  <th className="py-2.5 px-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -765,40 +698,42 @@ export const DealDetailsView: React.FC<DealDetailsViewProps> = ({ dealId, onBack
                     comm.status === 'upcoming' && isOverdueDate(comm.commitmentDate);
 
                   return (
-                    <tr key={comm.id} className="hover:bg-slate-50 transition-colors">
+                    <tr key={comm.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="py-2.5 px-3 whitespace-nowrap">
-                        <div className="font-semibold text-slate-900">
+                        <div className="font-bold text-slate-900">
                           {formatDateIndian(comm.commitmentDate)}
                         </div>
-                        <div className="text-[10px] text-slate-400">
+                        <div className="text-[10px] text-slate-500 font-medium">
                           {comm.status === 'received'
-                            ? 'Completed'
+                            ? 'Completed (Received)'
                             : isOverdue
-                            ? 'Overdue date'
+                            ? '⚠️ Overdue'
                             : getCommitmentDaysText(comm.commitmentDate)}
                         </div>
                       </td>
 
                       <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
-                        {formatINR(comm.amount)}
+                        <span className={comm.status === 'received' ? 'text-emerald-700' : 'text-slate-900'}>
+                          {formatINR(comm.amount)}
+                        </span>
                       </td>
 
-                      <td className="py-2.5 px-3 text-slate-600">
-                        {comm.note || '-'}
+                      <td className="py-2.5 px-3 text-slate-600 max-w-[200px] truncate">
+                        {comm.note || '—'}
                       </td>
 
                       <td className="py-2.5 px-3 text-center whitespace-nowrap">
                         {comm.status === 'received' ? (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
                             ✓ Received
                           </span>
                         ) : comm.status === 'due' || isOverdue ? (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800">
-                            ⚠️ Due
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                            ⚠️ Due Now
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">
-                            📅 Upcoming
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                            📅 Scheduled
                           </span>
                         )}
                       </td>
@@ -806,24 +741,48 @@ export const DealDetailsView: React.FC<DealDetailsViewProps> = ({ dealId, onBack
                       <td className="py-2.5 px-3 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5">
                           {comm.status === 'upcoming' && (
-                            <button
-                              type="button"
-                              onClick={() => updateCommitmentStatus(deal.id, comm.id, 'due')}
-                              className="px-2 py-0.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-50 rounded border border-amber-300 transition-colors cursor-pointer"
-                              title="Mark Due"
-                            >
-                              Mark Due
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => updateCommitmentStatus(deal.id, comm.id, 'due')}
+                                className="px-2 py-0.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-50 rounded border border-amber-300 transition-colors cursor-pointer"
+                                title="Mark Due"
+                              >
+                                Mark Due
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => updateCommitmentStatus(deal.id, comm.id, 'received')}
+                                className="px-2 py-0.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 rounded border border-emerald-300 transition-colors cursor-pointer"
+                                title="Mark Received"
+                              >
+                                ✓ Received
+                              </button>
+                            </>
                           )}
 
                           {comm.status === 'due' && (
                             <button
                               type="button"
                               onClick={() => updateCommitmentStatus(deal.id, comm.id, 'received')}
-                              className="px-2 py-0.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 rounded border border-emerald-300 transition-colors cursor-pointer"
+                              className="px-2.5 py-0.5 text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded shadow-2xs transition-colors cursor-pointer"
                               title="Mark Received"
                             >
-                              Mark Received
+                              ✓ Mark Received
+                            </button>
+                          )}
+
+                          {comm.status === 'received' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setNewCommitmentAmount(String(deal.remainingBalance > 0 ? deal.remainingBalance : ''));
+                                setIsAddCommitmentOpen(true);
+                              }}
+                              className="px-2 py-0.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50 rounded border border-indigo-200 transition-colors cursor-pointer"
+                              title="Set next installment commitment"
+                            >
+                              + Next Date
                             </button>
                           )}
 
@@ -1050,6 +1009,214 @@ export const DealDetailsView: React.FC<DealDetailsViewProps> = ({ dealId, onBack
             })}
           </div>
         )}
+      </div>
+
+      {/* 🛡️ DISPATCH GATE PASS CLEARANCE (FINANCIAL GATEKEEPER - KEPT AT BOTTOM) */}
+      <div
+        className={`p-4 rounded-xl border shadow-xs transition-all ${
+          deal.dispatchClearance === 'cleared'
+            ? 'bg-emerald-50/70 border-emerald-300'
+            : deal.dispatchClearance === 'director_approved'
+            ? 'bg-purple-50/70 border-purple-300'
+            : 'bg-rose-50/70 border-rose-300'
+        }`}
+      >
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div
+              className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-2xs ${
+                deal.dispatchClearance === 'cleared'
+                  ? 'bg-emerald-600 text-white'
+                  : deal.dispatchClearance === 'director_approved'
+                  ? 'bg-purple-700 text-white'
+                  : 'bg-rose-600 text-white'
+              }`}
+            >
+              {deal.dispatchClearance === 'cleared' ? (
+                <ShieldCheck className="w-5 h-5" />
+              ) : deal.dispatchClearance === 'director_approved' ? (
+                <Unlock className="w-5 h-5" />
+              ) : (
+                <Lock className="w-5 h-5" />
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                  Dispatch Gate Pass Clearance
+                </span>
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider shadow-2xs ${
+                    deal.dispatchClearance === 'cleared'
+                      ? 'bg-emerald-700 text-white'
+                      : deal.dispatchClearance === 'director_approved'
+                      ? 'bg-purple-800 text-white'
+                      : 'bg-rose-700 text-white'
+                  }`}
+                >
+                  {deal.dispatchClearance === 'cleared'
+                    ? '✓ Cleared for Dispatch'
+                    : deal.dispatchClearance === 'director_approved'
+                    ? '👑 Director Approved'
+                    : '🔒 Gate Pass Locked'}
+                </span>
+              </div>
+
+              <p className="text-xs text-slate-700">
+                {deal.dispatchClearance === 'cleared' ? (
+                  <>
+                    <strong className="text-emerald-900">Approved for Dispatch:</strong> Machinery and materials can be issued on factory Outward Gate Pass. Cleared by <strong>{deal.dispatchClearedBy || 'Accounts'}</strong> on {formatDateIndian(deal.dispatchClearedAt)}.
+                  </>
+                ) : deal.dispatchClearance === 'director_approved' ? (
+                  <>
+                    <strong className="text-purple-900">Director Special Approval:</strong> Management credit authorization granted by <strong>{deal.dispatchClearedBy || 'Director'}</strong> on {formatDateIndian(deal.dispatchClearedAt)}.
+                  </>
+                ) : (
+                  <>
+                    <strong className="text-rose-900">Dispatch Gate Pass is Locked:</strong> Pending collection of {formatINR(deal.remainingBalance)}. Factory gate/stores team cannot generate Outward Gate Pass until Accounts clears payment.
+                  </>
+                )}
+              </p>
+              {deal.dispatchClearanceRemarks && (
+                <p className="text-[11px] text-slate-500 italic">
+                  Note: {deal.dispatchClearanceRemarks}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Gatekeeper Action Buttons */}
+          <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+            {deal.dispatchClearance === 'cleared' || deal.dispatchClearance === 'director_approved' ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      'Re-lock dispatch gate pass for this company? Factory team will not be able to generate outward gate passes.'
+                    )
+                  ) {
+                    setDispatchClearance(deal.id, 'locked', 'Dispatch re-locked by Accounts');
+                  }
+                }}
+                className="px-3 py-1.5 bg-white border border-rose-300 hover:bg-rose-50 text-rose-700 text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>Re-lock Gate Pass</span>
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const remarks = window.prompt(
+                      'Enter clearance note (optional):',
+                      'Payment verified in bank account. Cleared for dispatch.'
+                    );
+                    if (remarks !== null) {
+                      setDispatchClearance(deal.id, 'cleared', remarks);
+                    }
+                  }}
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Clear for Dispatch</span>
+                </button>
+
+                {currentUser?.role === 'super_admin' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const remarks = window.prompt(
+                        'Director credit approval remarks:',
+                        'Management authorized credit dispatch.'
+                      );
+                      if (remarks !== null) {
+                        setDispatchClearance(deal.id, 'director_approved', remarks);
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                  >
+                    <Unlock className="w-3.5 h-3.5" />
+                    <span>Director Credit Approval</span>
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Grid: Company Details & Agreed Payment Terms (Kept at the bottom as reference) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Company Contact Details */}
+        <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-3">
+          <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider border-b border-slate-100 pb-2">
+            Company Contact Details
+          </h2>
+          <div className="space-y-2 text-xs">
+            <div className="flex justify-between">
+              <span className="text-slate-500">Company Name:</span>
+              <span className="font-semibold text-slate-900">{deal.companyName}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">GSTIN:</span>
+              <span className="font-mono font-semibold text-slate-800">
+                {deal.companyGstin || company?.gstin || 'Not Provided'}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">Contact Person:</span>
+              <span className="text-slate-800">{deal.contactPerson || company?.contactPerson || '-'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">Phone:</span>
+              <span className="text-slate-800 font-mono">{deal.companyPhone || company?.phone || '-'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">Address:</span>
+              <span className="text-slate-800 text-right max-w-[240px]">
+                {deal.companyAddress || company?.address || '-'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Agreed Payment Terms */}
+        <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-3">
+          <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider border-b border-slate-100 pb-2">
+            Agreed Payment Terms
+          </h2>
+          <div className="space-y-2 text-xs">
+            <div className="flex justify-between">
+              <span className="text-slate-500">Payment Terms:</span>
+              <span className="font-semibold text-slate-900">{deal.paymentTerms}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">Deal Date:</span>
+              <span className="text-slate-800">{formatDateIndian(deal.dealDate)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">Expected Payment Date:</span>
+              <span className="font-semibold text-slate-800">
+                {formatDateIndian(deal.expectedPaymentDate)}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">Tax Type:</span>
+              <span className="text-slate-800">{deal.gstInclusive ? 'GST Inclusive' : 'GST Exclusive'}</span>
+            </div>
+            {deal.remarks && (
+              <div className="pt-2 border-t border-slate-100 text-slate-600">
+                <span className="text-slate-400 block text-[11px] mb-0.5">Remarks:</span>
+                <p className="bg-slate-50 p-2 rounded border border-slate-200 text-xs">
+                  {deal.remarks}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Add Payment Modal */}
