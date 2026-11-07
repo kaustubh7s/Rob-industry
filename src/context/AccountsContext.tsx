@@ -8,6 +8,8 @@ import {
   PaymentMode,
   DealStatus,
   DispatchClearanceStatus,
+  PaymentCommitment,
+  CommitmentStatus,
 } from '../types/accounts';
 import {
   loadCompanies,
@@ -94,6 +96,9 @@ interface AccountsContextType {
   getDocumentsForDeal: (dealId: string) => AccountDealDocument[];
   checkDuplicateGstin: (gstin: string, excludeCompanyId?: string) => AccountCompany | null;
   setDispatchClearance: (dealId: string, status: DispatchClearanceStatus, remarks?: string) => Promise<void>;
+  addCommitment: (dealId: string, payload: { commitmentDate: string; amount: number; note?: string }) => Promise<void>;
+  updateCommitmentStatus: (dealId: string, commitmentId: string, status: CommitmentStatus) => Promise<void>;
+  deleteCommitment: (dealId: string, commitmentId: string) => Promise<void>;
   exportPaymentReceipt: (paymentId: string) => void;
   exportCurrentDealPDF: (dealId: string) => void;
   exportAllDealsExcel: () => void;
@@ -662,6 +667,113 @@ export const AccountsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [deals, userName]
   );
 
+  // COMMITMENT DATES MANAGEMENT
+  const addCommitment = useCallback(
+    async (dealId: string, payload: { commitmentDate: string; amount: number; note?: string }) => {
+      const now = new Date().toISOString();
+      const newCommitment: PaymentCommitment = {
+        id: `comm-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        dealId,
+        commitmentDate: payload.commitmentDate,
+        amount: Math.round(Number(payload.amount) || 0),
+        note: payload.note?.trim(),
+        status: 'upcoming',
+        createdAt: now,
+      };
+
+      const updatedDeals = deals.map((d) => {
+        if (d.id === dealId) {
+          const existingList = d.commitments || [];
+          const updatedList = [...existingList, newCommitment].sort(
+            (a, b) => new Date(a.commitmentDate).getTime() - new Date(b.commitmentDate).getTime()
+          );
+
+          const nextActive = updatedList.find((c) => c.status === 'upcoming' || c.status === 'due');
+
+          return {
+            ...d,
+            commitments: updatedList,
+            nextCommitmentDate: nextActive?.commitmentDate,
+            nextCommitmentAmount: nextActive?.amount,
+            expectedPaymentDate: nextActive?.commitmentDate || d.expectedPaymentDate,
+            updatedAt: now,
+          };
+        }
+        return d;
+      });
+
+      setDeals(updatedDeals);
+      await saveDeals(updatedDeals);
+    },
+    [deals]
+  );
+
+  const updateCommitmentStatus = useCallback(
+    async (dealId: string, commitmentId: string, status: CommitmentStatus) => {
+      const now = new Date().toISOString();
+      const updatedDeals = deals.map((d) => {
+        if (d.id === dealId) {
+          const existingList = d.commitments || [];
+          const updatedList = existingList.map((c) => {
+            if (c.id === commitmentId) {
+              return {
+                ...c,
+                status,
+                markedDueAt: status === 'due' ? now : c.markedDueAt,
+                receivedAt: status === 'received' ? now : c.receivedAt,
+                updatedAt: now,
+              };
+            }
+            return c;
+          });
+
+          const nextActive = updatedList.find((c) => c.status === 'upcoming' || c.status === 'due');
+
+          return {
+            ...d,
+            commitments: updatedList,
+            nextCommitmentDate: nextActive?.commitmentDate,
+            nextCommitmentAmount: nextActive?.amount,
+            expectedPaymentDate: nextActive?.commitmentDate || d.expectedPaymentDate,
+            updatedAt: now,
+          };
+        }
+        return d;
+      });
+
+      setDeals(updatedDeals);
+      await saveDeals(updatedDeals);
+    },
+    [deals]
+  );
+
+  const deleteCommitment = useCallback(
+    async (dealId: string, commitmentId: string) => {
+      const now = new Date().toISOString();
+      const updatedDeals = deals.map((d) => {
+        if (d.id === dealId) {
+          const existingList = d.commitments || [];
+          const updatedList = existingList.filter((c) => c.id !== commitmentId);
+          const nextActive = updatedList.find((c) => c.status === 'upcoming' || c.status === 'due');
+
+          return {
+            ...d,
+            commitments: updatedList,
+            nextCommitmentDate: nextActive?.commitmentDate,
+            nextCommitmentAmount: nextActive?.amount,
+            expectedPaymentDate: nextActive?.commitmentDate || d.expectedPaymentDate,
+            updatedAt: now,
+          };
+        }
+        return d;
+      });
+
+      setDeals(updatedDeals);
+      await saveDeals(updatedDeals);
+    },
+    [deals]
+  );
+
   // EXPORT ACTIONS
   const exportPaymentReceipt = useCallback(
     (paymentId: string) => {
@@ -731,6 +843,9 @@ export const AccountsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         getDocumentsForDeal,
         checkDuplicateGstin,
         setDispatchClearance,
+        addCommitment,
+        updateCommitmentStatus,
+        deleteCommitment,
         exportPaymentReceipt,
         exportCurrentDealPDF,
         exportAllDealsExcel,

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   ArrowLeft,
   Calendar,
+  CalendarClock,
   CreditCard,
   Download,
   FileText,
@@ -20,6 +21,7 @@ import {
   ShieldCheck,
   Printer,
   ShieldAlert,
+  X,
 } from 'lucide-react';
 import { useAccounts } from '../../context/AccountsContext';
 import { useERP } from '../../context/ERPContext';
@@ -49,6 +51,9 @@ export const DealDetailsView: React.FC<DealDetailsViewProps> = ({ dealId, onBack
     exportPaymentHistoryExcel,
     setDispatchClearance,
     exportPaymentReceipt,
+    addCommitment,
+    updateCommitmentStatus,
+    deleteCommitment,
   } = useAccounts();
 
   const deal = getDealById(dealId);
@@ -59,6 +64,14 @@ export const DealDetailsView: React.FC<DealDetailsViewProps> = ({ dealId, onBack
   const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false);
   const [selectedPreviewDoc, setSelectedPreviewDoc] = useState<AccountDealDocument | null>(null);
   const [isUploadingDoc, setIsUploadingDoc] = useState(false);
+
+  // Commitment Dates Form State
+  const [isAddCommitmentOpen, setIsAddCommitmentOpen] = useState(false);
+  const [newCommitmentDate, setNewCommitmentDate] = useState(
+    new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  );
+  const [newCommitmentAmount, setNewCommitmentAmount] = useState('');
+  const [newCommitmentNote, setNewCommitmentNote] = useState('');
 
   if (!deal) {
     return (
@@ -79,6 +92,51 @@ export const DealDetailsView: React.FC<DealDetailsViewProps> = ({ dealId, onBack
     deal.decidedAmount > 0
       ? Math.min(100, Math.round((deal.totalReceived / deal.decidedAmount) * 100))
       : 0;
+
+  const handleAddCommitmentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deal) return;
+    const num = Math.round(Number(newCommitmentAmount) || 0);
+    if (num <= 0) {
+      alert('Please enter a valid committed amount greater than ₹0.');
+      return;
+    }
+    await addCommitment(deal.id, {
+      commitmentDate: newCommitmentDate,
+      amount: num,
+      note: newCommitmentNote.trim() || undefined,
+    });
+    setNewCommitmentNote('');
+    setIsAddCommitmentOpen(false);
+  };
+
+  const isOverdueDate = (dateStr?: string) => {
+    if (!dateStr) return false;
+    const today = new Date().toISOString().split('T')[0];
+    return dateStr < today;
+  };
+
+  const getCommitmentDaysText = (dateStr: string) => {
+    if (!dateStr) return '';
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const target = new Date(dateStr);
+    target.setHours(0, 0, 0, 0);
+    const diffTime = target.getTime() - today.getTime();
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return 'Due Today';
+    if (diffDays === 1) return 'Tomorrow';
+    if (diffDays === -1) return 'Overdue by 1 day';
+    if (diffDays < -1) return `Overdue by ${Math.abs(diffDays)} days`;
+    return `in ${diffDays} days`;
+  };
+
+  const commitments = (deal.commitments || []).slice().sort(
+    (a, b) => new Date(a.commitmentDate).getTime() - new Date(b.commitmentDate).getTime()
+  );
+  const nextCommitment = commitments.find(
+    (c) => c.status === 'upcoming' || c.status === 'due'
+  );
 
   const renderStatus = (status: DealStatus) => {
     if (status === 'fully_paid') {
@@ -468,76 +526,326 @@ export const DealDetailsView: React.FC<DealDetailsViewProps> = ({ dealId, onBack
         </div>
       </div>
 
-      {/* Deal Documents Section */}
-      <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-3">
+      {/* 📅 PAYMENT COMMITMENTS / NEXT COMMITMENT DATE */}
+      <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-3.5">
         <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-          <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-            Deal Documents ({documents.length})
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+              Payment Commitments ({commitments.length})
+            </h2>
+            <span className="text-[11px] text-slate-400 font-normal">
+              (ग्राहक कमिटमेंट व अगली तारीख)
+            </span>
+          </div>
 
-          <label className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg flex items-center gap-1.5 cursor-pointer transition-colors">
-            <Upload className="w-3.5 h-3.5" />
-            <span>{isUploadingDoc ? 'Uploading...' : 'Upload Document'}</span>
-            <input
-              type="file"
-              multiple
-              accept="image/jpeg,image/png,image/jpg,application/pdf"
-              onChange={handleDocUpload}
-              className="hidden"
-              disabled={isUploadingDoc}
-            />
-          </label>
+          <button
+            type="button"
+            onClick={() => {
+              setNewCommitmentAmount(String(deal.remainingBalance > 0 ? deal.remainingBalance : ''));
+              setIsAddCommitmentOpen(true);
+            }}
+            className="px-3 py-1.5 bg-slate-900 hover:bg-black text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5 text-emerald-400" />
+            <span>+ Add Commitment Date</span>
+          </button>
         </div>
 
-        {documents.length === 0 ? (
-          <p className="text-xs text-slate-400 py-3 text-center">
-            No deal documents uploaded. Click <strong>Upload Document</strong> to attach signed deal sheet or agreement.
-          </p>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            {documents.map((doc) => {
-              const isPdf =
-                doc.fileType.includes('pdf') ||
-                doc.fileName.toLowerCase().endsWith('.pdf') ||
-                doc.fileData.startsWith('data:application/pdf');
+        {/* 1. Next Commitment Highlight Banner Row */}
+        {nextCommitment ? (
+          <div
+            className={`p-3.5 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-3 transition-all ${
+              nextCommitment.status === 'due' || isOverdueDate(nextCommitment.commitmentDate)
+                ? 'bg-amber-50/70 border-amber-300'
+                : 'bg-blue-50/60 border-blue-200'
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <div
+                className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                  nextCommitment.status === 'due' || isOverdueDate(nextCommitment.commitmentDate)
+                    ? 'bg-amber-100 text-amber-700'
+                    : 'bg-blue-100 text-blue-700'
+                }`}
+              >
+                <CalendarClock className="w-5 h-5" />
+              </div>
 
-              return (
-                <div
-                  key={doc.id}
-                  className="p-3 border border-slate-200 rounded-lg bg-slate-50 flex items-center justify-between gap-2"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <FileText className={`w-6 h-6 shrink-0 ${isPdf ? 'text-rose-600' : 'text-blue-600'}`} />
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-slate-900 truncate" title={doc.fileName}>
-                        {doc.fileName}
-                      </p>
-                      <p className="text-[10px] text-slate-400">
-                        {(doc.fileSize / 1024).toFixed(1)} KB • {formatDateIndian(doc.uploadedAt)}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedPreviewDoc(doc)}
-                      className="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded font-medium cursor-pointer"
-                    >
-                      View
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeDealDocument(doc.id)}
-                      className="p-1 text-slate-400 hover:text-rose-600 rounded cursor-pointer"
-                      title="Remove"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    Next Payment Commitment:
+                  </span>
+                  <span className="text-sm font-bold text-slate-900">
+                    {formatDateIndian(nextCommitment.commitmentDate)}
+                  </span>
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      nextCommitment.status === 'due' || isOverdueDate(nextCommitment.commitmentDate)
+                        ? 'bg-amber-200 text-amber-900'
+                        : 'bg-blue-200 text-blue-900'
+                    }`}
+                  >
+                    {nextCommitment.status === 'due'
+                      ? '⚠️ Marked Due'
+                      : getCommitmentDaysText(nextCommitment.commitmentDate)}
+                  </span>
                 </div>
-              );
-            })}
+
+                <div className="mt-1 flex items-baseline gap-2">
+                  <span className="text-xs text-slate-500">Committed Amount:</span>
+                  <strong className="text-sm font-bold font-mono text-slate-900">
+                    {formatINR(nextCommitment.amount)}
+                  </strong>
+                  {nextCommitment.note && (
+                    <span className="text-xs text-slate-600 font-medium">
+                      • {nextCommitment.note}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Actions for Next Commitment */}
+            <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+              {nextCommitment.status === 'upcoming' && (
+                <button
+                  type="button"
+                  onClick={() => updateCommitmentStatus(deal.id, nextCommitment.id, 'due')}
+                  className="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                  title="Mark this commitment as due"
+                >
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  <span>Mark Due</span>
+                </button>
+              )}
+
+              {nextCommitment.status === 'due' && (
+                <button
+                  type="button"
+                  onClick={() => updateCommitmentStatus(deal.id, nextCommitment.id, 'received')}
+                  className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                  title="Mark this commitment as received"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Mark Received</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setNewCommitmentAmount('');
+                  setIsAddCommitmentOpen(true);
+                }}
+                className="px-2.5 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5 text-blue-600" />
+                <span>+ Create Next Date</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs text-slate-500">
+            <span>No upcoming payment commitment set for this deal.</span>
+            <button
+              type="button"
+              onClick={() => {
+                setNewCommitmentAmount(String(deal.remainingBalance > 0 ? deal.remainingBalance : ''));
+                setIsAddCommitmentOpen(true);
+              }}
+              className="px-2.5 py-1 bg-slate-900 text-white font-medium rounded-lg hover:bg-black transition-colors cursor-pointer"
+            >
+              Set Next Commitment Date
+            </button>
+          </div>
+        )}
+
+        {/* 2. Add Commitment Inline Form */}
+        {isAddCommitmentOpen && (
+          <form
+            onSubmit={handleAddCommitmentSubmit}
+            className="p-3.5 bg-slate-50 border border-slate-300 rounded-xl space-y-3 animate-in fade-in duration-150"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-800">
+                Create Payment Commitment Date (कमिटमेंट तारीख दर्ज करें)
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsAddCommitmentOpen(false)}
+                className="text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                  Commitment Date *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={newCommitmentDate}
+                  onChange={(e) => setNewCommitmentDate(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 outline-none focus:border-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                  Committed Amount (₹) *
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">
+                    ₹
+                  </span>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    placeholder="e.g. 200000"
+                    value={newCommitmentAmount}
+                    onChange={(e) => setNewCommitmentAmount(e.target.value)}
+                    className="w-full pl-7 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 outline-none focus:border-slate-900 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                  Purpose / Notes (optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Promised on call before dispatch"
+                  value={newCommitmentNote}
+                  onChange={(e) => setNewCommitmentNote(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 outline-none focus:border-slate-900"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setIsAddCommitmentOpen(false)}
+                className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 text-xs font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs cursor-pointer"
+              >
+                Save Commitment
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* 3. Commitments Table / Register */}
+        {commitments.length > 0 && (
+          <div className="overflow-x-auto border border-slate-200 rounded-lg">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 text-[11px]">
+                  <th className="py-2 px-3">Commitment Date</th>
+                  <th className="py-2 px-3 text-right">Committed Amount</th>
+                  <th className="py-2 px-3">Purpose / Notes</th>
+                  <th className="py-2 px-3 text-center">Status</th>
+                  <th className="py-2 px-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {commitments.map((comm) => {
+                  const isOverdue =
+                    comm.status === 'upcoming' && isOverdueDate(comm.commitmentDate);
+
+                  return (
+                    <tr key={comm.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-2.5 px-3 whitespace-nowrap">
+                        <div className="font-semibold text-slate-900">
+                          {formatDateIndian(comm.commitmentDate)}
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          {comm.status === 'received'
+                            ? 'Completed'
+                            : isOverdue
+                            ? 'Overdue date'
+                            : getCommitmentDaysText(comm.commitmentDate)}
+                        </div>
+                      </td>
+
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
+                        {formatINR(comm.amount)}
+                      </td>
+
+                      <td className="py-2.5 px-3 text-slate-600">
+                        {comm.note || '-'}
+                      </td>
+
+                      <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                        {comm.status === 'received' ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                            ✓ Received
+                          </span>
+                        ) : comm.status === 'due' || isOverdue ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800">
+                            ⚠️ Due
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">
+                            📅 Upcoming
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {comm.status === 'upcoming' && (
+                            <button
+                              type="button"
+                              onClick={() => updateCommitmentStatus(deal.id, comm.id, 'due')}
+                              className="px-2 py-0.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-50 rounded border border-amber-300 transition-colors cursor-pointer"
+                              title="Mark Due"
+                            >
+                              Mark Due
+                            </button>
+                          )}
+
+                          {comm.status === 'due' && (
+                            <button
+                              type="button"
+                              onClick={() => updateCommitmentStatus(deal.id, comm.id, 'received')}
+                              className="px-2 py-0.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 rounded border border-emerald-300 transition-colors cursor-pointer"
+                              title="Mark Received"
+                            >
+                              Mark Received
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm('Delete this commitment date?')) {
+                                deleteCommitment(deal.id, comm.id);
+                              }
+                            }}
+                            className="p-1 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
@@ -666,6 +974,80 @@ export const DealDetailsView: React.FC<DealDetailsViewProps> = ({ dealId, onBack
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+      </div>
+
+      {/* Deal Documents Section (Placed below Payment History as requested) */}
+      <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-3">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+          <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+            Deal Documents ({documents.length})
+          </h2>
+
+          <label className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg flex items-center gap-1.5 cursor-pointer transition-colors">
+            <Upload className="w-3.5 h-3.5" />
+            <span>{isUploadingDoc ? 'Uploading...' : 'Upload Document'}</span>
+            <input
+              type="file"
+              multiple
+              accept="image/jpeg,image/png,image/jpg,application/pdf"
+              onChange={handleDocUpload}
+              className="hidden"
+              disabled={isUploadingDoc}
+            />
+          </label>
+        </div>
+
+        {documents.length === 0 ? (
+          <p className="text-xs text-slate-400 py-3 text-center">
+            No deal documents uploaded. Click <strong>Upload Document</strong> to attach signed deal sheet or agreement.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            {documents.map((doc) => {
+              const isPdf =
+                doc.fileType.includes('pdf') ||
+                doc.fileName.toLowerCase().endsWith('.pdf') ||
+                doc.fileData.startsWith('data:application/pdf');
+
+              return (
+                <div
+                  key={doc.id}
+                  className="p-3 border border-slate-200 rounded-lg bg-slate-50 flex items-center justify-between gap-2"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <FileText className={`w-6 h-6 shrink-0 ${isPdf ? 'text-rose-600' : 'text-blue-600'}`} />
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-slate-900 truncate" title={doc.fileName}>
+                        {doc.fileName}
+                      </p>
+                      <p className="text-[10px] text-slate-400">
+                        {(doc.fileSize / 1024).toFixed(1)} KB • {formatDateIndian(doc.uploadedAt)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPreviewDoc(doc)}
+                      className="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded font-medium cursor-pointer"
+                    >
+                      View
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeDealDocument(doc.id)}
+                      className="p-1 text-slate-400 hover:text-rose-600 rounded cursor-pointer"
+                      title="Remove"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

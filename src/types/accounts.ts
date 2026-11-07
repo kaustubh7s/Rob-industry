@@ -14,6 +14,21 @@ export type DealStatus = 'awaiting_advance' | 'partially_received' | 'fully_paid
 
 export type DispatchClearanceStatus = 'locked' | 'cleared' | 'director_approved';
 
+export type CommitmentStatus = 'upcoming' | 'due' | 'received' | 'cancelled';
+
+export interface PaymentCommitment {
+  id: string;
+  dealId: string;
+  commitmentDate: string; // YYYY-MM-DD
+  amount: number;
+  note?: string;
+  status: CommitmentStatus;
+  markedDueAt?: string;
+  receivedAt?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface AccountDeal {
   id: string;
   dealNumber: string; // e.g. RSB-ACC-2026-001
@@ -40,6 +55,9 @@ export interface AccountDeal {
   dispatchClearanceRemarks?: string;
   linkedProjectId?: string;
   linkedProjectName?: string;
+  commitments?: PaymentCommitment[]; // Payment commitment dates with amounts
+  nextCommitmentDate?: string;
+  nextCommitmentAmount?: number;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
