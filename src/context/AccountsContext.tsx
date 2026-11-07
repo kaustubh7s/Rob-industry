@@ -15,6 +15,7 @@ import {
   AccountHead,
   JournalEntry,
   JournalLine,
+  VoucherType,
   SalesInvoice,
   PurchaseOrderFinance,
   PurchaseBill,
@@ -201,6 +202,25 @@ interface AccountsContextType {
   addBankAccount: (account: Omit<BankAccount, 'id'>) => Promise<BankAccount>;
   updateBankAccount: (id: string, updates: Partial<BankAccount>) => Promise<void>;
   transferBankFunds: (payload: { fromAccountId: string; toAccountId: string; amount: number; date: string; reference?: string; notes?: string }) => Promise<void>;
+  depositFundsToAccount: (payload: {
+    accountId: string;
+    amount: number;
+    date: string;
+    depositType: 'capital' | 'customer' | 'interest' | 'loan' | 'other';
+    sourceParty?: string;
+    reference?: string;
+    notes?: string;
+  }) => Promise<void>;
+  checkDuplicateReference: (reference: string) => {
+    isDuplicate: boolean;
+    matchedRecord?: {
+      type: string;
+      date: string;
+      amount: number;
+      party?: string;
+      details: string;
+    };
+  };
 
   updateCompanyProfile: (profile: CompanyFinanceProfile) => void;
   getAccountBalance: (accountCode: string) => number;
@@ -1058,6 +1078,160 @@ export const AccountsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [bankAccounts, postDoubleEntryTransaction]
   );
 
+  const depositFundsToAccount = useCallback(
+    async (payload: {
+      accountId: string;
+      amount: number;
+      date: string;
+      depositType: 'capital' | 'customer' | 'interest' | 'loan' | 'other';
+      sourceParty?: string;
+      reference?: string;
+      notes?: string;
+    }) => {
+      const targetAcc = bankAccounts.find((b) => b.id === payload.accountId);
+      if (!targetAcc) {
+        throw new Error('Please select a valid destination bank or cash account.');
+      }
+      if (payload.amount <= 0) {
+        throw new Error('Deposit amount must be greater than zero.');
+      }
+
+      // Update bank account balance
+      const updatedAccounts = bankAccounts.map((b) => {
+        if (b.id === payload.accountId) {
+          return { ...b, currentBalance: b.currentBalance + payload.amount };
+        }
+        return b;
+      });
+      setBankAccounts(updatedAccounts);
+      await saveBankAccounts(updatedAccounts);
+
+      // Select target bank code
+      const bankCode =
+        targetAcc.accountType === 'cash'
+          ? '1010'
+          : targetAcc.accountNumber.includes('50200012')
+          ? '1020'
+          : '1030';
+
+      // Credit Account Head
+      let creditCode = '3010';
+      let creditName = "Owner's Equity & Capital";
+      let voucherType: VoucherType = 'Journal Voucher';
+
+      if (payload.depositType === 'customer') {
+        creditCode = '1100';
+        creditName = 'Accounts Receivable (Customer Receipt)';
+        voucherType = 'Customer Receipt';
+      } else if (payload.depositType === 'interest') {
+        creditCode = '4020';
+        creditName = 'Interest & Other Income';
+      } else if (payload.depositType === 'loan') {
+        creditCode = '2010';
+        creditName = 'Bank Loan / Credit Facility';
+      }
+
+      const debits = [{ code: bankCode, name: targetAcc.accountName, amount: payload.amount }];
+      const credits = [{ code: creditCode, name: creditName, amount: payload.amount }];
+
+      const narration = `Funds Deposited: ₹${payload.amount.toLocaleString('en-IN')} into ${targetAcc.accountName} from ${payload.sourceParty || payload.depositType}. ${payload.notes || ''}`;
+
+      await postDoubleEntryTransaction(
+        voucherType,
+        payload.date,
+        narration,
+        debits,
+        credits,
+        `deposit-${Date.now()}`,
+        payload.reference
+      );
+    },
+    [bankAccounts, postDoubleEntryTransaction]
+  );
+
+  const checkDuplicateReference = useCallback(
+    (reference: string) => {
+      if (!reference || !reference.trim()) {
+        return { isDuplicate: false };
+      }
+      const cleanRef = reference.trim().toLowerCase();
+
+      // Check in customer payments
+      const matchedPayment = payments.find(
+        (p) => p.transactionReference && p.transactionReference.trim().toLowerCase() === cleanRef
+      );
+      if (matchedPayment) {
+        return {
+          isDuplicate: true,
+          matchedRecord: {
+            type: 'Customer Payment Receipt',
+            date: matchedPayment.paymentDate,
+            amount: matchedPayment.amount,
+            details: `Recorded on ${matchedPayment.paymentDate} for ₹${matchedPayment.amount.toLocaleString('en-IN')}`,
+          },
+        };
+      }
+
+      // Check in vendor payments
+      const matchedVendorPayment = vendorPayments.find(
+        (vp) =>
+          (vp.transactionReference && vp.transactionReference.trim().toLowerCase() === cleanRef) ||
+          (vp.utrNumber && vp.utrNumber.trim().toLowerCase() === cleanRef) ||
+          (vp.chequeNumber && vp.chequeNumber.trim().toLowerCase() === cleanRef)
+      );
+      if (matchedVendorPayment) {
+        return {
+          isDuplicate: true,
+          matchedRecord: {
+            type: 'Vendor Payment Voucher',
+            date: matchedVendorPayment.paymentDate,
+            amount: matchedVendorPayment.amount,
+            party: matchedVendorPayment.vendorName,
+            details: `Paid to ${matchedVendorPayment.vendorName} on ${matchedVendorPayment.paymentDate} for ₹${matchedVendorPayment.amount.toLocaleString('en-IN')}`,
+          },
+        };
+      }
+
+      // Check in journal entries
+      const matchedJV = journalEntries.find(
+        (jv) =>
+          (jv.referenceNumber && jv.referenceNumber.trim().toLowerCase() === cleanRef) ||
+          (jv.referenceId && jv.referenceId.trim().toLowerCase() === cleanRef)
+      );
+      if (matchedJV) {
+        return {
+          isDuplicate: true,
+          matchedRecord: {
+            type: matchedJV.voucherType || 'Journal Voucher',
+            date: matchedJV.date,
+            amount: matchedJV.totalDebit,
+            details: `${matchedJV.voucherNumber}: ${matchedJV.narration} (₹${matchedJV.totalDebit.toLocaleString('en-IN')})`,
+          },
+        };
+      }
+
+      // Check in business expenses
+      const matchedExpense = businessExpenses.find(
+        (e) => e.referenceNumber && e.referenceNumber.trim().toLowerCase() === cleanRef
+      );
+      if (matchedExpense) {
+        return {
+          isDuplicate: true,
+          matchedRecord: {
+            type: 'Business Expense',
+            date: matchedExpense.expenseDate,
+            amount: matchedExpense.amount,
+            party: matchedExpense.payeeName,
+            details: `Paid to ${matchedExpense.payeeName} for ₹${matchedExpense.amount.toLocaleString('en-IN')}`,
+          },
+        };
+      }
+
+      return { isDuplicate: false };
+    },
+    [payments, vendorPayments, journalEntries, businessExpenses]
+  );
+
   const updateCompanyProfile = useCallback((profile: CompanyFinanceProfile) => {
     setCompanyProfile(profile);
     saveCompanyProfile(profile);
@@ -1749,6 +1923,8 @@ export const AccountsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         addBankAccount,
         updateBankAccount,
         transferBankFunds,
+        depositFundsToAccount,
+        checkDuplicateReference,
         updateCompanyProfile,
         getAccountBalance,
         addChartAccount,

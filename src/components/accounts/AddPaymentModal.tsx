@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, CreditCard, Upload, CheckCircle2, AlertCircle, FileText, Image as ImageIcon } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { X, CreditCard, Upload, CheckCircle2, AlertCircle, FileText, Image as ImageIcon, AlertTriangle } from 'lucide-react';
 import { AccountDeal, PaymentMode } from '../../types/accounts';
 import { useAccounts } from '../../context/AccountsContext';
 import { formatINR } from '../../utils/accountsCalculations';
@@ -11,7 +11,7 @@ interface AddPaymentModalProps {
 }
 
 export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({ deal, isOpen, onClose }) => {
-  const { addPayment } = useAccounts();
+  const { addPayment, checkDuplicateReference } = useAccounts();
 
   const [paymentDate, setPaymentDate] = useState<string>(
     new Date().toISOString().split('T')[0]
@@ -22,6 +22,10 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({ deal, isOpen, 
   const [remarks, setRemarks] = useState<string>('');
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofPreview, setProofPreview] = useState<string | null>(null);
+
+  const duplicateWarning = useMemo(() => {
+    return checkDuplicateReference(transactionReference);
+  }, [checkDuplicateReference, transactionReference]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +55,13 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({ deal, isOpen, 
     if (numericAmount <= 0) {
       setError('Please enter a valid payment amount greater than ₹0.');
       return;
+    }
+
+    if (duplicateWarning.isDuplicate) {
+      const proceed = confirm(
+        `⚠️ DUPLICATE PAYMENT WARNING:\n\nThe reference/UTR "${transactionReference}" was already recorded in the system:\n${duplicateWarning.matchedRecord?.details}\n\nTo prevent recording or acknowledging payment twice, click OK ONLY if you are certain this is a separate transaction.`
+      );
+      if (!proceed) return;
     }
 
     setIsSubmitting(true);
@@ -220,8 +231,22 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({ deal, isOpen, 
               placeholder="e.g. UTR / IMPS-39201940 / Cheque #00412"
               value={transactionReference}
               onChange={(e) => setTransactionReference(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:border-emerald-600 outline-none font-mono"
+              className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-xl text-xs font-semibold text-slate-900 focus:bg-white outline-none font-mono ${
+                duplicateWarning.isDuplicate ? 'border-amber-400 bg-amber-50/50' : 'border-slate-300 focus:border-emerald-600'
+              }`}
             />
+            {duplicateWarning.isDuplicate && (
+              <div className="mt-2 p-2.5 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold">⚠️ Warning: Duplicate Reference Detected!</span>
+                  <p className="mt-0.5 text-[11px] text-amber-800">
+                    This reference was already recorded: {duplicateWarning.matchedRecord?.details}.
+                    Avoid duplicate payment entry!
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Payment Remarks */}

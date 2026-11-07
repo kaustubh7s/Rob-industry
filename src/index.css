@@ -97,12 +97,13 @@ html:not(.dark) ::-webkit-scrollbar-thumb {
     display: none !important;
   }
 
-  /* When printing PO Slip: isolate all ancestor containers cleanly without clipping */
+  /* When printing PO Slip & Invoices: isolate all ancestor containers cleanly without clipping */
   #root,
   #root > div,
   main,
   .printable-po-modal-overlay,
-  .printable-po-modal-wrapper {
+  .printable-po-modal-wrapper,
+  .printable-invoice-modal-wrapper {
     position: static !important;
     display: block !important;
     width: 100% !important;
@@ -133,6 +134,22 @@ html:not(.dark) ::-webkit-scrollbar-thumb {
 
   .printable-po-document * {
     visibility: visible !important;
+  }
+
+  .printable-invoice {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    min-height: 275mm !important;
+    box-sizing: border-box !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 8mm 8mm !important;
+    margin: 0 auto !important;
+    border: 1.5px solid #0f172a !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 
   .po-page-sheet {

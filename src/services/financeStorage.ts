@@ -631,8 +631,8 @@ export const INITIAL_COMPANY_FINANCE_PROFILE: CompanyFinanceProfile = {
   website: 'www.rsbequipments.com',
   defaultBankAccountId: 'bank-1',
   currentFinancialYear: '2026-2027',
-  authorizedSignatoryName: 'Kaustubh',
-  authorizedSignatoryDesignation: 'Managing Director',
+  authorizedSignatoryName: '',
+  authorizedSignatoryDesignation: 'Authorized Signatory',
 };
 
 // -------------------------------------------------------------
@@ -758,7 +758,13 @@ export const saveBankAccounts = (list: BankAccount[]) =>
 export const loadCompanyProfile = (): CompanyFinanceProfile => {
   try {
     const cached = localStorage.getItem(CACHE_KEYS.COMPANY_PROFILE);
-    if (cached) return JSON.parse(cached);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed.authorizedSignatoryName === 'Kaustubh') {
+        parsed.authorizedSignatoryName = '';
+      }
+      return parsed;
+    }
   } catch {}
   return INITIAL_COMPANY_FINANCE_PROFILE;
 };

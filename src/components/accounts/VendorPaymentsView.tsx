@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   CreditCard,
   Search,
@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Landmark,
   Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import { useAccounts } from '../../context/AccountsContext';
 import { VendorPayment } from '../../types/finance';
@@ -23,6 +24,7 @@ export const VendorPaymentsView: React.FC = () => {
     bankAccounts,
     addVendorPayment,
     deleteVendorPayment,
+    checkDuplicateReference,
   } = useAccounts();
 
   const [search, setSearch] = useState('');
@@ -38,6 +40,10 @@ export const VendorPaymentsView: React.FC = () => {
   const [selectedBankId, setSelectedBankId] = useState('');
   const [reference, setReference] = useState('');
   const [remarks, setRemarks] = useState('');
+
+  const duplicateWarning = useMemo(() => {
+    return checkDuplicateReference(reference);
+  }, [checkDuplicateReference, reference]);
 
   const filteredPayments = vendorPayments.filter((vp) => {
     const q = search.toLowerCase();
@@ -73,6 +79,14 @@ export const VendorPaymentsView: React.FC = () => {
     if (amt <= 0) {
       alert('Please enter a valid payment amount.');
       return;
+    }
+
+    // Duplicate UTR / reference check
+    if (duplicateWarning.isDuplicate) {
+      const proceed = confirm(
+        `⚠️ DUPLICATE PAYMENT WARNING:\n\nThe reference/UTR "${reference}" was already recorded in the system:\n${duplicateWarning.matchedRecord?.details}\n\nTo prevent sending money twice, click OK ONLY if you have verified this is an intentional new payment.`
+      );
+      if (!proceed) return;
     }
 
     const bank = bankAccounts.find((b) => b.id === selectedBankId) || bankAccounts[0];
@@ -372,8 +386,22 @@ export const VendorPaymentsView: React.FC = () => {
                   placeholder="e.g. HDFCR92026110300981"
                   value={reference}
                   onChange={(e) => setReference(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-mono"
+                  className={`w-full px-3 py-2 bg-white border rounded-lg text-xs font-mono ${
+                    duplicateWarning.isDuplicate ? 'border-amber-400 bg-amber-50/50' : 'border-slate-300'
+                  }`}
                 />
+                {duplicateWarning.isDuplicate && (
+                  <div className="mt-2 p-2.5 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold">⚠️ Warning: Duplicate Payment UTR Detected!</span>
+                      <p className="mt-0.5 text-[11px] text-amber-800">
+                        This reference was already recorded: {duplicateWarning.matchedRecord?.details}.
+                        Check to avoid paying twice!
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
