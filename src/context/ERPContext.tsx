@@ -668,11 +668,11 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const urlParams = new URLSearchParams(window.location.search);
       const tabParam = urlParams.get('tab');
-      if (tabParam && tabParam !== 'microsoft') return tabParam;
+      if (tabParam) return tabParam;
       const saved = localStorage.getItem('RSB_ACTIVE_TAB');
-      if (saved && saved !== 'microsoft') return saved;
+      if (saved) return saved;
     } catch (e) {}
-    return 'dashboard';
+    return 'microsoft';
   });
 
   // Full In-App Sequential Navigation History
@@ -680,11 +680,11 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const urlParams = new URLSearchParams(window.location.search);
       const tabParam = urlParams.get('tab');
-      if (tabParam && tabParam !== 'microsoft') return [{ tab: tabParam, subView: tabParam }];
+      if (tabParam) return [{ tab: tabParam, subView: tabParam }];
       const saved = localStorage.getItem('RSB_ACTIVE_TAB');
-      if (saved && saved !== 'microsoft') return [{ tab: saved, subView: saved }];
+      if (saved) return [{ tab: saved, subView: saved }];
     } catch {}
-    return [{ tab: 'dashboard', subView: 'dashboard' }];
+    return [{ tab: 'microsoft', subView: 'microsoft' }];
   });
 
   const [navIndex, setNavIndex] = useState<number>(0);

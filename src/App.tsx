@@ -40,6 +40,7 @@ import { MobileAdminApp } from './components/mobile/MobileAdminApp';
 import { MobileStoreInwardApp } from './components/mobile/MobileStoreInwardApp';
 import { LoginScreen } from './components/auth/LoginScreen';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { MicrosoftWorkbookCenter } from './components/microsoft/MicrosoftWorkbookCenter';
 import { DailyRequirementModule } from './components/daily/DailyRequirementModule';
 import { AccountsPortal } from './components/accounts/AccountsPortal';
 
@@ -71,12 +72,6 @@ const ERPAppContent: React.FC = () => {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
-
-  useEffect(() => {
-    if (activeTab === 'microsoft') {
-      setActiveTab('dashboard');
-    }
-  }, [activeTab, setActiveTab]);
 
   const isProductionWorkstation =
     currentUser?.role === 'super_admin' ||
@@ -207,6 +202,11 @@ const ERPAppContent: React.FC = () => {
           }
           return;
         }
+        if (key === '6' || key === 'w') {
+          e.preventDefault();
+          setActiveTab('microsoft');
+          return;
+        }
         if (key === 'd') {
           e.preventDefault();
           setActiveTab('daily_requirements');
@@ -214,7 +214,7 @@ const ERPAppContent: React.FC = () => {
         }
       }
 
-      // Ctrl / Cmd + Number Combinations (Ctrl+1, Ctrl+2, Ctrl+3, Ctrl+4, Ctrl+5)
+      // Ctrl / Cmd + Number Combinations (Ctrl+1, Ctrl+2, Ctrl+3, Ctrl+4, Ctrl+5, Ctrl+6)
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
         if (e.key === '1') {
           e.preventDefault();
@@ -236,7 +236,11 @@ const ERPAppContent: React.FC = () => {
         }
         if (e.key === '3') {
           e.preventDefault();
-          setActiveTab('procurement');
+          if (isStoreIncharge) {
+            setActiveTab('microsoft');
+          } else {
+            setActiveTab('procurement');
+          }
           return;
         }
         if (e.key === '4') {
@@ -252,6 +256,11 @@ const ERPAppContent: React.FC = () => {
           if (isSuperOrAdmin) {
             setActiveTab('members');
           }
+          return;
+        }
+        if (e.key === '6') {
+          e.preventDefault();
+          setActiveTab('microsoft');
           return;
         }
         if (e.key.toLowerCase() === 'd' && !isInputActive) {
@@ -357,7 +366,7 @@ const ERPAppContent: React.FC = () => {
   }
 
   return (
-    <div className={`min-h-screen flex flex-col ${isProductionWorkstation ? 'bg-[#f8fafc] text-slate-900' : 'bg-slate-950 text-slate-100'} selection:bg-slate-900 selection:text-white`}>
+    <div className={`${activeTab === 'microsoft' ? 'h-screen overflow-hidden' : 'min-h-screen'} flex flex-col ${isProductionWorkstation ? 'bg-[#f8fafc] text-slate-900' : 'bg-slate-950 text-slate-100'} selection:bg-slate-900 selection:text-white`}>
       {/* Header with ☰ Menu Drawer Toggle */}
       <Header
         onOpenSearch={() => setIsSearchOpen(true)}
@@ -414,8 +423,8 @@ const ERPAppContent: React.FC = () => {
         />
 
         {/* 100% Full Screen Main Viewport */}
-        <main className="flex-1 w-full overflow-y-auto p-4 sm:p-6 lg:p-8 bg-[#f8fafc] text-slate-900 custom-scrollbar">
-          <div className="w-full max-w-[1800px] mx-auto space-y-6">
+        <main className={`flex-1 w-full ${activeTab === 'microsoft' ? 'overflow-hidden p-0' : 'overflow-y-auto p-4 sm:p-6 lg:p-8'} bg-[#f8fafc] text-slate-900 custom-scrollbar`}>
+          <div className={`w-full ${activeTab === 'microsoft' ? 'h-full max-w-none space-y-0' : 'max-w-[1800px] mx-auto space-y-6'}`}>
             {/* Core Workstation Screens */}
             {(activeTab === 'entry' ||
               activeTab === 'requirements' ||
@@ -425,6 +434,9 @@ const ERPAppContent: React.FC = () => {
               activeTab === 'members') && (
               <ProjectMaterialEntry />
             )}
+
+            {/* Microsoft Workbook Center Module */}
+            {activeTab === 'microsoft' && <MicrosoftWorkbookCenter />}
 
             {/* Additional Plant Registers & Modules */}
             {activeTab === 'dashboard' && (
@@ -464,7 +476,7 @@ const ERPAppContent: React.FC = () => {
             {/* Robust Fallback for Unrecognized / Dynamic Tabs */}
             {![
               'entry', 'requirements', 'projects', 'details', 'procurement', 'members',
-              'daily_requirements',
+              'microsoft', 'daily_requirements',
               'dashboard', 'orders', 'bom', 'mrp', 'dispatcher', 'terminal',
               'subcontracting', 'traceability', 'vendor_performance', 'vendor_portal',
               'materials', 'calculator', 'inward', 'outward', 'production',

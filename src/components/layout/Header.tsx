@@ -236,6 +236,29 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </button>
 
+          {/* Quick Microsoft Excel Button */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('microsoft');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-xs border ${
+              activeTab === 'microsoft'
+                ? 'bg-[#107c41] text-white border-emerald-400 ring-2 ring-emerald-400/40'
+                : 'bg-emerald-950/80 hover:bg-emerald-900 border-emerald-600/50 text-emerald-300'
+            }`}
+            title="Open Microsoft Excel Workspace (rsb1.xlsx, rsb2.xlsx, rsb3.xlsx)"
+          >
+            <div className="w-4 h-4 rounded bg-white text-[#107c41] flex items-center justify-center font-black text-[10px]">
+              X
+            </div>
+            <span>MICROSOFT EXCEL</span>
+            <span className="hidden md:inline-block px-1.5 py-0.2 rounded bg-emerald-500/20 text-[9px] font-mono border border-emerald-400/30 text-emerald-200">
+              rsb1.xlsx
+            </span>
+          </button>
+
           {/* Quick Accounts Portal Link for Super Admin */}
           {isSuperOrAdmin && (
             <button
