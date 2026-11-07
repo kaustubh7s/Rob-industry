@@ -26,6 +26,8 @@ import {
   BankTransaction,
   CompanyFinanceProfile,
   FinanceDashboardMetrics,
+  DeletedPaymentRecord,
+  PersonalWithdrawalPayload,
 } from '../types/finance';
 import {
   loadCompanies,
@@ -59,6 +61,8 @@ import {
   saveBankAccounts,
   loadCompanyProfile,
   saveCompanyProfile,
+  loadDeletedPayments,
+  saveDeletedPayments,
 } from '../services/financeStorage';
 import {
   computeDealStatus,
@@ -211,8 +215,12 @@ interface AccountsContextType {
     reference?: string;
     notes?: string;
   }) => Promise<void>;
+  withdrawPersonalFunds: (payload: PersonalWithdrawalPayload) => Promise<void>;
+  deletedPayments: DeletedPaymentRecord[];
+  recordDeletedPayment: (record: Omit<DeletedPaymentRecord, 'id' | 'deletedAt'>) => Promise<void>;
   checkDuplicateReference: (reference: string) => {
     isDuplicate: boolean;
+    isDeletedRecord?: boolean;
     matchedRecord?: {
       type: string;
       date: string;
@@ -263,6 +271,7 @@ export const AccountsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [chartOfAccounts, setChartOfAccounts] = useState<AccountHead[]>([]);
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [deletedPayments, setDeletedPayments] = useState<DeletedPaymentRecord[]>([]);
   const [companyProfile, setCompanyProfile] = useState<CompanyFinanceProfile>(loadCompanyProfile);
 
   // Initial Data Hydration for all financial modules
@@ -284,6 +293,7 @@ export const AccountsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           loadedChart,
           loadedJournals,
           loadedBanks,
+          loadedDeleted,
         ] = await Promise.all([
           loadCompanies(),
           loadDeals(),
@@ -298,6 +308,7 @@ export const AccountsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           loadChartOfAccounts(),
           loadJournalEntries(),
           loadBankAccounts(),
+          loadDeletedPayments(),
         ]);
 
         if (isMounted) {
@@ -314,6 +325,7 @@ export const AccountsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setChartOfAccounts(loadedChart);
           setJournalEntries(loadedJournals);
           setBankAccounts(loadedBanks);
+          setDeletedPayments(loadedDeleted);
           setIsLoading(false);
         }
       } catch (err) {
@@ -833,13 +845,45 @@ export const AccountsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [vendorPayments, purchaseBills, postDoubleEntryTransaction]
   );
 
+  const recordDeletedPayment = useCallback(
+    async (record: Omit<DeletedPaymentRecord, 'id' | 'deletedAt'>) => {
+      const newRecord: DeletedPaymentRecord = {
+        ...record,
+        id: `del-pmt-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        deletedAt: new Date().toISOString(),
+      };
+      const updated = [newRecord, ...deletedPayments];
+      setDeletedPayments(updated);
+      await saveDeletedPayments(updated);
+    },
+    [deletedPayments]
+  );
+
   const deleteVendorPayment = useCallback(
     async (id: string) => {
+      const target = vendorPayments.find((vp) => vp.id === id);
+      if (target) {
+        await recordDeletedPayment({
+          reference:
+            target.transactionReference ||
+            target.utrNumber ||
+            target.chequeNumber ||
+            target.voucherNumber ||
+            target.id,
+          originalType: 'vendor_payment',
+          partyName: target.vendorName,
+          amount: target.amount,
+          paymentDate: target.paymentDate,
+          deletedBy: userName,
+          reason: 'Deleted from Vendor Payments register (Tombstoned to prevent duplicate payment)',
+          accountName: target.bankAccountId,
+        });
+      }
       const updated = vendorPayments.filter((vp) => vp.id !== id);
       setVendorPayments(updated);
       await saveVendorPayments(updated);
     },
-    [vendorPayments]
+    [vendorPayments, recordDeletedPayment, userName]
   );
 
   // -------------------------------------------------------------
@@ -921,11 +965,24 @@ export const AccountsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const deleteBusinessExpense = useCallback(
     async (id: string) => {
+      const target = businessExpenses.find((e) => e.id === id);
+      if (target) {
+        await recordDeletedPayment({
+          reference: target.referenceNumber || target.expenseNumber || target.id,
+          originalType: 'expense',
+          partyName: target.payeeName || target.category,
+          amount: target.amount,
+          paymentDate: target.expenseDate,
+          deletedBy: userName,
+          reason: 'Deleted from Business Expenses (Tombstoned to prevent duplicate payment)',
+          accountName: target.bankAccountName,
+        });
+      }
       const updated = businessExpenses.filter((e) => e.id !== id);
       setBusinessExpenses(updated);
       await saveBusinessExpenses(updated);
     },
-    [businessExpenses]
+    [businessExpenses, recordDeletedPayment, userName]
   );
 
   // -------------------------------------------------------------
@@ -1149,6 +1206,62 @@ export const AccountsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [bankAccounts, postDoubleEntryTransaction]
   );
 
+  const withdrawPersonalFunds = useCallback(
+    async (payload: PersonalWithdrawalPayload) => {
+      const targetAcc = bankAccounts.find((b) => b.id === payload.accountId);
+      if (!targetAcc) throw new Error('Selected bank/cash account not found');
+
+      // 1. Update bank balance
+      const updatedAccounts = bankAccounts.map((b) =>
+        b.id === payload.accountId
+          ? { ...b, currentBalance: b.currentBalance - payload.amount }
+          : b
+      );
+      setBankAccounts(updatedAccounts);
+      await saveBankAccounts(updatedAccounts);
+
+      // 2. Post Double-Entry:
+      // Dr. 3030 Owner's Drawings & Personal Use
+      // Cr. Bank Account (1020 HDFC / 1030 SBI / 1010 Cash)
+      const bankCode =
+        targetAcc.accountType === 'cash'
+          ? '1010'
+          : targetAcc.accountNumber.includes('50200012')
+          ? '1020'
+          : '1030';
+
+      const debits = [
+        {
+          code: '3030',
+          name: "Owner's Drawings & Personal Use",
+          amount: payload.amount,
+        },
+      ];
+      const credits = [
+        {
+          code: bankCode,
+          name: targetAcc.accountName,
+          amount: payload.amount,
+        },
+      ];
+
+      const narration = `Personal Withdrawal / Drawings: ₹${payload.amount.toLocaleString(
+        'en-IN'
+      )} deducted from ${targetAcc.accountName} for personal use by ${payload.withdrawnBy} (${payload.paymentMode}). Purpose: ${payload.purpose}. ${payload.notes || ''}`.trim();
+
+      await postDoubleEntryTransaction(
+        'Payment Voucher',
+        payload.date,
+        narration,
+        debits,
+        credits,
+        `drawing-${Date.now()}`,
+        payload.reference
+      );
+    },
+    [bankAccounts, postDoubleEntryTransaction]
+  );
+
   const checkDuplicateReference = useCallback(
     (reference: string) => {
       if (!reference || !reference.trim()) {
@@ -1156,7 +1269,33 @@ export const AccountsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
       const cleanRef = reference.trim().toLowerCase();
 
-      // Check in customer payments
+      // 1. Check in tombstoned / deleted payments (CRITICAL: prevents double wire payouts)
+      const matchedDeleted = deletedPayments.find(
+        (dp) => dp.reference && dp.reference.trim().toLowerCase() === cleanRef
+      );
+      if (matchedDeleted) {
+        return {
+          isDuplicate: true,
+          isDeletedRecord: true,
+          matchedRecord: {
+            type: `DELETED ${matchedDeleted.originalType.replace('_', ' ').toUpperCase()}`,
+            date: matchedDeleted.paymentDate,
+            amount: matchedDeleted.amount,
+            party: matchedDeleted.partyName,
+            details: `CRITICAL DUPLICATE ALERT: A payment of ₹${matchedDeleted.amount.toLocaleString(
+              'en-IN'
+            )} ${
+              matchedDeleted.partyName ? `to/from ${matchedDeleted.partyName}` : ''
+            } with Reference "${matchedDeleted.reference}" was ALREADY PROCESSED on ${
+              matchedDeleted.paymentDate
+            } and DELETED on ${new Date(matchedDeleted.deletedAt).toLocaleDateString(
+              'en-IN'
+            )}. Re-issuing this payment will cause a DUPLICATE PAYOUT!`,
+          },
+        };
+      }
+
+      // 2. Check in customer payments
       const matchedPayment = payments.find(
         (p) => p.transactionReference && p.transactionReference.trim().toLowerCase() === cleanRef
       );
@@ -1172,7 +1311,7 @@ export const AccountsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         };
       }
 
-      // Check in vendor payments
+      // 3. Check in vendor payments
       const matchedVendorPayment = vendorPayments.find(
         (vp) =>
           (vp.transactionReference && vp.transactionReference.trim().toLowerCase() === cleanRef) ||
@@ -1192,7 +1331,7 @@ export const AccountsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         };
       }
 
-      // Check in journal entries
+      // 4. Check in journal entries
       const matchedJV = journalEntries.find(
         (jv) =>
           (jv.referenceNumber && jv.referenceNumber.trim().toLowerCase() === cleanRef) ||
@@ -1210,7 +1349,7 @@ export const AccountsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         };
       }
 
-      // Check in business expenses
+      // 5. Check in business expenses
       const matchedExpense = businessExpenses.find(
         (e) => e.referenceNumber && e.referenceNumber.trim().toLowerCase() === cleanRef
       );
@@ -1229,7 +1368,7 @@ export const AccountsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       return { isDuplicate: false };
     },
-    [payments, vendorPayments, journalEntries, businessExpenses]
+    [payments, vendorPayments, journalEntries, businessExpenses, deletedPayments]
   );
 
   const updateCompanyProfile = useCallback((profile: CompanyFinanceProfile) => {
@@ -1625,13 +1764,25 @@ export const AccountsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
       }
     },
-    [payments, deals]
+    [payments, deals, recordDeletedPayment, userName]
   );
 
   const deletePayment = useCallback(
     async (paymentId: string) => {
       const targetPayment = payments.find((p) => p.id === paymentId);
       if (!targetPayment) return;
+
+      const matchedDeal = deals.find((d) => d.id === targetPayment.dealId);
+
+      await recordDeletedPayment({
+        reference: targetPayment.transactionReference || targetPayment.id,
+        originalType: 'customer_payment',
+        partyName: matchedDeal?.companyName || 'Customer Receipt',
+        amount: targetPayment.amount,
+        paymentDate: targetPayment.paymentDate,
+        deletedBy: userName,
+        reason: 'Customer receipt deleted from deal register (Tombstoned to prevent duplicate entry)',
+      });
 
       const updatedPayments = payments.filter((p) => p.id !== paymentId);
       setPayments(updatedPayments);
@@ -1655,7 +1806,7 @@ export const AccountsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         await saveDeals(updatedDeals);
       }
     },
-    [payments, deals]
+    [payments, deals, recordDeletedPayment, userName]
   );
 
   const uploadDealDocument = useCallback(
@@ -1924,6 +2075,9 @@ export const AccountsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         updateBankAccount,
         transferBankFunds,
         depositFundsToAccount,
+        withdrawPersonalFunds,
+        deletedPayments,
+        recordDeletedPayment,
         checkDuplicateReference,
         updateCompanyProfile,
         getAccountBalance,

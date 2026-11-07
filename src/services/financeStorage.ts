@@ -12,6 +12,7 @@ import {
   CreditNote,
   DebitNote,
   CompanyFinanceProfile,
+  DeletedPaymentRecord,
 } from '../types/finance';
 
 const FINANCE_DB_NAME = 'rsb_finance_accounting_db_v1';
@@ -31,6 +32,7 @@ const STORES = {
   CREDIT_NOTES: 'credit_notes',
   DEBIT_NOTES: 'debit_notes',
   COMPANY_PROFILE: 'company_profile',
+  DELETED_PAYMENTS: 'deleted_payments',
 };
 
 const CACHE_KEYS = {
@@ -47,6 +49,7 @@ const CACHE_KEYS = {
   CREDIT_NOTES: 'rsb_acc_credit_notes_cache',
   DEBIT_NOTES: 'rsb_acc_debit_notes_cache',
   COMPANY_PROFILE: 'rsb_acc_company_profile_cache',
+  DELETED_PAYMENTS: 'rsb_acc_deleted_payments_cache',
 };
 
 // Open Finance IndexedDB
@@ -99,6 +102,7 @@ export const INITIAL_CHART_OF_ACCOUNTS: AccountHead[] = [
   // Equity
   { id: 'acc-3010', code: '3010', name: "Owner's Equity & Capital", category: 'Equity', group: 'Capital Account', openingBalance: 4500000, currentBalance: 4500000, isSystem: true, isActive: true },
   { id: 'acc-3020', code: '3020', name: 'Retained Earnings / General Reserves', category: 'Equity', group: 'Retained Earnings', openingBalance: 1115000, currentBalance: 1115000, isSystem: true, isActive: true },
+  { id: 'acc-3030', code: '3030', name: "Owner's Drawings & Personal Use", category: 'Equity', group: 'Capital Account', openingBalance: 0, currentBalance: 0, isSystem: true, isActive: true },
 
   // Income
   { id: 'acc-4010', code: '4010', name: 'Industrial Machinery Sales Revenue', category: 'Income', group: 'Sales Accounts', openingBalance: 0, currentBalance: 1000000, isSystem: true, isActive: true },
@@ -774,4 +778,15 @@ export const saveCompanyProfile = (profile: CompanyFinanceProfile): void => {
     localStorage.setItem(CACHE_KEYS.COMPANY_PROFILE, JSON.stringify(profile));
   } catch {}
 };
+
+// -------------------------------------------------------------
+// DELETED PAYMENTS & DUPLICATE PROTECTION REGISTRY
+// -------------------------------------------------------------
+export const INITIAL_DELETED_PAYMENTS: DeletedPaymentRecord[] = [];
+
+export const loadDeletedPayments = () =>
+  getStoredList<DeletedPaymentRecord>(STORES.DELETED_PAYMENTS, CACHE_KEYS.DELETED_PAYMENTS, INITIAL_DELETED_PAYMENTS);
+
+export const saveDeletedPayments = (list: DeletedPaymentRecord[]) =>
+  setStoredList<DeletedPaymentRecord>(STORES.DELETED_PAYMENTS, CACHE_KEYS.DELETED_PAYMENTS, list);
 

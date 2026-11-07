@@ -55,6 +55,7 @@ export type VoucherType =
   | 'Purchase Bill'
   | 'Vendor Payment'
   | 'Business Expense'
+  | 'Payment Voucher'
   | 'Journal Voucher'
   | 'Contra Transfer'
   | 'Credit Note'
@@ -468,5 +469,47 @@ export interface FinanceDashboardMetrics {
   purchaseBillsCount: number;
   overdueInvoicesCount: number;
   overdueBillsCount: number;
+}
+
+// -------------------------------------------------------------
+// 10. BANK PASSBOOK & ANTI-DUPLICATE AUDIT REGISTRY
+// -------------------------------------------------------------
+export interface DeletedPaymentRecord {
+  id: string;
+  reference: string;
+  originalType: 'vendor_payment' | 'customer_payment' | 'expense' | 'personal_drawing' | 'contra_transfer';
+  partyName?: string;
+  amount: number;
+  paymentDate: string;
+  deletedAt: string;
+  deletedBy: string;
+  reason?: string;
+  accountName?: string;
+}
+
+export interface PersonalWithdrawalPayload {
+  accountId: string;
+  amount: number;
+  date: string;
+  withdrawnBy: string;
+  paymentMode: 'Cheque' | 'ATM/Cash Withdrawal' | 'NetBanking' | 'UPI' | 'Self Cheque';
+  reference?: string;
+  purpose: string;
+  notes?: string;
+}
+
+export interface BankPassbookEntry {
+  id: string;
+  date: string;
+  voucherNumber: string;
+  voucherType: string;
+  particulars: string;
+  reference?: string;
+  withdrawalAmount: number; // Dr (Money out)
+  depositAmount: number; // Cr (Money in)
+  balance: number; // progressive running balance
+  accountId: string;
+  accountName: string;
+  isDeleted?: boolean;
 }
 

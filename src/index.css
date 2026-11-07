@@ -152,6 +152,14 @@ html:not(.dark) ::-webkit-scrollbar-thumb {
     break-inside: avoid !important;
   }
 
+  .printable-passbook {
+    display: block !important;
+    width: 100% !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    border: 1px solid #0f172a !important;
+  }
+
   .po-page-sheet {
     display: flex !important;
     flex-direction: column !important;
