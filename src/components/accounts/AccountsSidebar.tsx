@@ -209,3 +209,4 @@ export const AccountsSidebar: React.FC<AccountsSidebarProps> = ({
     </>
   );
 };
+

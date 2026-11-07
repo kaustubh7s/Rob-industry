@@ -74,3 +74,4 @@ export interface AccountsDashboardSummary {
   outstandingBalance: number;
   overdueDealsCount: number;
 }
+

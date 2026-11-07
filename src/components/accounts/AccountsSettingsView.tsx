@@ -195,3 +195,4 @@ CREATE TABLE IF NOT EXISTS public.accounts_documents (
     </div>
   );
 };
+

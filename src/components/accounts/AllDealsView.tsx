@@ -98,9 +98,9 @@ export const AllDealsView: React.FC<AllDealsViewProps> = ({ onOpenNewDeal, initi
       {/* Top Header & Search Bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">All Deals Register</h1>
+          <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">All Deals</h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Complete directory of client project contracts, receipts, and outstanding collections.
+            Simple register of company deals, received payments, and pending amounts.
           </p>
         </div>
 
@@ -179,13 +179,13 @@ export const AllDealsView: React.FC<AllDealsViewProps> = ({ onOpenNewDeal, initi
               <thead>
                 <tr className="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider text-[11px] border-b border-slate-200">
                   <th className="py-3 px-3.5">Deal ID</th>
-                  <th className="py-3 px-3.5">Company Name & GSTIN</th>
+                  <th className="py-3 px-3.5">Company Name</th>
                   <th className="py-3 px-3.5">Deal Date</th>
-                  <th className="py-3 px-3.5 text-right">Decided Amount</th>
-                  <th className="py-3 px-3.5 text-right">Total Received</th>
-                  <th className="py-3 px-3.5 text-right">Pending Balance</th>
+                  <th className="py-3 px-3.5 text-right">Deal Amount</th>
+                  <th className="py-3 px-3.5 text-right">Received Amount</th>
+                  <th className="py-3 px-3.5 text-right">Pending Amount</th>
                   <th className="py-3 px-3.5 text-center">Progress</th>
-                  <th className="py-3 px-3.5 text-center">Status</th>
+                  <th className="py-3 px-3.5 text-center">Payment Status</th>
                   <th className="py-3 px-3.5 text-right">Action</th>
                 </tr>
               </thead>
@@ -269,7 +269,7 @@ export const AllDealsView: React.FC<AllDealsViewProps> = ({ onOpenNewDeal, initi
                           }}
                           className="px-2.5 py-1 text-xs font-semibold text-slate-700 hover:text-slate-950 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer"
                         >
-                          <span>Open</span>
+                          <span>View</span>
                           <ArrowRight className="w-3 h-3" />
                         </button>
                       </td>
@@ -289,14 +289,14 @@ export const AllDealsView: React.FC<AllDealsViewProps> = ({ onOpenNewDeal, initi
           </div>
           <div className="flex items-center gap-4 text-xs font-medium">
             <span>
-              Total Decided:{' '}
+              Total Deal Value:{' '}
               <strong className="text-slate-900 font-mono">
                 {formatINR(filteredDeals.reduce((sum, d) => sum + (Number(d.decidedAmount) || 0), 0))}
               </strong>
             </span>
             <span>•</span>
             <span>
-              Total Pending:{' '}
+              Remaining Balance:{' '}
               <strong className="text-amber-700 font-mono">
                 {formatINR(filteredDeals.reduce((sum, d) => sum + (Number(d.remainingBalance) || 0), 0))}
               </strong>
@@ -307,3 +307,4 @@ export const AllDealsView: React.FC<AllDealsViewProps> = ({ onOpenNewDeal, initi
     </div>
   );
 };
+

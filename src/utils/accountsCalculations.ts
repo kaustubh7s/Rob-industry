@@ -158,49 +158,49 @@ export function exportDealSummaryPDF(
   const colW = 43;
   const gap = 3.3;
 
-  // 1. Decided Amount
+  // 1. Total Deal Amount
   doc.setFillColor(241, 245, 249);
   doc.roundedRect(14, startY, colW, 24, 2, 2, 'FD');
   doc.setFontSize(8);
   doc.setTextColor(100, 116, 139);
-  doc.text('DECIDED AMOUNT', 18, startY + 7);
+  doc.text('TOTAL DEAL AMOUNT', 18, startY + 7);
   doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
   doc.text(formatINR(deal.decidedAmount), 18, startY + 17);
 
-  // 2. Advance Received
+  // 2. Advance Payment
   doc.setFillColor(241, 245, 249);
   doc.roundedRect(14 + colW + gap, startY, colW, 24, 2, 2, 'FD');
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(100, 116, 139);
-  doc.text('ADVANCE RECEIVED', 14 + colW + gap + 4, startY + 7);
+  doc.text('ADVANCE PAYMENT', 14 + colW + gap + 4, startY + 7);
   doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(30, 41, 59);
   doc.text(formatINR(deal.advanceAmount), 14 + colW + gap + 4, startY + 17);
 
-  // 3. Total Received
+  // 3. Money Received
   doc.setFillColor(236, 253, 245); // emerald-50
   doc.roundedRect(14 + (colW + gap) * 2, startY, colW, 24, 2, 2, 'FD');
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(4, 120, 87);
-  doc.text('TOTAL RECEIVED', 14 + (colW + gap) * 2 + 4, startY + 7);
+  doc.text('MONEY RECEIVED', 14 + (colW + gap) * 2 + 4, startY + 7);
   doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(5, 150, 105);
   doc.text(formatINR(deal.totalReceived), 14 + (colW + gap) * 2 + 4, startY + 17);
 
-  // 4. Remaining Balance
+  // 4. Pending Amount
   const isRemainingZero = deal.remainingBalance <= 0;
   doc.setFillColor(isRemainingZero ? 241 : 255, isRemainingZero ? 245 : 247, isRemainingZero ? 249 : 237); // amber-50
   doc.roundedRect(14 + (colW + gap) * 3, startY, colW, 24, 2, 2, 'FD');
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(isRemainingZero ? 100 : 180, isRemainingZero ? 116 : 83, isRemainingZero ? 139 : 9);
-  doc.text('PENDING BALANCE', 14 + (colW + gap) * 3 + 4, startY + 7);
+  doc.text('PENDING AMOUNT', 14 + (colW + gap) * 3 + 4, startY + 7);
   doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(isRemainingZero ? 15 : 217, isRemainingZero ? 23 : 119, isRemainingZero ? 42 : 6);
@@ -210,7 +210,7 @@ export function exportDealSummaryPDF(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(15, 23, 42);
-  doc.text('Payment Transaction History', 14, 118);
+  doc.text('Payment History', 14, 118);
 
   const sortedPayments = [...payments].sort(
     (a, b) => new Date(a.paymentDate).getTime() - new Date(b.paymentDate).getTime()
@@ -284,10 +284,10 @@ export function exportAllDealsToExcel(deals: AccountDeal[]): void {
       'Company Name': d.companyName,
       'GSTIN': d.companyGstin || 'Not Provided',
       'Deal Date': formatDateIndian(d.dealDate),
-      'Decided Amount (INR)': d.decidedAmount,
-      'Advance Received (INR)': d.advanceAmount,
-      'Total Received (INR)': d.totalReceived,
-      'Pending Balance (INR)': d.remainingBalance,
+      'Total Deal Amount (INR)': d.decidedAmount,
+      'Advance Payment (INR)': d.advanceAmount,
+      'Money Received (INR)': d.totalReceived,
+      'Pending Amount (INR)': d.remainingBalance,
       'Received %': `${pct}%`,
       'Payment Terms': d.paymentTerms,
       'Due Date': formatDateIndian(d.expectedPaymentDate),
@@ -337,3 +337,4 @@ export function exportPaymentHistoryToExcel(
   const fileName = `RSB_Accounts_Payments_${new Date().toISOString().split('T')[0]}.xlsx`;
   XLSX.writeFile(wb, fileName);
 }
+

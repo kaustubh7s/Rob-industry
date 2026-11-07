@@ -431,3 +431,4 @@ export async function deleteDocument(docId: string): Promise<void> {
     console.error('Failed to delete document from IndexedDB:', err);
   }
 }
+

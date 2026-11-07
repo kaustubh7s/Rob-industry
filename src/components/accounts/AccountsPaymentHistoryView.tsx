@@ -66,9 +66,9 @@ export const AccountsPaymentHistoryView: React.FC = () => {
       {/* Top Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">Payment History Register</h1>
+          <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">Payment History</h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Full chronological audit ledger of all advances, installments, and cleared receipts.
+            Chronological record of advance payments and stage collections across all client deals.
           </p>
         </div>
 
@@ -126,7 +126,7 @@ export const AccountsPaymentHistoryView: React.FC = () => {
               <thead>
                 <tr className="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider text-[11px] border-b border-slate-200">
                   <th className="py-3 px-3.5">Payment Date</th>
-                  <th className="py-3 px-3.5">Company Name & Deal Ref</th>
+                  <th className="py-3 px-3.5">Company Name</th>
                   <th className="py-3 px-3.5">Description</th>
                   <th className="py-3 px-3.5">Payment Mode</th>
                   <th className="py-3 px-3.5 font-mono">Ref / UTR</th>
@@ -202,7 +202,7 @@ export const AccountsPaymentHistoryView: React.FC = () => {
                             onClick={() => setActiveView('deal-details', deal.id)}
                             className="px-2.5 py-1 text-xs font-semibold text-slate-700 hover:text-slate-950 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors inline-flex items-center gap-1 cursor-pointer"
                           >
-                            <span>Open Deal</span>
+                            <span>View Deal</span>
                             <ArrowRight className="w-3 h-3" />
                           </button>
                         )}
@@ -221,7 +221,7 @@ export const AccountsPaymentHistoryView: React.FC = () => {
             Showing <strong className="text-slate-900">{filteredPayments.length}</strong> payment transactions
           </div>
           <div>
-            Total Received in View:{' '}
+            Money Received in View:{' '}
             <strong className="text-emerald-700 font-mono text-sm font-bold">
               {formatINR(totalFilteredAmount)}
             </strong>
@@ -237,3 +237,4 @@ export const AccountsPaymentHistoryView: React.FC = () => {
     </div>
   );
 };
+

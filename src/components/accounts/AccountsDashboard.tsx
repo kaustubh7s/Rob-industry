@@ -1,18 +1,5 @@
 import React, { useMemo } from 'react';
-import {
-  Plus,
-  ArrowRight,
-  TrendingUp,
-  CreditCard,
-  IndianRupee,
-  Layers,
-  AlertTriangle,
-  Clock,
-  CheckCircle2,
-  Calendar,
-  Building2,
-  FileText,
-} from 'lucide-react';
+import { Plus, ArrowRight, Calendar, AlertCircle } from 'lucide-react';
 import { useAccounts } from '../../context/AccountsContext';
 import { formatINR, formatDateIndian } from '../../utils/accountsCalculations';
 import { AccountDeal } from '../../types/accounts';
@@ -24,277 +11,240 @@ interface AccountsDashboardProps {
 export const AccountsDashboard: React.FC<AccountsDashboardProps> = ({ onOpenNewDeal }) => {
   const { summary, deals, setActiveView } = useAccounts();
 
-  // Recent Deals (top 6 newest active deals)
-  const recentDeals = useMemo(() => {
+  // Active Deals sorted by newest first
+  const activeDeals = useMemo(() => {
     return [...deals]
       .filter((d) => !d.isArchived)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 6);
+      .sort((a, b) => new Date(b.dealDate || b.createdAt).getTime() - new Date(a.dealDate || a.createdAt).getTime());
   }, [deals]);
 
-  // Overdue and upcoming payment alerts
-  const overdueDeals = useMemo(() => {
-    return deals.filter((d) => !d.isArchived && d.status === 'overdue');
-  }, [deals]);
+  // Client Deals to show on Dashboard (first 8 deals)
+  const clientDeals = useMemo(() => {
+    return activeDeals.slice(0, 8);
+  }, [activeDeals]);
 
+  // Upcoming Payments: deals with a remaining balance and expected payment date
   const upcomingPayments = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
-    return deals
+    return activeDeals
       .filter(
         (d) =>
-          !d.isArchived &&
           d.remainingBalance > 0 &&
           d.expectedPaymentDate &&
           d.expectedPaymentDate >= today
       )
       .sort((a, b) => (a.expectedPaymentDate || '').localeCompare(b.expectedPaymentDate || ''))
-      .slice(0, 4);
-  }, [deals]);
+      .slice(0, 5);
+  }, [activeDeals]);
+
+  // Overdue deals count
+  const overdueDeals = useMemo(() => {
+    return activeDeals.filter((d) => d.status === 'overdue');
+  }, [activeDeals]);
+
+  const renderStatus = (deal: AccountDeal) => {
+    if (deal.status === 'fully_paid') {
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+          Fully Paid
+        </span>
+      );
+    }
+    if (deal.status === 'overdue') {
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+          Overdue
+        </span>
+      );
+    }
+    if (deal.status === 'partially_received') {
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+          Partially Paid
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+        Awaiting Advance
+      </span>
+    );
+  };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-150">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200">
+    <div className="space-y-6">
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-200">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Accounts Management</h1>
-          <p className="text-xs text-slate-500 mt-1">
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Accounts Management</h1>
+          <p className="text-sm text-slate-500 mt-0.5">
             Manage company deals, payment details, advances, and outstanding balances.
           </p>
         </div>
 
-        {/* Two Main Primary Actions */}
-        <div className="flex items-center gap-3">
+        {/* Clear Main Actions */}
+        <div className="flex items-center gap-2.5">
           <button
             type="button"
             onClick={() => setActiveView('deals')}
-            className="px-4 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
+            className="px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-sm font-semibold transition-colors shadow-xs cursor-pointer"
           >
-            <span>View All Deals</span>
-            <ArrowRight className="w-3.5 h-3.5 text-slate-500" />
+            View All Deals
           </button>
-
           <button
             type="button"
             onClick={onOpenNewDeal}
-            className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer active:scale-95"
+            className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
           >
-            <Plus className="w-4 h-4 text-emerald-400" />
+            <Plus className="w-4 h-4" />
             <span>+ Add New Deal</span>
           </button>
         </div>
       </div>
 
-      {/* Top 4 Summary Cards (Indian Rupees Format) */}
+      {/* 4 Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* 1. Total Deals */}
-        <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-2xs space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-              1. Total Deals
-            </span>
-            <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center">
-              <Layers className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-2xl sm:text-3xl font-black text-slate-900 font-mono tracking-tight">
+        <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-1">
+          <p className="text-xs font-medium text-slate-500">Total Deals</p>
+          <p className="text-2xl font-bold text-slate-900 font-mono">
             {summary.totalDeals}
-          </div>
-          <p className="text-[11px] text-slate-500">
-            Recorded company project contracts
           </p>
+          <p className="text-xs text-slate-400">Total active client deals</p>
         </div>
 
         {/* 2. Total Deal Value */}
-        <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-2xs space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-              2. Total Deal Value
-            </span>
-            <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
-              ₹
-            </div>
-          </div>
-          <div className="text-2xl sm:text-3xl font-black text-blue-900 font-mono tracking-tight">
+        <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-1">
+          <p className="text-xs font-medium text-slate-500">Total Deal Value</p>
+          <p className="text-2xl font-bold text-slate-900 font-mono">
             {formatINR(summary.totalDealValue)}
-          </div>
-          <p className="text-[11px] text-slate-500">
-            Combined decided contract amount
           </p>
+          <p className="text-xs text-slate-400">Combined agreed amount</p>
         </div>
 
         {/* 3. Total Received */}
-        <div className="p-5 bg-emerald-50/60 border border-emerald-200 rounded-2xl shadow-2xs space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">
-              3. Total Received
-            </span>
-            <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
-              ₹
-            </div>
-          </div>
-          <div className="text-2xl sm:text-3xl font-black text-emerald-700 font-mono tracking-tight">
+        <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-1">
+          <p className="text-xs font-medium text-emerald-700">Total Received</p>
+          <p className="text-2xl font-bold text-emerald-600 font-mono">
             {formatINR(summary.totalReceived)}
-          </div>
-          <p className="text-[11px] text-emerald-700 font-medium">
-            Money received so far (advances + installments)
           </p>
+          <p className="text-xs text-slate-400">Total money received to date</p>
         </div>
 
-        {/* 4. Outstanding Balance */}
-        <div className={`p-5 rounded-2xl shadow-2xs space-y-2 border ${
-          summary.outstandingBalance > 0
-            ? 'bg-amber-50/70 border-amber-200'
-            : 'bg-slate-50 border-slate-200'
-        }`}>
-          <div className="flex items-center justify-between">
-            <span className={`text-[11px] font-bold uppercase tracking-wider ${
-              summary.outstandingBalance > 0 ? 'text-amber-800' : 'text-slate-500'
-            }`}>
-              4. Outstanding Balance
-            </span>
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold ${
-              summary.outstandingBalance > 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-600'
-            }`}>
-              ₹
-            </div>
-          </div>
-          <div className={`text-2xl sm:text-3xl font-black font-mono tracking-tight ${
-            summary.outstandingBalance > 0 ? 'text-amber-700' : 'text-slate-800'
-          }`}>
+        {/* 4. Remaining Balance */}
+        <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-1">
+          <p className="text-xs font-medium text-amber-700">Remaining Balance</p>
+          <p className="text-2xl font-bold text-amber-600 font-mono">
             {formatINR(summary.outstandingBalance)}
-          </div>
-          <p className="text-[11px] text-slate-500">
-            Money still pending across deals
           </p>
+          <p className="text-xs text-slate-400">Pending collections from clients</p>
         </div>
       </div>
 
-      {/* Payment Due Alerts Banner (If any deal is overdue) */}
+      {/* Overdue Alert Strip (if applicable) */}
       {overdueDeals.length > 0 && (
-        <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 mt-0.5">
-              <AlertTriangle className="w-4 h-4" />
-            </div>
-            <div>
-              <strong className="font-bold text-rose-900 block text-sm">
-                {overdueDeals.length} Payment{overdueDeals.length > 1 ? 's' : ''} Overdue
-              </strong>
-              <p className="text-rose-700 mt-0.5">
-                Expected payment dates have passed with pending balances on{' '}
-                {overdueDeals.map((d) => d.companyName).slice(0, 3).join(', ')}
-                {overdueDeals.length > 3 ? ' and more.' : '.'}
-              </p>
-            </div>
+        <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between text-xs text-rose-800">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>
+              <strong>{overdueDeals.length} deal{overdueDeals.length > 1 ? 's' : ''} have overdue payments:</strong>{' '}
+              {overdueDeals.map((d) => d.companyName).slice(0, 3).join(', ')}
+            </span>
           </div>
-
           <button
             type="button"
             onClick={() => setActiveView('deals')}
-            className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold transition-colors cursor-pointer self-start sm:self-center shrink-0"
+            className="text-xs font-bold text-rose-700 hover:text-rose-900 underline cursor-pointer shrink-0 ml-2"
           >
-            Review Overdue Deals
+            Review Overdue
           </button>
         </div>
       )}
 
-      {/* Grid: Recent Deals + Upcoming Payments */}
+      {/* Grid: Client Deals & Upcoming Payments */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent Deals Table (2 Columns Span) */}
-        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl shadow-2xs overflow-hidden">
-          <div className="p-4 border-b border-slate-200 flex items-center justify-between">
-            <div>
-              <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                Recent Company Deals
-              </h2>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Latest client deals and their real-time payment status
-              </p>
-            </div>
+        {/* Main Section: Client Deals Table (2 cols span) */}
+        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+            <h2 className="text-sm font-bold text-slate-900">Client Deals</h2>
             <button
               type="button"
               onClick={() => setActiveView('deals')}
-              className="text-xs font-bold text-slate-700 hover:text-slate-950 flex items-center gap-1 cursor-pointer"
+              className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer"
             >
               <span>View All</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          {recentDeals.length === 0 ? (
-            <div className="p-12 text-center text-xs text-slate-500 font-medium space-y-3">
-              <p>No company deals recorded yet.</p>
-              <button
-                type="button"
-                onClick={onOpenNewDeal}
-                className="px-4 py-2 bg-slate-900 text-white rounded-xl font-bold text-xs"
-              >
-                + Add First Deal
-              </button>
+          {clientDeals.length === 0 ? (
+            <div className="p-8 text-center text-sm text-slate-500">
+              No deals recorded yet. Click <strong>+ Add New Deal</strong> to record your first client deal.
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider text-[11px] border-b border-slate-200">
-                    <th className="py-2.5 px-3.5">Company Name</th>
-                    <th className="py-2.5 px-3.5 text-right">Decided Amount</th>
-                    <th className="py-2.5 px-3.5 text-right">Total Received</th>
-                    <th className="py-2.5 px-3.5 text-right">Balance</th>
-                    <th className="py-2.5 px-3.5 text-center">Status</th>
+                  <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                    <th className="py-3 px-4">Company Name</th>
+                    <th className="py-3 px-4 text-right">Deal Amount</th>
+                    <th className="py-3 px-4 text-right">Received Amount</th>
+                    <th className="py-3 px-4 text-right">Pending Amount</th>
+                    <th className="py-3 px-4 text-center">Payment Status</th>
+                    <th className="py-3 px-4 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {recentDeals.map((deal) => (
+                  {clientDeals.map((deal) => (
                     <tr
                       key={deal.id}
                       onClick={() => setActiveView('deal-details', deal.id)}
-                      className="hover:bg-slate-50 transition-colors cursor-pointer group"
+                      className="hover:bg-slate-50 transition-colors cursor-pointer"
                     >
-                      <td className="py-3 px-3.5">
-                        <div className="font-bold text-slate-900 group-hover:text-blue-700 transition-colors">
+                      {/* Company Name */}
+                      <td className="py-3 px-4">
+                        <div className="font-semibold text-slate-900">
                           {deal.companyName}
                         </div>
-                        <div className="font-mono text-[10px] text-slate-500">
-                          {deal.dealNumber} • {formatDateIndian(deal.dealDate)}
+                        <div className="text-[11px] text-slate-400 font-mono">
+                          {deal.dealNumber}
                         </div>
                       </td>
 
-                      <td className="py-3 px-3.5 text-right font-mono font-bold text-slate-800 whitespace-nowrap">
+                      {/* Deal Amount */}
+                      <td className="py-3 px-4 text-right font-mono font-medium text-slate-900 whitespace-nowrap">
                         {formatINR(deal.decidedAmount)}
                       </td>
 
-                      <td className="py-3 px-3.5 text-right font-mono font-bold text-emerald-700 whitespace-nowrap">
+                      {/* Received Amount */}
+                      <td className="py-3 px-4 text-right font-mono font-semibold text-emerald-700 whitespace-nowrap">
                         {formatINR(deal.totalReceived)}
                       </td>
 
-                      <td className="py-3 px-3.5 text-right font-mono font-bold whitespace-nowrap">
+                      {/* Pending Amount */}
+                      <td className="py-3 px-4 text-right font-mono font-semibold whitespace-nowrap">
                         <span className={deal.remainingBalance > 0 ? 'text-amber-700' : 'text-slate-400'}>
                           {formatINR(deal.remainingBalance)}
                         </span>
                       </td>
 
-                      <td className="py-3 px-3.5 text-center whitespace-nowrap">
-                        {deal.status === 'fully_paid' && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                            Fully Paid
-                          </span>
-                        )}
-                        {deal.status === 'partially_received' && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                            Partially Paid
-                          </span>
-                        )}
-                        {deal.status === 'awaiting_advance' && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                            Awaiting Adv
-                          </span>
-                        )}
-                        {deal.status === 'overdue' && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-800 border border-rose-300">
-                            Overdue
-                          </span>
-                        )}
+                      {/* Payment Status */}
+                      <td className="py-3 px-4 text-center whitespace-nowrap">
+                        {renderStatus(deal)}
+                      </td>
+
+                      {/* View Button */}
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveView('deal-details', deal.id);
+                          }}
+                          className="px-2.5 py-1 text-xs font-medium text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded transition-colors cursor-pointer"
+                        >
+                          View
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -304,50 +254,44 @@ export const AccountsDashboard: React.FC<AccountsDashboardProps> = ({ onOpenNewD
           )}
         </div>
 
-        {/* Upcoming Collections / Payment Dates (1 Column Span) */}
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs p-4.5 space-y-3.5 flex flex-col justify-between">
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
-              <Calendar className="w-4 h-4 text-slate-700" />
-              <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                Upcoming Collection Dates
-              </h2>
-            </div>
-
-            {upcomingPayments.length === 0 ? (
-              <p className="text-xs text-slate-500 py-4 text-center">
-                No upcoming payment dates scheduled with pending balances.
-              </p>
-            ) : (
-              <div className="space-y-2.5">
-                {upcomingPayments.map((deal) => (
-                  <div
-                    key={deal.id}
-                    onClick={() => setActiveView('deal-details', deal.id)}
-                    className="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all cursor-pointer space-y-1"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-900 truncate max-w-[160px]">
-                        {deal.companyName}
-                      </span>
-                      <span className="text-[11px] font-mono font-bold text-amber-700">
-                        {formatINR(deal.remainingBalance)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-[11px] text-slate-500">
-                      <span>Due: {formatDateIndian(deal.expectedPaymentDate)}</span>
-                      <span className="text-slate-400 font-mono">{deal.dealNumber}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+        {/* Side Section: Upcoming Payments (1 col span) */}
+        <div className="bg-white border border-slate-200 rounded-xl shadow-xs p-5 space-y-4">
+          <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+            <Calendar className="w-4 h-4 text-slate-500" />
+            <h2 className="text-sm font-bold text-slate-900">Upcoming Payments</h2>
           </div>
 
-          <div className="pt-2 border-t border-slate-100 text-center">
-            <p className="text-[11px] text-slate-400">
-              Automatic payment reminders based on agreed payment terms.
+          {upcomingPayments.length === 0 ? (
+            <p className="text-xs text-slate-500 py-6 text-center">
+              No upcoming payments scheduled with a pending balance.
             </p>
+          ) : (
+            <div className="space-y-3">
+              {upcomingPayments.map((deal) => (
+                <div
+                  key={deal.id}
+                  onClick={() => setActiveView('deal-details', deal.id)}
+                  className="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer space-y-1"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-900 truncate max-w-[150px]">
+                      {deal.companyName}
+                    </span>
+                    <span className="text-xs font-mono font-bold text-amber-700">
+                      {formatINR(deal.remainingBalance)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-slate-500">
+                    <span>Due: {formatDateIndian(deal.expectedPaymentDate)}</span>
+                    <span className="font-mono text-slate-400">{deal.dealNumber}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="pt-2 text-center text-[11px] text-slate-400 border-t border-slate-100">
+            Payment due dates based on agreed terms.
           </div>
         </div>
       </div>

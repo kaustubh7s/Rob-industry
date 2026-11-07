@@ -44,6 +44,7 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({ deal, isOpen, 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setError(null);
 
     const numericAmount = Math.round(Number(amount) || 0);
@@ -96,7 +97,7 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({ deal, isOpen, 
               <CreditCard className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900">Record New Payment</h3>
+              <h3 className="text-base font-bold text-slate-900">Add Payment</h3>
               <p className="text-xs text-slate-500">
                 {deal.companyName} • <span className="font-mono font-semibold">{deal.dealNumber}</span>
               </p>
@@ -114,11 +115,11 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({ deal, isOpen, 
         {/* Current Balance Bar */}
         <div className="px-6 py-3 bg-slate-100/70 border-b border-slate-200 flex items-center justify-between text-xs">
           <div>
-            <span className="text-slate-500">Total Decided: </span>
+            <span className="text-slate-500">Total Deal Amount: </span>
             <strong className="text-slate-800 font-semibold">{formatINR(deal.decidedAmount)}</strong>
           </div>
           <div>
-            <span className="text-slate-500">Current Balance: </span>
+            <span className="text-slate-500">Pending Amount: </span>
             <strong className="text-amber-700 font-bold">{formatINR(deal.remainingBalance)}</strong>
           </div>
         </div>
@@ -194,16 +195,16 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({ deal, isOpen, 
               isOverpaying ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800'
             }`}>
               <div className="flex justify-between font-medium">
-                <span>New Total Received:</span>
+                <span>New Money Received:</span>
                 <strong className="font-bold">{formatINR(newTotalReceived)}</strong>
               </div>
               <div className="flex justify-between font-medium">
-                <span>Updated Pending Balance:</span>
+                <span>New Pending Amount:</span>
                 <strong className="font-bold">{formatINR(newBalance)}</strong>
               </div>
               {isOverpaying && (
                 <p className="text-[11px] font-semibold text-amber-700 mt-1">
-                  ⚠️ Note: Total received exceeds the decided deal amount by {formatINR(newTotalReceived - deal.decidedAmount)}.
+                  ⚠️ Note: Money received exceeds the decided deal amount by {formatINR(newTotalReceived - deal.decidedAmount)}.
                 </p>
               )}
             </div>
@@ -298,7 +299,7 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({ deal, isOpen, 
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4" />
-                  Save Payment
+                  Add Payment
                 </>
               )}
             </button>
@@ -308,3 +309,4 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({ deal, isOpen, 
     </div>
   );
 };
+
