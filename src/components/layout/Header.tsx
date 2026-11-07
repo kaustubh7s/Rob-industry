@@ -236,23 +236,6 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </button>
 
-          {/* Interactive Gliding Tour Button (Admin / Production) */}
-          {!isStoreIncharge && (
-            <button
-              type="button"
-              onClick={() => {
-                if (onOpenTour) onOpenTour();
-                else window.dispatchEvent(new CustomEvent('rsb:start-tour'));
-              }}
-              className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs border bg-gradient-to-r from-cyan-950/90 to-blue-950/90 hover:from-cyan-900 hover:to-blue-900 border-cyan-500/50 text-cyan-300 hover:text-white active:scale-95 group"
-              title="Start Interactive Gliding Walkthrough Tour (6 Steps)"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-cyan-400 group-hover:scale-110 group-hover:rotate-12 transition-transform" />
-              <span className="font-extrabold tracking-wide">TOUR</span>
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping shrink-0" />
-            </button>
-          )}
-
           {/* Strictly Kaustubh Admin Level Only: Maintenance Mode Button */}
           {isKaustubhAdmin && (
             <button
