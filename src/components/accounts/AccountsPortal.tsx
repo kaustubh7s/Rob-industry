@@ -1,11 +1,23 @@
 import React, { useState } from 'react';
-import { Menu, Plus, ArrowLeft, Search, Bell } from 'lucide-react';
+import { Menu, Plus, ArrowLeft } from 'lucide-react';
 import { AccountsProvider, useAccounts } from '../../context/AccountsContext';
 import { AccountsSidebar } from './AccountsSidebar';
 import { AccountsDashboard } from './AccountsDashboard';
 import { AllDealsView } from './AllDealsView';
 import { DealDetailsView } from './DealDetailsView';
 import { AccountsPaymentHistoryView } from './AccountsPaymentHistoryView';
+import { CustomerDirectoryView } from './CustomerDirectoryView';
+import { SalesInvoicesView } from './SalesInvoicesView';
+import { VendorDirectoryView } from './VendorDirectoryView';
+import { PurchaseOrdersView } from './PurchaseOrdersView';
+import { PurchaseBillsView } from './PurchaseBillsView';
+import { VendorPaymentsView } from './VendorPaymentsView';
+import { BankAndCashView } from './BankAndCashView';
+import { ExpensesView } from './ExpensesView';
+import { GeneralLedgerView } from './GeneralLedgerView';
+import { ChartOfAccountsView } from './ChartOfAccountsView';
+import { JournalEntriesView } from './JournalEntriesView';
+import { FinancialReportsView } from './FinancialReportsView';
 import { AccountsSettingsView } from './AccountsSettingsView';
 import { NewDealModal } from './NewDealModal';
 import { useERP } from '../../context/ERPContext';
@@ -19,7 +31,7 @@ const AccountsPortalContent: React.FC<AccountsPortalProps> = ({
   isAccountantOnly = false,
   onBackToERP,
 }) => {
-  const { activeView, selectedDealId, setActiveView, summary } = useAccounts();
+  const { activeView, selectedDealId, setActiveView } = useAccounts();
   const { currentUser } = useERP();
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -55,10 +67,10 @@ const AccountsPortalContent: React.FC<AccountsPortalProps> = ({
             <div className="flex items-center gap-2.5">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
               <span className="text-xs sm:text-sm font-extrabold text-slate-900 tracking-tight">
-                RSB Accounts Portal
+                RSB Industries
               </span>
               <span className="hidden sm:inline-block px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[10px] font-bold">
-                Company Financials
+                Finance & Accounts Portal
               </span>
             </div>
           </div>
@@ -118,7 +130,41 @@ const AccountsPortalContent: React.FC<AccountsPortalProps> = ({
             />
           )}
 
-          {activeView === 'payments' && <AccountsPaymentHistoryView />}
+          {activeView === 'customers' && <CustomerDirectoryView />}
+
+          {activeView === 'invoices' && <SalesInvoicesView />}
+
+          {(activeView === 'payments' || activeView === 'customer-receipts') && (
+            <AccountsPaymentHistoryView />
+          )}
+
+          {activeView === 'vendors' && <VendorDirectoryView />}
+
+          {activeView === 'purchase-orders' && <PurchaseOrdersView />}
+
+          {activeView === 'purchase-bills' && <PurchaseBillsView />}
+
+          {activeView === 'vendor-payments' && <VendorPaymentsView />}
+
+          {activeView === 'bank-cash' && <BankAndCashView />}
+
+          {activeView === 'expenses' && <ExpensesView />}
+
+          {activeView === 'general-ledger' && <GeneralLedgerView />}
+
+          {activeView === 'chart-of-accounts' && <ChartOfAccountsView />}
+
+          {activeView === 'journal-entries' && <JournalEntriesView />}
+
+          {(activeView === 'trial-balance' ||
+            activeView === 'profit-loss' ||
+            activeView === 'balance-sheet' ||
+            activeView === 'gst-reports' ||
+            activeView === 'receivables' ||
+            activeView === 'payables' ||
+            activeView === 'cash-flow') && (
+            <FinancialReportsView initialTab={activeView} />
+          )}
 
           {activeView === 'settings' && <AccountsSettingsView />}
         </main>
@@ -141,4 +187,3 @@ export const AccountsPortal: React.FC<AccountsPortalProps> = (props) => {
     </AccountsProvider>
   );
 };
-

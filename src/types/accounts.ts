@@ -101,3 +101,7 @@ export interface AccountsDashboardSummary {
   overdueDealsCount: number;
 }
 
+// Re-export full finance management models
+export * from './finance';
+
+

@@ -1,299 +1,520 @@
-import React, { useMemo } from 'react';
-import { Plus, ArrowRight, Calendar, AlertCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import {
+  TrendingUp,
+  TrendingDown,
+  ArrowUpRight,
+  ArrowDownLeft,
+  Users,
+  Building2,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  FileText,
+  Receipt,
+  CreditCard,
+  Plus,
+  Landmark,
+  Wallet,
+  Calendar,
+  Layers,
+  ArrowRight,
+} from 'lucide-react';
 import { useAccounts } from '../../context/AccountsContext';
 import { formatINR, formatDateIndian } from '../../utils/accountsCalculations';
-import { AccountDeal } from '../../types/accounts';
 
 interface AccountsDashboardProps {
   onOpenNewDeal: () => void;
 }
 
 export const AccountsDashboard: React.FC<AccountsDashboardProps> = ({ onOpenNewDeal }) => {
-  const { summary, deals, setActiveView } = useAccounts();
+  const {
+    deals,
+    payments,
+    purchaseBills,
+    vendorPayments,
+    businessExpenses,
+    salesInvoices,
+    bankAccounts,
+    financeMetrics,
+    setActiveView,
+  } = useAccounts();
 
-  // Active Deals sorted by newest first
-  const activeDeals = useMemo(() => {
-    return [...deals]
-      .filter((d) => !d.isArchived)
-      .sort((a, b) => new Date(b.dealDate || b.createdAt).getTime() - new Date(a.dealDate || a.createdAt).getTime());
-  }, [deals]);
+  const [txFilter, setTxFilter] = useState<'all' | 'receipts' | 'vendor_pay' | 'invoices' | 'bills' | 'expenses'>('all');
 
-  // Client Deals to show on Dashboard (first 8 deals)
-  const clientDeals = useMemo(() => {
-    return activeDeals.slice(0, 8);
-  }, [activeDeals]);
+  // Customer Receivables (Unpaid or partially paid deals)
+  const receivableDeals = deals
+    .filter((d) => !d.isArchived && d.remainingBalance > 0)
+    .sort((a, b) => b.remainingBalance - a.remainingBalance);
 
-  // Upcoming Payments: deals with a remaining balance and expected payment date
-  const upcomingPayments = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
-    return activeDeals
-      .filter(
-        (d) =>
-          d.remainingBalance > 0 &&
-          d.expectedPaymentDate &&
-          d.expectedPaymentDate >= today
-      )
-      .sort((a, b) => (a.expectedPaymentDate || '').localeCompare(b.expectedPaymentDate || ''))
-      .slice(0, 5);
-  }, [activeDeals]);
+  // Vendor Payables (Unpaid or partially paid bills)
+  const payableBills = purchaseBills
+    .filter((b) => b.paymentStatus !== 'paid' && b.balancePayable > 0)
+    .sort((a, b) => b.balancePayable - a.balancePayable);
 
-  // Overdue deals count
-  const overdueDeals = useMemo(() => {
-    return activeDeals.filter((d) => d.status === 'overdue');
-  }, [activeDeals]);
+  // Unified Recent Transactions Feed
+  const recentTransactions = [
+    ...payments.map((p) => ({
+      id: p.id,
+      type: 'receipt' as const,
+      title: `Payment Received: ${p.remarks || (p.isAdvance ? 'Advance' : 'Installment')}`,
+      party: deals.find((d) => d.id === p.dealId)?.companyName || 'Customer',
+      date: p.paymentDate,
+      amount: p.amount,
+      mode: p.paymentMode,
+      ref: p.transactionReference || 'UTR Verified',
+    })),
+    ...vendorPayments.map((vp) => ({
+      id: vp.id,
+      type: 'vendor_payment' as const,
+      title: `Vendor Payment: ${vp.voucherNumber}`,
+      party: vp.vendorName,
+      date: vp.paymentDate,
+      amount: -vp.amount,
+      mode: vp.paymentMode,
+      ref: vp.utrNumber || vp.transactionReference || 'Bank Transfer',
+    })),
+    ...salesInvoices.map((inv) => ({
+      id: inv.id,
+      type: 'invoice' as const,
+      title: `Sales Invoice: ${inv.invoiceNumber}`,
+      party: inv.customerName,
+      date: inv.invoiceDate,
+      amount: inv.totalAmount,
+      mode: inv.invoiceType === 'tax_invoice' ? 'Tax Invoice' : 'Proforma Invoice',
+      ref: inv.poNumber ? `PO: ${inv.poNumber}` : 'Billed',
+    })),
+    ...purchaseBills.map((pb) => ({
+      id: pb.id,
+      type: 'bill' as const,
+      title: `Purchase Bill: ${pb.billNumber}`,
+      party: pb.vendorName,
+      date: pb.receivedDate,
+      amount: -pb.totalAmount,
+      mode: 'Vendor Invoice',
+      ref: `Inv #${pb.vendorInvoiceNumber}`,
+    })),
+    ...businessExpenses.map((exp) => ({
+      id: exp.id,
+      type: 'expense' as const,
+      title: `Expense: ${exp.category}`,
+      party: exp.payeeName,
+      date: exp.expenseDate,
+      amount: -exp.amount,
+      mode: exp.paymentMode,
+      ref: exp.referenceNumber || exp.description,
+    })),
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  const renderStatus = (deal: AccountDeal) => {
-    if (deal.status === 'fully_paid') {
-      return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-          Fully Paid
-        </span>
-      );
-    }
-    if (deal.status === 'overdue') {
-      return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
-          Overdue
-        </span>
-      );
-    }
-    if (deal.status === 'partially_received') {
-      return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-          Partially Paid
-        </span>
-      );
-    }
-    return (
-      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-        Awaiting Advance
-      </span>
-    );
-  };
+  const filteredTransactions =
+    txFilter === 'all'
+      ? recentTransactions
+      : txFilter === 'receipts'
+      ? recentTransactions.filter((t) => t.type === 'receipt')
+      : txFilter === 'vendor_pay'
+      ? recentTransactions.filter((t) => t.type === 'vendor_payment')
+      : txFilter === 'invoices'
+      ? recentTransactions.filter((t) => t.type === 'invoice')
+      : txFilter === 'bills'
+      ? recentTransactions.filter((t) => t.type === 'bill')
+      : recentTransactions.filter((t) => t.type === 'expense');
 
   return (
     <div className="space-y-6">
-      {/* Top Header */}
+      {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-200">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Accounts Management</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Manage company deals, payment details, advances, and outstanding balances.
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+            Financial Overview & Operations
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Real-time cash flow, sales invoices, vendor payables, and general ledger accounts.
           </p>
         </div>
 
-        {/* Clear Main Actions */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setActiveView('deals')}
-            className="px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-sm font-semibold transition-colors shadow-xs cursor-pointer"
+            onClick={() => setActiveView('invoices')}
+            className="px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
           >
-            View All Deals
+            <FileText className="w-3.5 h-3.5 text-slate-500" />
+            <span>Sales Invoices</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveView('purchase-bills')}
+            className="px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+          >
+            <Receipt className="w-3.5 h-3.5 text-slate-500" />
+            <span>Purchase Bills</span>
+          </button>
+
           <button
             type="button"
             onClick={onOpenNewDeal}
-            className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+            className="px-4 py-2 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
           >
-            <Plus className="w-4 h-4" />
-            <span>+ Add New Deal</span>
+            <Plus className="w-3.5 h-3.5 text-emerald-400" />
+            <span>+ Add Deal</span>
           </button>
         </div>
       </div>
 
-      {/* 4 Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* 1. Total Deals */}
-        <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-1">
-          <p className="text-xs font-medium text-slate-500">Total Deals</p>
-          <p className="text-2xl font-bold text-slate-900 font-mono">
-            {summary.totalDeals}
-          </p>
-          <p className="text-xs text-slate-400">Total active client deals</p>
-        </div>
-
-        {/* 2. Total Deal Value */}
-        <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-1">
-          <p className="text-xs font-medium text-slate-500">Total Deal Value</p>
-          <p className="text-2xl font-bold text-slate-900 font-mono">
-            {formatINR(summary.totalDealValue)}
-          </p>
-          <p className="text-xs text-slate-400">Combined agreed amount</p>
-        </div>
-
-        {/* 3. Total Received */}
-        <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-1">
-          <p className="text-xs font-medium text-emerald-700">Total Received</p>
-          <p className="text-2xl font-bold text-emerald-600 font-mono">
-            {formatINR(summary.totalReceived)}
-          </p>
-          <p className="text-xs text-slate-400">Total money received to date</p>
-        </div>
-
-        {/* 4. Remaining Balance */}
-        <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs space-y-1">
-          <p className="text-xs font-medium text-amber-700">Remaining Balance</p>
-          <p className="text-2xl font-bold text-amber-600 font-mono">
-            {formatINR(summary.outstandingBalance)}
-          </p>
-          <p className="text-xs text-slate-400">Pending collections from clients</p>
-        </div>
-      </div>
-
-      {/* Overdue Alert Strip (if applicable) */}
-      {overdueDeals.length > 0 && (
-        <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between text-xs text-rose-800">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-            <span>
-              <strong>{overdueDeals.length} deal{overdueDeals.length > 1 ? 's' : ''} have overdue payments:</strong>{' '}
-              {overdueDeals.map((d) => d.companyName).slice(0, 3).join(', ')}
-            </span>
+      {/* 10 FINANCIAL KPI SUMMARY CARDS */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+        {/* 1. Total Sales */}
+        <div
+          onClick={() => setActiveView('deals')}
+          className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs hover:border-indigo-400 hover:shadow-sm transition-all cursor-pointer space-y-1"
+        >
+          <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+            <span>Total Sales</span>
+            <ArrowUpRight className="w-3.5 h-3.5 text-indigo-600" />
           </div>
-          <button
-            type="button"
-            onClick={() => setActiveView('deals')}
-            className="text-xs font-bold text-rose-700 hover:text-rose-900 underline cursor-pointer shrink-0 ml-2"
-          >
-            Review Overdue
-          </button>
+          <p className="text-lg font-black font-mono text-slate-950">
+            {formatINR(financeMetrics.totalSales)}
+          </p>
+          <p className="text-[10px] text-slate-400">{financeMetrics.totalDealsCount} Active Deals</p>
         </div>
-      )}
 
-      {/* Grid: Client Deals & Upcoming Payments */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Section: Client Deals Table (2 cols span) */}
-        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-            <h2 className="text-sm font-bold text-slate-900">Client Deals</h2>
+        {/* 2. Total Purchases */}
+        <div
+          onClick={() => setActiveView('purchase-bills')}
+          className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs hover:border-indigo-400 hover:shadow-sm transition-all cursor-pointer space-y-1"
+        >
+          <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+            <span>Total Purchases</span>
+            <ArrowDownLeft className="w-3.5 h-3.5 text-purple-600" />
+          </div>
+          <p className="text-lg font-black font-mono text-slate-950">
+            {formatINR(financeMetrics.totalPurchases)}
+          </p>
+          <p className="text-[10px] text-slate-400">{financeMetrics.purchaseBillsCount} Bills Recorded</p>
+        </div>
+
+        {/* 3. Customer Received */}
+        <div
+          onClick={() => setActiveView('payments')}
+          className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs hover:border-emerald-400 hover:shadow-sm transition-all cursor-pointer space-y-1"
+        >
+          <div className="flex items-center justify-between text-emerald-700 text-xs font-medium">
+            <span>Customer Receipts</span>
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+          </div>
+          <p className="text-lg font-black font-mono text-emerald-700">
+            {formatINR(financeMetrics.customerReceipts)}
+          </p>
+          <p className="text-[10px] text-slate-400">Advances + Stage Cleared</p>
+        </div>
+
+        {/* 4. Vendor Payments Made */}
+        <div
+          onClick={() => setActiveView('vendor-payments')}
+          className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs hover:border-blue-400 hover:shadow-sm transition-all cursor-pointer space-y-1"
+        >
+          <div className="flex items-center justify-between text-blue-700 text-xs font-medium">
+            <span>Vendor Payments</span>
+            <CreditCard className="w-3.5 h-3.5 text-blue-600" />
+          </div>
+          <p className="text-lg font-black font-mono text-blue-700">
+            {formatINR(financeMetrics.vendorPayments)}
+          </p>
+          <p className="text-[10px] text-slate-400">Paid to Suppliers</p>
+        </div>
+
+        {/* 5. Customer Outstanding */}
+        <div
+          onClick={() => setActiveView('pending')}
+          className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs hover:border-amber-400 hover:shadow-sm transition-all cursor-pointer space-y-1"
+        >
+          <div className="flex items-center justify-between text-amber-700 text-xs font-medium">
+            <span>Customer Receivables</span>
+            <Clock className="w-3.5 h-3.5 text-amber-600" />
+          </div>
+          <p className="text-lg font-black font-mono text-amber-700">
+            {formatINR(financeMetrics.customerOutstanding)}
+          </p>
+          <p className="text-[10px] text-slate-400">Balance to Collect</p>
+        </div>
+
+        {/* 6. Vendor Outstanding */}
+        <div
+          onClick={() => setActiveView('purchase-bills')}
+          className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs hover:border-rose-400 hover:shadow-sm transition-all cursor-pointer space-y-1"
+        >
+          <div className="flex items-center justify-between text-rose-700 text-xs font-medium">
+            <span>Vendor Payables</span>
+            <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
+          </div>
+          <p className="text-lg font-black font-mono text-rose-700">
+            {formatINR(financeMetrics.vendorOutstanding)}
+          </p>
+          <p className="text-[10px] text-slate-400">Balance to Pay</p>
+        </div>
+
+        {/* 7. Total Business Expenses */}
+        <div
+          onClick={() => setActiveView('expenses')}
+          className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs hover:border-slate-400 hover:shadow-sm transition-all cursor-pointer space-y-1"
+        >
+          <div className="flex items-center justify-between text-slate-600 text-xs font-medium">
+            <span>Business Expenses</span>
+            <Wallet className="w-3.5 h-3.5 text-slate-500" />
+          </div>
+          <p className="text-lg font-black font-mono text-slate-900">
+            {formatINR(financeMetrics.totalExpenses)}
+          </p>
+          <p className="text-[10px] text-slate-400">Power, Transport & Spares</p>
+        </div>
+
+        {/* 8. Bank Balance */}
+        <div
+          onClick={() => setActiveView('bank-cash')}
+          className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs hover:border-sky-400 hover:shadow-sm transition-all cursor-pointer space-y-1"
+        >
+          <div className="flex items-center justify-between text-sky-700 text-xs font-medium">
+            <span>Bank Balance</span>
+            <Landmark className="w-3.5 h-3.5 text-sky-600" />
+          </div>
+          <p className="text-lg font-black font-mono text-sky-900">
+            {formatINR(financeMetrics.bankBalance)}
+          </p>
+          <p className="text-[10px] text-slate-400">HDFC + SBI Accounts</p>
+        </div>
+
+        {/* 9. Cash Balance */}
+        <div
+          onClick={() => setActiveView('bank-cash')}
+          className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs hover:border-slate-400 hover:shadow-sm transition-all cursor-pointer space-y-1"
+        >
+          <div className="flex items-center justify-between text-slate-600 text-xs font-medium">
+            <span>Cash in Hand</span>
+            <Wallet className="w-3.5 h-3.5 text-slate-500" />
+          </div>
+          <p className="text-lg font-black font-mono text-slate-900">
+            {formatINR(financeMetrics.cashBalance)}
+          </p>
+          <p className="text-[10px] text-slate-400">Main Factory Cash</p>
+        </div>
+
+        {/* 10. Net Profit / Operating Margin */}
+        <div
+          onClick={() => setActiveView('profit-loss')}
+          className={`p-4 border rounded-xl shadow-xs hover:shadow-sm transition-all cursor-pointer space-y-1 ${
+            financeMetrics.netProfitLoss >= 0
+              ? 'bg-emerald-50/50 border-emerald-300'
+              : 'bg-rose-50/50 border-rose-300'
+          }`}
+        >
+          <div className="flex items-center justify-between text-xs font-bold">
+            <span className={financeMetrics.netProfitLoss >= 0 ? 'text-emerald-800' : 'text-rose-800'}>
+              Net Profit
+            </span>
+            {financeMetrics.netProfitLoss >= 0 ? (
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+            ) : (
+              <TrendingDown className="w-3.5 h-3.5 text-rose-600" />
+            )}
+          </div>
+          <p
+            className={`text-lg font-black font-mono ${
+              financeMetrics.netProfitLoss >= 0 ? 'text-emerald-700' : 'text-rose-700'
+            }`}
+          >
+            {formatINR(financeMetrics.netProfitLoss)}
+          </p>
+          <p className="text-[10px] text-slate-500">Sales - Purchases - Expenses</p>
+        </div>
+      </div>
+
+      {/* 2-COLUMN SECTION: RECEIVABLES vs PAYABLES */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* RECEIVABLES (Customer Balances) */}
+        <div className="bg-white border border-slate-200 rounded-xl shadow-xs p-4 space-y-3">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+              <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                Customer Receivables ({receivableDeals.length})
+              </h2>
+            </div>
             <button
               type="button"
-              onClick={() => setActiveView('deals')}
-              className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer"
+              onClick={() => setActiveView('receivables')}
+              className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1 cursor-pointer"
             >
-              <span>View All</span>
+              <span>View Aging</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          {clientDeals.length === 0 ? (
-            <div className="p-8 text-center text-sm text-slate-500">
-              No deals recorded yet. Click <strong>+ Add New Deal</strong> to record your first client deal.
-            </div>
+          {receivableDeals.length === 0 ? (
+            <p className="text-xs text-slate-400 py-6 text-center">No outstanding customer balances.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                    <th className="py-3 px-4">Company Name</th>
-                    <th className="py-3 px-4 text-right">Deal Amount</th>
-                    <th className="py-3 px-4 text-right">Received Amount</th>
-                    <th className="py-3 px-4 text-right">Pending Amount</th>
-                    <th className="py-3 px-4 text-center">Payment Status</th>
-                    <th className="py-3 px-4 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {clientDeals.map((deal) => (
-                    <tr
-                      key={deal.id}
-                      onClick={() => setActiveView('deal-details', deal.id)}
-                      className="hover:bg-slate-50 transition-colors cursor-pointer"
-                    >
-                      {/* Company Name */}
-                      <td className="py-3 px-4">
-                        <div className="font-semibold text-slate-900">
-                          {deal.companyName}
-                        </div>
-                        <div className="text-[11px] text-slate-400 font-mono">
-                          {deal.dealNumber}
-                        </div>
-                      </td>
-
-                      {/* Deal Amount */}
-                      <td className="py-3 px-4 text-right font-mono font-medium text-slate-900 whitespace-nowrap">
-                        {formatINR(deal.decidedAmount)}
-                      </td>
-
-                      {/* Received Amount */}
-                      <td className="py-3 px-4 text-right font-mono font-semibold text-emerald-700 whitespace-nowrap">
-                        {formatINR(deal.totalReceived)}
-                      </td>
-
-                      {/* Pending Amount */}
-                      <td className="py-3 px-4 text-right font-mono font-semibold whitespace-nowrap">
-                        <span className={deal.remainingBalance > 0 ? 'text-amber-700' : 'text-slate-400'}>
-                          {formatINR(deal.remainingBalance)}
-                        </span>
-                      </td>
-
-                      {/* Payment Status */}
-                      <td className="py-3 px-4 text-center whitespace-nowrap">
-                        {renderStatus(deal)}
-                      </td>
-
-                      {/* View Button */}
-                      <td className="py-3 px-4 text-right whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveView('deal-details', deal.id);
-                          }}
-                          className="px-2.5 py-1 text-xs font-medium text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded transition-colors cursor-pointer"
-                        >
-                          View
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Side Section: Upcoming Payments (1 col span) */}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-xs p-5 space-y-4">
-          <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-            <Calendar className="w-4 h-4 text-slate-500" />
-            <h2 className="text-sm font-bold text-slate-900">Upcoming Payments</h2>
-          </div>
-
-          {upcomingPayments.length === 0 ? (
-            <p className="text-xs text-slate-500 py-6 text-center">
-              No upcoming payments scheduled with a pending balance.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {upcomingPayments.map((deal) => (
+            <div className="divide-y divide-slate-100 max-h-60 overflow-y-auto">
+              {receivableDeals.slice(0, 5).map((deal) => (
                 <div
                   key={deal.id}
                   onClick={() => setActiveView('deal-details', deal.id)}
-                  className="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer space-y-1"
+                  className="py-2.5 px-2 hover:bg-slate-50 rounded-lg flex items-center justify-between transition-colors cursor-pointer"
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-slate-900 truncate max-w-[150px]">
-                      {deal.companyName}
-                    </span>
-                    <span className="text-xs font-mono font-bold text-amber-700">
-                      {formatINR(deal.remainingBalance)}
-                    </span>
+                  <div className="min-w-0 pr-2">
+                    <p className="text-xs font-bold text-slate-900 truncate">{deal.companyName}</p>
+                    <p className="text-[11px] text-slate-500">
+                      Deal: <strong className="font-mono">{deal.dealNumber}</strong> • Due: {formatDateIndian(deal.expectedPaymentDate)}
+                    </p>
                   </div>
-                  <div className="flex items-center justify-between text-[11px] text-slate-500">
-                    <span>Due: {formatDateIndian(deal.expectedPaymentDate)}</span>
-                    <span className="font-mono text-slate-400">{deal.dealNumber}</span>
+                  <div className="text-right shrink-0">
+                    <strong className="text-xs font-mono font-bold text-amber-700 block">
+                      {formatINR(deal.remainingBalance)}
+                    </strong>
+                    <span className="text-[10px] text-slate-400">
+                      Total: {formatINR(deal.decidedAmount)}
+                    </span>
                   </div>
                 </div>
               ))}
             </div>
           )}
+        </div>
 
-          <div className="pt-2 text-center text-[11px] text-slate-400 border-t border-slate-100">
-            Payment due dates based on agreed terms.
+        {/* PAYABLES (Vendor Bills to Pay) */}
+        <div className="bg-white border border-slate-200 rounded-xl shadow-xs p-4 space-y-3">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+              <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                Vendor Payables ({payableBills.length})
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveView('payables')}
+              className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1 cursor-pointer"
+            >
+              <span>View Payables</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {payableBills.length === 0 ? (
+            <p className="text-xs text-slate-400 py-6 text-center">No outstanding vendor bills.</p>
+          ) : (
+            <div className="divide-y divide-slate-100 max-h-60 overflow-y-auto">
+              {payableBills.slice(0, 5).map((bill) => (
+                <div
+                  key={bill.id}
+                  onClick={() => setActiveView('purchase-bills')}
+                  className="py-2.5 px-2 hover:bg-slate-50 rounded-lg flex items-center justify-between transition-colors cursor-pointer"
+                >
+                  <div className="min-w-0 pr-2">
+                    <p className="text-xs font-bold text-slate-900 truncate">{bill.vendorName}</p>
+                    <p className="text-[11px] text-slate-500">
+                      Bill: <strong className="font-mono">{bill.billNumber}</strong> • Inv #{bill.vendorInvoiceNumber}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <strong className="text-xs font-mono font-bold text-rose-700 block">
+                      {formatINR(bill.balancePayable)}
+                    </strong>
+                    <span className="text-[10px] text-slate-400">
+                      Due: {formatDateIndian(bill.paymentDueDate)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* RECENT FINANCIAL TRANSACTIONS FEED */}
+      <div className="bg-white border border-slate-200 rounded-xl shadow-xs p-4 space-y-3.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+          <div>
+            <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+              Recent Financial Transactions
+            </h2>
+            <p className="text-[11px] text-slate-400">
+              Live audit trail across customer receipts, vendor payments, invoices, and expenses.
+            </p>
+          </div>
+
+          {/* Transaction Filter Pills */}
+          <div className="flex items-center gap-1.5 flex-wrap text-xs">
+            {(
+              [
+                { id: 'all', label: 'All' },
+                { id: 'receipts', label: 'Receipts' },
+                { id: 'vendor_pay', label: 'Vendor Payments' },
+                { id: 'invoices', label: 'Invoices' },
+                { id: 'bills', label: 'Purchase Bills' },
+                { id: 'expenses', label: 'Expenses' },
+              ] as const
+            ).map((filter) => (
+              <button
+                key={filter.id}
+                type="button"
+                onClick={() => setTxFilter(filter.id)}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors cursor-pointer ${
+                  txFilter === filter.id
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {filter.label}
+              </button>
+            ))}
           </div>
         </div>
+
+        {filteredTransactions.length === 0 ? (
+          <p className="text-xs text-slate-400 py-8 text-center">No transactions recorded under this filter.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 text-[11px] uppercase tracking-wider">
+                  <th className="py-2.5 px-3">Date</th>
+                  <th className="py-2.5 px-3">Description</th>
+                  <th className="py-2.5 px-3">Party / Account</th>
+                  <th className="py-2.5 px-3">Mode / Reference</th>
+                  <th className="py-2.5 px-3 text-right">Amount (INR)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredTransactions.slice(0, 10).map((tx) => (
+                  <tr key={tx.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="py-2.5 px-3 text-slate-600 font-mono text-[11px] whitespace-nowrap">
+                      {formatDateIndian(tx.date)}
+                    </td>
+                    <td className="py-2.5 px-3 font-medium text-slate-900">
+                      {tx.title}
+                    </td>
+                    <td className="py-2.5 px-3 text-slate-700 font-semibold truncate max-w-[200px]">
+                      {tx.party}
+                    </td>
+                    <td className="py-2.5 px-3 text-slate-500 font-mono text-[11px]">
+                      {tx.mode} • {tx.ref}
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-mono font-bold whitespace-nowrap">
+                      <span
+                        className={
+                          tx.amount > 0
+                            ? 'text-emerald-700'
+                            : 'text-rose-700'
+                        }
+                      >
+                        {tx.amount > 0 ? `+${formatINR(tx.amount)}` : `-${formatINR(Math.abs(tx.amount))}`}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
