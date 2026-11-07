@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Building2,
   Shield,
@@ -10,14 +10,84 @@ import {
   FileText,
   User,
   Info,
+  KeyRound,
+  Eye,
+  EyeOff,
+  Lock,
+  Unlock,
+  AlertCircle,
+  Save,
+  ShieldCheck,
 } from 'lucide-react';
 import { useERP } from '../../context/ERPContext';
 import { useAccounts } from '../../context/AccountsContext';
 
 export const AccountsSettingsView: React.FC = () => {
-  const { currentUser } = useERP();
+  const { currentUser, users, updateUser } = useERP();
   const { companies, deals, payments, documents } = useAccounts();
   const [copiedSql, setCopiedSql] = useState(false);
+
+  // Check if current user has main admin authorization
+  const isSuperAdmin =
+    currentUser?.role === 'super_admin' || currentUser?.authLevel === 'Tier 1: Super Admin';
+
+  // Locate the accountant user in active users list
+  const accountantUser = users.find(
+    (u) => u.role === 'accountant' || u.id === 'usr-accountant'
+  ) || {
+    id: 'usr-accountant',
+    name: 'Accountant',
+    email: 'accounts@rsbequipments.com',
+    password: 'accounts@123',
+    role: 'accountant' as const,
+    department: 'Finance & Accounts',
+    authLevel: 'Tier 3: Department Manager' as const,
+    status: 'Active' as const,
+  };
+
+  const [accName, setAccName] = useState(accountantUser.name || 'Accountant');
+  const [accEmail, setAccEmail] = useState(accountantUser.email || 'accounts@rsbequipments.com');
+  const [accPassword, setAccPassword] = useState(
+    accountantUser.password ||
+      (accountantUser.permissions as any)?.password ||
+      'accounts@123'
+  );
+  const [showPassword, setShowPassword] = useState(false);
+  const [credentialSavedToast, setCredentialSavedToast] = useState<string | null>(null);
+
+  // Synchronize when user record updates
+  useEffect(() => {
+    if (accountantUser) {
+      setAccName(accountantUser.name || 'Accountant');
+      setAccEmail(accountantUser.email || 'accounts@rsbequipments.com');
+      setAccPassword(
+        accountantUser.password ||
+          (accountantUser.permissions as any)?.password ||
+          'accounts@123'
+      );
+    }
+  }, [accountantUser.name, accountantUser.email, accountantUser.password]);
+
+  const handleSaveCredentials = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!accName.trim() || !accEmail.trim() || !accPassword.trim()) {
+      alert('User ID, Login Email, and Security Password cannot be blank.');
+      return;
+    }
+
+    updateUser(accountantUser.id, {
+      name: accName.trim(),
+      email: accEmail.trim(),
+      password: accPassword.trim(),
+      role: 'accountant',
+      department: 'Finance & Accounts',
+    });
+
+    setCredentialSavedToast(
+      `✓ Accountant credentials updated! Login ID: ${accEmail.trim()} / ${accName.trim()} • Password: ${accPassword.trim()}`
+    );
+    setTimeout(() => setCredentialSavedToast(null), 8000);
+  };
 
   const ACCOUNTS_SCHEMA_SQL = `-- RSB Accounts Portal Tables
 CREATE TABLE IF NOT EXISTS public.accounts_companies (
@@ -125,6 +195,149 @@ CREATE TABLE IF NOT EXISTS public.accounts_documents (
             <strong className="text-slate-900">{currentUser?.department || 'Finance & Accounts'}</strong>
           </div>
         </div>
+      </div>
+
+      {/* 🔐 Accountant Login Credentials & Access Control (Main Admin Authorization) */}
+      <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-2xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center">
+              <KeyRound className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                Accountant Login Credentials (User ID & Password)
+              </h2>
+              <p className="text-[11px] text-slate-500">
+                Official credentials used to enter the RSB Accounts Portal.
+              </p>
+            </div>
+          </div>
+
+          <div>
+            {isSuperAdmin ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-purple-50 text-purple-700 border border-purple-200 shadow-2xs">
+                👑 Super Admin Authorization Active
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                <Lock className="w-3 h-3 text-slate-500" />
+                <span>Admin Protected</span>
+              </span>
+            )}
+          </div>
+        </div>
+
+        {credentialSavedToast && (
+          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 font-semibold flex items-center gap-2 animate-in fade-in">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{credentialSavedToast}</span>
+          </div>
+        )}
+
+        {isSuperAdmin ? (
+          /* Main Admin Form: Fully Editable */
+          <form onSubmit={handleSaveCredentials} className="space-y-4 pt-1">
+            <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl text-xs text-indigo-900 leading-relaxed">
+              <strong>Main Admin Authorization:</strong> You can change the Accountant's User ID (Name), Login Email, and Security Password. Once saved, the new credentials will immediately apply to login.
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                  User ID / Display Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={accName}
+                  onChange={(e) => setAccName(e.target.value)}
+                  placeholder="e.g. Accountant"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+                />
+                <span className="text-[10px] text-slate-400 mt-0.5 block">Can be entered as Login ID</span>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                  Login Email *
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={accEmail}
+                  onChange={(e) => setAccEmail(e.target.value)}
+                  placeholder="accounts@rsbequipments.com"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 font-mono"
+                />
+                <span className="text-[10px] text-slate-400 mt-0.5 block">Primary email for login</span>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                  Security Password *
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={accPassword}
+                    onChange={(e) => setAccPassword(e.target.value)}
+                    placeholder="Enter new password"
+                    className="w-full pr-9 pl-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <span className="text-[10px] text-slate-400 mt-0.5 block">Strictly case-sensitive</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100 flex-wrap gap-2">
+              <div className="text-[11px] text-slate-500">
+                Current active ID: <strong className="font-mono text-slate-800">{accountantUser.email}</strong> or <strong className="font-mono text-slate-800">{accountantUser.name}</strong>
+              </div>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>Save Accountant Credentials</span>
+              </button>
+            </div>
+          </form>
+        ) : (
+          /* Read-only for regular Accountant */
+          <div className="space-y-3 pt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-slate-500 block text-[11px] mb-0.5">Accountant Login ID:</span>
+                <strong className="text-slate-900 font-mono text-sm">{accountantUser.name}</strong>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-slate-500 block text-[11px] mb-0.5">Accountant Login Email:</span>
+                <strong className="text-slate-900 font-mono text-sm">{accountantUser.email}</strong>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-slate-500 block text-[11px] mb-0.5">Password Security:</span>
+                <span className="font-mono text-slate-600 font-bold tracking-widest">••••••••••••</span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">Protected by Admin</span>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-500 flex items-center gap-2">
+              <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <span>
+                Accountant user ID and security password are managed directly by <strong>Super Admin</strong> authorization. Please contact Main Administration if you require a credential reset.
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Database & Storage Status */}

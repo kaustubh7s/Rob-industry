@@ -59,6 +59,7 @@ const ROLE_OPTIONS: { role: UserRole; title: string; defaultLevel: AuthLevel; de
   { role: 'production_manager', title: 'Production Manager', defaultLevel: 'Tier 3: Department Manager', department: 'Shop Floor & Tooling' },
   { role: 'store_manager', title: 'Store & Inventory Manager', defaultLevel: 'Tier 3: Department Manager', department: 'Warehouse & Stores' },
   { role: 'accounts', title: 'Finance & Accounts', defaultLevel: 'Tier 3: Department Manager', department: 'Finance & Billing' },
+  { role: 'accountant', title: 'Accountant (RSB Accounts Portal)', defaultLevel: 'Tier 3: Department Manager', department: 'Finance & Accounts' },
   { role: 'operator', title: 'Data Entry Operator (Rahul)', defaultLevel: 'Tier 4: Data Entry Operator', department: 'Material Data Entry Floor' },
   { role: 'vendor', title: 'External Supplier Vendor', defaultLevel: 'Tier 5: External Vendor', department: 'External Vendor Portal' },
 ];
@@ -242,6 +243,9 @@ export const MemberAuthorizationManager: React.FC = () => {
       if (editForm.role === 'store_incharge' || editForm.name.toLowerCase().includes('chandramani') || editForm.name.toLowerCase().includes('ramesh')) {
         derivedRole = 'store_incharge';
         derivedDept = 'Stores & Material Inward Receiving';
+      } else if (editForm.role === 'accountant' || editForm.name.toLowerCase().includes('accountant') || editForm.email.toLowerCase().includes('accounts@')) {
+        derivedRole = 'accountant';
+        derivedDept = 'Finance & Accounts';
       }
     } else if (editForm.authLevel === 'Tier 4: Data Entry Operator') {
       derivedRole = 'operator';

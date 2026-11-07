@@ -5268,20 +5268,49 @@ export const ERPProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateUser = (id: string, updates: Partial<User>) => {
     setUsers((prev) => {
-      const next = prev.map((u) => {
-        if (u.id === id) {
-          const merged = { ...u, ...updates };
-          if (updates.password) {
-            merged.permissions = {
-              ...(merged.permissions || {}),
-              password: updates.password,
-            };
+      const exists = prev.some((u) => u.id === id);
+      let next: User[];
+      if (exists) {
+        next = prev.map((u) => {
+          if (u.id === id) {
+            const merged = { ...u, ...updates };
+            if (updates.password) {
+              merged.password = updates.password;
+              merged.permissions = {
+                ...(merged.permissions || {}),
+                password: updates.password,
+              };
+            }
+            dbUpsertUser(merged);
+            return merged;
           }
-          dbUpsertUser(merged);
-          return merged;
-        }
-        return u;
-      });
+          return u;
+        });
+      } else {
+        const seedUser = INITIAL_USERS.find((u) => u.id === id);
+        const base: User = seedUser || {
+          id,
+          name: updates.name || 'User',
+          email: updates.email || '',
+          role: updates.role || 'operator',
+          department: updates.department || 'General',
+          authLevel: updates.authLevel || 'Tier 4: Data Entry Operator',
+          status: updates.status || 'Active',
+          lastActive: 'Active Now',
+        };
+        const merged: User = {
+          ...base,
+          ...updates,
+          password: updates.password || base.password,
+          permissions: {
+            ...(base.permissions || {}),
+            ...(updates.permissions || {}),
+            password: updates.password || base.password,
+          },
+        };
+        next = [merged, ...prev];
+        dbUpsertUser(merged);
+      }
       localStorage.setItem(LOCAL_STORAGE_KEY + '_users', JSON.stringify(next));
       return next;
     });
