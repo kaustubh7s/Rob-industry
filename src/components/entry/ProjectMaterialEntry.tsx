@@ -134,6 +134,38 @@ const COMMON_SIZES: string[] = [];
 
 const DRAFT_STORAGE_KEY = 'RSB_PROJECT_MATERIAL_ENTRY_10COL_WORKFLOW_V4';
 
+const safeSaveDraft = (key: string, data: any) => {
+  try {
+    localStorage.setItem(key, typeof data === 'string' ? data : JSON.stringify(data));
+  } catch (err) {
+    console.warn(`[Draft] LocalStorage write failed for ${key}:`, err);
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (
+          k &&
+          k !== key &&
+          (k.startsWith('rsb_wb_') ||
+            k.startsWith('RSB_PROJECT_DRAFT_') ||
+            k.includes('cache') ||
+            k.includes('backup'))
+        ) {
+          localStorage.removeItem(k);
+        }
+      }
+      localStorage.setItem(key, typeof data === 'string' ? data : JSON.stringify(data));
+    } catch (fallbackErr) {
+      console.warn(`[Draft] Quota exceeded; maintaining state in-memory safely.`, fallbackErr);
+    }
+  }
+};
+
+const safeRemoveDraft = (key: string) => {
+  try {
+    localStorage.removeItem(key);
+  } catch {}
+};
+
 export const ProjectMaterialEntry: React.FC = () => {
   const {
     projects,
@@ -309,7 +341,7 @@ export const ProjectMaterialEntry: React.FC = () => {
     setCustomDescs((prev) => {
       if (prev.includes(clean)) return prev;
       const updated = [clean, ...prev];
-      localStorage.setItem('rsb_custom_descriptions', JSON.stringify(updated));
+      safeSaveDraft('rsb_custom_descriptions', updated);
       return updated;
     });
   };
@@ -320,7 +352,7 @@ export const ProjectMaterialEntry: React.FC = () => {
     setCustomSizes((prev) => {
       if (prev.includes(clean)) return prev;
       const updated = [clean, ...prev];
-      localStorage.setItem('rsb_custom_sizes', JSON.stringify(updated));
+      safeSaveDraft('rsb_custom_sizes', updated);
       return updated;
     });
   };
@@ -331,7 +363,7 @@ export const ProjectMaterialEntry: React.FC = () => {
     setCustomUnits((prev) => {
       if (prev.includes(clean)) return prev;
       const updated = [...prev, clean];
-      localStorage.setItem('rsb_custom_units', JSON.stringify(updated));
+      safeSaveDraft('rsb_custom_units', updated);
       return updated;
     });
   };
@@ -673,14 +705,14 @@ export const ProjectMaterialEntry: React.FC = () => {
   // Auto-save draft to localStorage (clears draft when table is emptied)
   useEffect(() => {
     if (rows.length > 0) {
-      localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(rows));
+      safeSaveDraft(DRAFT_STORAGE_KEY, rows);
       if (selectedProjectName) {
-        localStorage.setItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`, JSON.stringify(rows));
+        safeSaveDraft(`RSB_PROJECT_DRAFT_${selectedProjectName}`, rows);
       }
     } else {
-      localStorage.removeItem(DRAFT_STORAGE_KEY);
+      safeRemoveDraft(DRAFT_STORAGE_KEY);
       if (selectedProjectName) {
-        localStorage.removeItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`);
+        safeRemoveDraft(`RSB_PROJECT_DRAFT_${selectedProjectName}`);
       }
     }
     const now = new Date();
@@ -1012,8 +1044,8 @@ export const ProjectMaterialEntry: React.FC = () => {
 
     const nextRows = normalizeSrNumbers([...rows, newRow]);
     setRows(nextRows);
-    localStorage.setItem(`RSB_PROJECT_DRAFT_${targetProject}`, JSON.stringify(nextRows));
-    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextRows));
+    safeSaveDraft(`RSB_PROJECT_DRAFT_${targetProject}`, nextRows);
+    safeSaveDraft(DRAFT_STORAGE_KEY, nextRows);
     syncRowToDatabaseAndContext(newRow, targetProject);
 
     setSaveToast(`Added ${part.description} (${part.sizeSpecs}) • Synced to DB`);
@@ -1041,8 +1073,8 @@ export const ProjectMaterialEntry: React.FC = () => {
 
     const nextRows = normalizeSrNumbers([...rows, ...newRows]);
     setRows(nextRows);
-    localStorage.setItem(`RSB_PROJECT_DRAFT_${targetProject}`, JSON.stringify(nextRows));
-    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextRows));
+    safeSaveDraft(`RSB_PROJECT_DRAFT_${targetProject}`, nextRows);
+    safeSaveDraft(DRAFT_STORAGE_KEY, nextRows);
     newRows.forEach((r) => syncRowToDatabaseAndContext(r, targetProject));
 
     confetti({ particleCount: 60, spread: 60, origin: { y: 0.65 } });
@@ -1467,8 +1499,8 @@ export const ProjectMaterialEntry: React.FC = () => {
     removeRequirementTombstone(newRow.id);
     const nextRows = [...rows, newRow];
     setRows(nextRows);
-    localStorage.setItem(`RSB_PROJECT_DRAFT_${targetProject}`, JSON.stringify(nextRows));
-    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextRows));
+    safeSaveDraft(`RSB_PROJECT_DRAFT_${targetProject}`, nextRows);
+    safeSaveDraft(DRAFT_STORAGE_KEY, nextRows);
     syncRowToDatabaseAndContext(newRow, targetProject);
 
     const nextSr = typeof targetSrNo === 'number' ? targetSrNo + 1 : (!isNaN(Number(targetSrNo)) ? Number(targetSrNo) + 1 : rows.length + 2);
@@ -1506,8 +1538,8 @@ export const ProjectMaterialEntry: React.FC = () => {
     const nextRows = normalizeSrNumbers(updated);
     setRows(nextRows);
     if (selectedProjectName) {
-      localStorage.setItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`, JSON.stringify(nextRows));
-      localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextRows));
+      safeSaveDraft(`RSB_PROJECT_DRAFT_${selectedProjectName}`, nextRows);
+      safeSaveDraft(DRAFT_STORAGE_KEY, nextRows);
     }
     syncRowToDatabaseAndContext(duplicate, selectedProjectName);
 
@@ -1532,9 +1564,9 @@ export const ProjectMaterialEntry: React.FC = () => {
     deleteProjectRequirement(row.id);
     const nextRows = normalizeSrNumbers(rows.filter((r) => r.id !== rowId));
     setRows(nextRows);
-    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextRows));
+    safeSaveDraft(DRAFT_STORAGE_KEY, nextRows);
     if (selectedProjectName) {
-      localStorage.setItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`, JSON.stringify(nextRows));
+      safeSaveDraft(`RSB_PROJECT_DRAFT_${selectedProjectName}`, nextRows);
     }
     setSaveToast('🗑️ Deleted row by Admin • Synced to DB');
     setTimeout(() => {
@@ -1561,9 +1593,9 @@ export const ProjectMaterialEntry: React.FC = () => {
       deleteProjectRequirements(idsToDelete);
       const nextRows = normalizeSrNumbers(rows.filter((r) => !idsToDelete.includes(r.id)));
       setRows(nextRows);
-      localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextRows));
+      safeSaveDraft(DRAFT_STORAGE_KEY, nextRows);
       if (selectedProjectName) {
-        localStorage.setItem(`RSB_PROJECT_DRAFT_${selectedProjectName}`, JSON.stringify(nextRows));
+        safeSaveDraft(`RSB_PROJECT_DRAFT_${selectedProjectName}`, nextRows);
       }
       setSelectedRowIds([]);
       setSaveToast(`🗑️ Deleted ${count} row(s) by Admin • Purged from DB`);
@@ -1718,11 +1750,11 @@ export const ProjectMaterialEntry: React.FC = () => {
 
       // Keep rows permanently stored under this project (never auto-deleted)
       if (rows.length > 0) {
-        localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(rows));
-        localStorage.setItem(`RSB_PROJECT_DRAFT_${targetProject}`, JSON.stringify(rows));
+        safeSaveDraft(DRAFT_STORAGE_KEY, rows);
+        safeSaveDraft(`RSB_PROJECT_DRAFT_${targetProject}`, rows);
       } else {
-        localStorage.removeItem(DRAFT_STORAGE_KEY);
-        localStorage.removeItem(`RSB_PROJECT_DRAFT_${targetProject}`);
+        safeRemoveDraft(DRAFT_STORAGE_KEY);
+        safeRemoveDraft(`RSB_PROJECT_DRAFT_${targetProject}`);
       }
 
       confetti({
@@ -3526,8 +3558,8 @@ export const ProjectMaterialEntry: React.FC = () => {
                 };
                 const nextRows = normalizeSrNumbers([...rows, emptyRow]);
                 setRows(nextRows);
-                localStorage.setItem(`RSB_PROJECT_DRAFT_${targetProject}`, JSON.stringify(nextRows));
-                localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(nextRows));
+                safeSaveDraft(`RSB_PROJECT_DRAFT_${targetProject}`, nextRows);
+                safeSaveDraft(DRAFT_STORAGE_KEY, nextRows);
                 syncRowToDatabaseAndContext(emptyRow, targetProject);
                 setSaveToast('Added empty row • Synced to DB');
                 setTimeout(() => setSaveToast(null), 2000);

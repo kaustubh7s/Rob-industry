@@ -24,15 +24,40 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('ErrorBoundary caught an unhandled error:', error, errorInfo);
+    if (
+      error?.message?.includes('exceeded the quota') ||
+      error?.name === 'QuotaExceededError' ||
+      error?.name === 'NS_ERROR_DOM_QUOTA_REACHED'
+    ) {
+      try {
+        localStorage.removeItem('RSB_PROJECT_MATERIAL_ENTRY_10COL_WORKFLOW_V4');
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const k = localStorage.key(i);
+          if (
+            k &&
+            (k.startsWith('RSB_PROJECT_DRAFT_') ||
+              k.startsWith('rsb_wb_') ||
+              k.includes('cache') ||
+              k.includes('backup'))
+          ) {
+            localStorage.removeItem(k);
+          }
+        }
+      } catch {}
+    }
     this.setState({ errorInfo });
   }
 
   private handleReload = () => {
+    try {
+      localStorage.removeItem('RSB_PROJECT_MATERIAL_ENTRY_10COL_WORKFLOW_V4');
+    } catch {}
     window.location.reload();
   };
 
   private handleReset = () => {
     try {
+      localStorage.removeItem('RSB_PROJECT_MATERIAL_ENTRY_10COL_WORKFLOW_V4');
       localStorage.setItem('RSB_ACTIVE_TAB', 'requirements');
     } catch {}
     this.setState({ hasError: false, error: null, errorInfo: null });
