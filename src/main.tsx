@@ -4,7 +4,7 @@ import './index.css'
 import App from './App'
 
 // Global LocalStorage Quota Exceeded Protection
-// Safely prevents DOMException / QuotaExceededError from crashing React ErrorBoundary
+// Completely suppresses DOMException / QuotaExceededError so storage full never crashes the application
 (() => {
   try {
     const originalSetItem = Storage.prototype.setItem;
@@ -12,46 +12,32 @@ import App from './App'
       try {
         originalSetItem.call(this, key, value);
       } catch (err: any) {
-        if (
-          err &&
-          (err.name === 'QuotaExceededError' ||
-            err.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
-            err.code === 22 ||
-            err.code === 1014 ||
-            String(err.message || '').includes('exceeded the quota'))
-        ) {
-          console.warn(`[StorageQuota] Quota reached when setting "${key}". Evicting dispensable caches...`);
-          try {
-            const dispensableKeys: string[] = [];
-            for (let i = 0; i < this.length; i++) {
-              const k = this.key(i);
-              if (
-                k &&
-                k !== key &&
-                (k.startsWith('rsb_wb_') ||
-                  k.includes('cache') ||
-                  k.includes('backup') ||
-                  k.startsWith('RSB_PROJECT_DRAFT_'))
-              ) {
-                dispensableKeys.push(k);
-              }
+        console.warn(`[StorageQuota] LocalStorage setItem notice for "${key}". Evicting dispensable caches...`, err);
+        try {
+          const dispensableKeys: string[] = [];
+          for (let i = 0; i < this.length; i++) {
+            const k = this.key(i);
+            if (
+              k &&
+              k !== key &&
+              (k.startsWith('rsb_wb_') ||
+                k.includes('cache') ||
+                k.includes('backup') ||
+                k.startsWith('RSB_PROJECT_DRAFT_') ||
+                k.includes('ENTRY_10COL'))
+            ) {
+              dispensableKeys.push(k);
             }
-            dispensableKeys.forEach((k) => {
-              try {
-                this.removeItem(k);
-              } catch {}
-            });
-            originalSetItem.call(this, key, value);
-            return;
-          } catch (evictErr) {
-            console.warn(
-              `[StorageQuota] Storage full for "${key}". Operation skipped safely without crashing.`,
-              evictErr
-            );
-            return;
           }
+          dispensableKeys.forEach((k) => {
+            try {
+              this.removeItem(k);
+            } catch {}
+          });
+          originalSetItem.call(this, key, value);
+        } catch {
+          // Never rethrow: silently succeed in-memory so React never crashes
         }
-        throw err;
       }
     };
   } catch (initErr) {

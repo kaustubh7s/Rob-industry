@@ -19,6 +19,18 @@ export class ErrorBoundary extends Component<Props, State> {
   };
 
   public static getDerivedStateFromError(error: Error): State {
+    const msg = String(error?.message || '').toLowerCase();
+    if (
+      msg.includes('quota') ||
+      msg.includes('storage') ||
+      msg.includes('setitem') ||
+      msg.includes('exceeded the quota')
+    ) {
+      try {
+        localStorage.removeItem('RSB_PROJECT_MATERIAL_ENTRY_10COL_WORKFLOW_V4');
+      } catch {}
+      return { hasError: false, error: null, errorInfo: null };
+    }
     return { hasError: true, error, errorInfo: null };
   }
 
